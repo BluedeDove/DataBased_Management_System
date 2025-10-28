@@ -1,0 +1,213 @@
+import Database from 'better-sqlite3'
+import { app } from 'electron'
+import path from 'path'
+import fs from 'fs'
+
+// 数据库文件路径
+const userDataPath = app.getPath('userData')
+const dbPath = path.join(userDataPath, 'library.db')
+
+// 确保目录存在
+if (!fs.existsSync(userDataPath)) {
+  fs.mkdirSync(userDataPath, { recursive: true })
+}
+
+// 创建数据库连接
+export const db = new Database(dbPath)
+
+// 启用外键约束
+db.pragma('foreign_keys = ON')
+
+// 初始化数据库表结构
+export function initDatabase() {
+  // 1. 用户表（系统用户：管理员、图书管理员）
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE NOT NULL,
+      password TEXT NOT NULL,
+      name TEXT NOT NULL,
+      role TEXT NOT NULL CHECK(role IN ('admin', 'librarian')),
+      email TEXT,
+      phone TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
+
+  // 2. 读者种类表
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS reader_categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      code TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      max_borrow_count INTEGER NOT NULL DEFAULT 5,
+      max_borrow_days INTEGER NOT NULL DEFAULT 30,
+      validity_days INTEGER NOT NULL DEFAULT 365,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
+
+  // 3. 读者表
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS readers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      reader_no TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      category_id INTEGER NOT NULL,
+      gender TEXT CHECK(gender IN ('male', 'female', 'other')),
+      organization TEXT,
+      address TEXT,
+      phone TEXT,
+      email TEXT,
+      registration_date DATE DEFAULT (date('now')),
+      expiry_date DATE,
+      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'suspended', 'expired')),
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (category_id) REFERENCES reader_categories(id) ON DELETE RESTRICT
+    )
+  `)
+
+  // 4. 图书类别表
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS book_categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      code TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      keywords TEXT,
+      parent_id INTEGER,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (parent_id) REFERENCES book_categories(id) ON DELETE SET NULL
+    )
+  `)
+
+  // 5. 图书表
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS books (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      isbn TEXT UNIQUE NOT NULL,
+      title TEXT NOT NULL,
+      category_id INTEGER NOT NULL,
+      author TEXT NOT NULL,
+      publisher TEXT NOT NULL,
+      publish_date DATE,
+      price REAL,
+      pages INTEGER,
+      keywords TEXT,
+      description TEXT,
+      cover_url TEXT,
+      total_quantity INTEGER NOT NULL DEFAULT 1,
+      available_quantity INTEGER NOT NULL DEFAULT 1,
+      status TEXT NOT NULL DEFAULT 'normal' CHECK(status IN ('normal', 'damaged', 'lost', 'destroyed')),
+      registration_date DATE DEFAULT (date('now')),
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (category_id) REFERENCES book_categories(id) ON DELETE RESTRICT
+    )
+  `)
+
+  // 6. 借阅记录表
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS borrowing_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      reader_id INTEGER NOT NULL,
+      book_id INTEGER NOT NULL,
+      borrow_date DATE DEFAULT (date('now')),
+      due_date DATE NOT NULL,
+      return_date DATE,
+      renewal_count INTEGER DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'borrowed' CHECK(status IN ('borrowed', 'returned', 'overdue', 'lost')),
+      fine_amount REAL DEFAULT 0,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (reader_id) REFERENCES readers(id) ON DELETE RESTRICT,
+      FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE RESTRICT
+    )
+  `)
+
+  // 创建索引以提高查询性能
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_readers_category ON readers(category_id);
+    CREATE INDEX IF NOT EXISTS idx_readers_status ON readers(status);
+    CREATE INDEX IF NOT EXISTS idx_books_category ON books(category_id);
+    CREATE INDEX IF NOT EXISTS idx_books_status ON books(status);
+    CREATE INDEX IF NOT EXISTS idx_books_title ON books(title);
+    CREATE INDEX IF NOT EXISTS idx_books_author ON books(author);
+    CREATE INDEX IF NOT EXISTS idx_borrowing_reader ON borrowing_records(reader_id);
+    CREATE INDEX IF NOT EXISTS idx_borrowing_book ON borrowing_records(book_id);
+    CREATE INDEX IF NOT EXISTS idx_borrowing_status ON borrowing_records(status);
+    CREATE INDEX IF NOT EXISTS idx_borrowing_dates ON borrowing_records(borrow_date, due_date);
+  `)
+
+  console.log('✅ 数据库表结构初始化完成')
+}
+
+// 初始化默认数据
+export function seedDatabase() {
+  // 检查是否已有数据
+  const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number }
+
+  if (userCount.count === 0) {
+    // 创建默认管理员账户（密码：admin123，实际应使用bcrypt加密）
+    db.prepare(`
+      INSERT INTO users (username, password, name, role, email)
+      VALUES (?, ?, ?, ?, ?)
+    `).run('admin', 'admin123', '系统管理员', 'admin', 'admin@library.com')
+
+    // 创建默认读者种类
+    const readerCategories = [
+      { code: 'STUDENT', name: '学生', maxBorrow: 5, maxDays: 30, validity: 365 },
+      { code: 'TEACHER', name: '教师', maxBorrow: 10, maxDays: 60, validity: 1095 },
+      { code: 'STAFF', name: '职工', maxBorrow: 8, maxDays: 45, validity: 730 }
+    ]
+
+    const insertCategory = db.prepare(`
+      INSERT INTO reader_categories (code, name, max_borrow_count, max_borrow_days, validity_days)
+      VALUES (?, ?, ?, ?, ?)
+    `)
+
+    for (const cat of readerCategories) {
+      insertCategory.run(cat.code, cat.name, cat.maxBorrow, cat.maxDays, cat.validity)
+    }
+
+    // 创建默认图书类别
+    const bookCategories = [
+      { code: 'TP', name: '计算机科学', keywords: '编程,算法,软件,硬件' },
+      { code: 'I', name: '文学', keywords: '小说,诗歌,散文,戏剧' },
+      { code: 'K', name: '历史地理', keywords: '历史,地理,考古' },
+      { code: 'O', name: '数理科学', keywords: '数学,物理,化学' },
+      { code: 'J', name: '艺术', keywords: '音乐,美术,设计,摄影' }
+    ]
+
+    const insertBookCat = db.prepare(`
+      INSERT INTO book_categories (code, name, keywords)
+      VALUES (?, ?, ?)
+    `)
+
+    for (const cat of bookCategories) {
+      insertBookCat.run(cat.code, cat.name, cat.keywords)
+    }
+
+    console.log('✅ 默认数据初始化完成')
+  }
+}
+
+// 在应用启动时初始化数据库
+export function setupDatabase() {
+  try {
+    initDatabase()
+    seedDatabase()
+    console.log('📚 数据库系统准备就绪')
+  } catch (error) {
+    console.error('❌ 数据库初始化失败:', error)
+    throw error
+  }
+}
