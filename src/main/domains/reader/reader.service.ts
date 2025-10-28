@@ -199,7 +199,8 @@ export class ReaderService {
     currentBorrowing: number
     overdueCount: number
   } {
-    const reader = this.getReaderById(readerId)
+    // Validate reader exists
+    this.getReaderById(readerId)
 
     const stmt = db.prepare(`
       SELECT

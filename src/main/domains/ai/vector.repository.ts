@@ -39,7 +39,7 @@ export class VectorRepository {
       VALUES (?, ?, ?)
     `)
 
-    const result = stmt.run(bookId, vectorJson, text)
+    stmt.run(bookId, vectorJson, text)
 
     const record = this.findByBookId(bookId)
     if (!record) throw new NotFoundError('向量记录')

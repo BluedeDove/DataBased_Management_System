@@ -76,7 +76,7 @@ export class AuthService {
     }
 
     // Check wildcard patterns (e.g., 'books:*' matches 'books:read')
-    const [resource, action] = requiredPermission.split(':')
+    const [resource] = requiredPermission.split(':')
     if (permissions.includes(`${resource}:*`)) {
       return true
     }
