@@ -70,6 +70,17 @@ export interface ElectronAPI {
     getPopular: (limit?: number) => Promise<any>
     getActiveReaders: (limit?: number) => Promise<any>
   }
+
+  // AI功能
+  ai: {
+    isAvailable: () => Promise<any>
+    createBookEmbedding: (bookId: number) => Promise<any>
+    batchCreateEmbeddings: (bookIds: number[]) => Promise<any>
+    semanticSearch: (query: string, topK?: number) => Promise<any>
+    chat: (message: string, history?: any[], context?: string) => Promise<any>
+    recommendBooks: (query: string, limit?: number) => Promise<any>
+    getStatistics: () => Promise<any>
+  }
 }
 
 // 将 API 暴露给渲染进程
@@ -136,6 +147,16 @@ const api: ElectronAPI = {
     getBookHistory: (bookId) => ipcRenderer.invoke('borrowing:getBookHistory', bookId),
     getPopular: (limit) => ipcRenderer.invoke('borrowing:getPopular', limit),
     getActiveReaders: (limit) => ipcRenderer.invoke('borrowing:getActiveReaders', limit)
+  },
+
+  ai: {
+    isAvailable: () => ipcRenderer.invoke('ai:isAvailable'),
+    createBookEmbedding: (bookId) => ipcRenderer.invoke('ai:createBookEmbedding', bookId),
+    batchCreateEmbeddings: (bookIds) => ipcRenderer.invoke('ai:batchCreateEmbeddings', bookIds),
+    semanticSearch: (query, topK) => ipcRenderer.invoke('ai:semanticSearch', query, topK),
+    chat: (message, history, context) => ipcRenderer.invoke('ai:chat', message, history, context),
+    recommendBooks: (query, limit) => ipcRenderer.invoke('ai:recommendBooks', query, limit),
+    getStatistics: () => ipcRenderer.invoke('ai:getStatistics')
   }
 }
 

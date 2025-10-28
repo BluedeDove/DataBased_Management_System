@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git add .)"
+      "Bash(git add .)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nfeat: 实现企业级图书管理系统核心功能\n\n✨ 新增功能:\n- 完整的DDD分层架构设计\n- 用户认证和权限管理系统\n- 图书管理模块(CRUD、分类、库存)\n- 读者管理模块(信息、种类、证件)\n- 借还管理模块(借书、还书、续借、逾期)\n- 统计分析模块(多维度报表)\n- 美观的UI界面(Vue3 + Element Plus)\n\n🏗️ 技术架构:\n- 后端: Electron主进程 + DDD领域驱动设计\n- 前端: Vue3 + TypeScript + Pinia + Vue Router\n- 数据库: SQLite (better-sqlite3)\n- UI框架: Element Plus + Chart.js\n\n📁 项目结构:\n- src/main/domains: 业务领域层(auth, book, reader, borrowing)\n- src/main/lib: 基础设施层(IPC, 错误处理, 日志)\n- src/renderer: 前端渲染层(6个核心页面)\n\n📚 完整文档:\n- README.md: 项目说明\n- USAGE.md: 使用指南  \n- ARCHITECTURE.md: 架构设计文档\n\n🤖 Generated with Claude Code\nhttps://claude.com/claude-code\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")"
     ],
     "deny": [],
     "ask": []

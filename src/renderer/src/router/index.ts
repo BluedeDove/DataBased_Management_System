@@ -46,6 +46,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '统计分析', icon: 'PieChart' }
       },
       {
+        path: 'ai-assistant',
+        name: 'AIAssistant',
+        component: () => import('@/views/AIAssistant.vue'),
+        meta: { title: 'AI 助手', icon: 'MagicStick' }
+      },
+      {
         path: 'settings',
         name: 'Settings',
         component: () => import('@/views/Settings.vue'),
