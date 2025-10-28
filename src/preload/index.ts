@@ -8,6 +8,8 @@ export interface ElectronAPI {
     logout: (token: string) => Promise<any>
     validate: (token: string) => Promise<any>
     changePassword: (userId: number, oldPassword: string, newPassword: string) => Promise<any>
+    getUserPermissions: (userId: number) => Promise<any>
+    checkPermission: (userId: number, permission: string) => Promise<any>
   }
 
   // 读者种类
@@ -25,6 +27,7 @@ export interface ElectronAPI {
     create: (data: any) => Promise<any>
     update: (id: number, updates: any) => Promise<any>
     search: (keyword: string) => Promise<any>
+    regexSearch: (pattern: string, fields?: string[]) => Promise<any>
     suspend: (id: number, reason?: string) => Promise<any>
     activate: (id: number) => Promise<any>
     renew: (id: number, days: number) => Promise<any>
@@ -50,6 +53,7 @@ export interface ElectronAPI {
     markAsLost: (id: number) => Promise<any>
     markAsDamaged: (id: number, notes?: string) => Promise<any>
     advancedSearch: (criteria: any) => Promise<any>
+    regexSearch: (pattern: string, fields?: string[]) => Promise<any>
     getBorrowingStatus: (id: number) => Promise<any>
     getPopular: (limit?: number) => Promise<any>
     getNew: (limit?: number) => Promise<any>
@@ -88,6 +92,13 @@ export interface ElectronAPI {
     toJSON: (options: { filename: string; data: any[] }) => Promise<any>
     report: (options: any) => Promise<any>
   }
+
+  // 配置
+  config: {
+    getAISettings: () => Promise<any>
+    updateAISettings: (settings: any) => Promise<any>
+    testAIConnection: () => Promise<any>
+  }
 }
 
 // 将 API 暴露给渲染进程
@@ -97,7 +108,10 @@ const api: ElectronAPI = {
     logout: (token) => ipcRenderer.invoke('auth:logout', token),
     validate: (token) => ipcRenderer.invoke('auth:validate', token),
     changePassword: (userId, oldPassword, newPassword) =>
-      ipcRenderer.invoke('auth:changePassword', userId, oldPassword, newPassword)
+      ipcRenderer.invoke('auth:changePassword', userId, oldPassword, newPassword),
+    getUserPermissions: (userId) => ipcRenderer.invoke('auth:getUserPermissions', userId),
+    checkPermission: (userId, permission) =>
+      ipcRenderer.invoke('auth:checkPermission', userId, permission)
   },
 
   readerCategory: {
@@ -113,6 +127,7 @@ const api: ElectronAPI = {
     create: (data) => ipcRenderer.invoke('reader:create', data),
     update: (id, updates) => ipcRenderer.invoke('reader:update', id, updates),
     search: (keyword) => ipcRenderer.invoke('reader:search', keyword),
+    regexSearch: (pattern, fields) => ipcRenderer.invoke('reader:regexSearch', pattern, fields),
     suspend: (id, reason) => ipcRenderer.invoke('reader:suspend', id, reason),
     activate: (id) => ipcRenderer.invoke('reader:activate', id),
     renew: (id, days) => ipcRenderer.invoke('reader:renew', id, days),
@@ -136,6 +151,7 @@ const api: ElectronAPI = {
     markAsLost: (id) => ipcRenderer.invoke('book:markAsLost', id),
     markAsDamaged: (id, notes) => ipcRenderer.invoke('book:markAsDamaged', id, notes),
     advancedSearch: (criteria) => ipcRenderer.invoke('book:advancedSearch', criteria),
+    regexSearch: (pattern, fields) => ipcRenderer.invoke('book:regexSearch', pattern, fields),
     getBorrowingStatus: (id) => ipcRenderer.invoke('book:getBorrowingStatus', id),
     getPopular: (limit) => ipcRenderer.invoke('book:getPopular', limit),
     getNew: (limit) => ipcRenderer.invoke('book:getNew', limit),
@@ -170,6 +186,12 @@ const api: ElectronAPI = {
     toCSV: (options) => ipcRenderer.invoke('export:csv', options),
     toJSON: (options) => ipcRenderer.invoke('export:json', options),
     report: (options) => ipcRenderer.invoke('export:report', options)
+  },
+
+  config: {
+    getAISettings: () => ipcRenderer.invoke('config:getAISettings'),
+    updateAISettings: (settings) => ipcRenderer.invoke('config:updateAISettings', settings),
+    testAIConnection: () => ipcRenderer.invoke('config:testAIConnection')
   }
 }
 

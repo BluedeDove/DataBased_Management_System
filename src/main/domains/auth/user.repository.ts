@@ -6,7 +6,7 @@ export interface User {
   username: string
   password: string
   name: string
-  role: 'admin' | 'librarian'
+  role: 'admin' | 'librarian' | 'teacher' | 'student'
   email?: string
   phone?: string
   created_at: string
@@ -79,5 +79,14 @@ export class UserRepository {
   findAll(): User[] {
     const stmt = db.prepare('SELECT * FROM users ORDER BY created_at DESC')
     return stmt.all() as User[]
+  }
+
+  getUserPermissions(userId: number): string[] {
+    const user = this.findById(userId)
+    if (!user) return []
+
+    const stmt = db.prepare('SELECT permission FROM role_permissions WHERE role = ?')
+    const results = stmt.all(user.role) as { permission: string }[]
+    return results.map(r => r.permission)
   }
 }

@@ -230,4 +230,37 @@ export class ReaderRepository {
     const result = stmt.get(readerId) as { count: number }
     return result.count > 0
   }
+
+  // 生成下一个读者编号
+  generateNextReaderNo(categoryId: number): string {
+    const category = this.findCategoryById(categoryId)
+    if (!category) {
+      throw new NotFoundError('读者种类')
+    }
+
+    // 格式: {CATEGORY_CODE}{YYYYMMDD}{4位顺序号}
+    const today = new Date()
+    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '') // YYYYMMDD
+    const prefix = `${category.code}${dateStr}`
+
+    // 查找今天同类别的最大编号
+    const stmt = db.prepare(`
+      SELECT reader_no FROM readers
+      WHERE reader_no LIKE ?
+      ORDER BY reader_no DESC
+      LIMIT 1
+    `)
+    const result = stmt.get(`${prefix}%`) as { reader_no?: string } | undefined
+
+    let sequence = 1
+    if (result?.reader_no) {
+      // 从编号中提取序号部分
+      const lastSequence = result.reader_no.slice(prefix.length)
+      sequence = parseInt(lastSequence, 10) + 1
+    }
+
+    // 格式化为4位数字
+    const sequenceStr = sequence.toString().padStart(4, '0')
+    return `${prefix}${sequenceStr}`
+  }
 }

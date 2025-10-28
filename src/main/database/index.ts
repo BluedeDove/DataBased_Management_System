@@ -20,14 +20,14 @@ db.pragma('foreign_keys = ON')
 
 // 初始化数据库表结构
 export function initDatabase() {
-  // 1. 用户表（系统用户：管理员、图书管理员）
+  // 1. 用户表（系统用户：管理员、图书管理员、教师、学生）
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE NOT NULL,
       password TEXT NOT NULL,
       name TEXT NOT NULL,
-      role TEXT NOT NULL CHECK(role IN ('admin', 'librarian')),
+      role TEXT NOT NULL CHECK(role IN ('admin', 'librarian', 'teacher', 'student')),
       email TEXT,
       phone TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -133,6 +133,58 @@ export function initDatabase() {
     )
   `)
 
+  // 7. 角色权限表
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS role_permissions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      role TEXT NOT NULL CHECK(role IN ('admin', 'librarian', 'teacher', 'student')),
+      permission TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(role, permission)
+    )
+  `)
+
+  // 8. 系统设置表
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS system_settings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      setting_key TEXT UNIQUE NOT NULL,
+      setting_value TEXT,
+      setting_type TEXT NOT NULL CHECK(setting_type IN ('string', 'number', 'boolean', 'json')),
+      category TEXT NOT NULL CHECK(category IN ('ai', 'system', 'business')),
+      description TEXT,
+      is_encrypted INTEGER NOT NULL DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
+
+  // 插入默认权限
+  db.exec(`
+    INSERT OR IGNORE INTO role_permissions (role, permission) VALUES
+      ('admin', '*'),
+      ('librarian', 'books:*'),
+      ('librarian', 'readers:*'),
+      ('librarian', 'borrowing:*'),
+      ('librarian', 'statistics:read'),
+      ('teacher', 'books:read'),
+      ('teacher', 'borrowing:read'),
+      ('teacher', 'borrowing:borrow'),
+      ('teacher', 'statistics:read'),
+      ('student', 'books:read'),
+      ('student', 'borrowing:read'),
+      ('student', 'borrowing:borrow')
+  `)
+
+  // 插入默认AI设置
+  db.exec(`
+    INSERT OR IGNORE INTO system_settings (setting_key, setting_value, setting_type, category, description) VALUES
+      ('ai.openai.apiKey', '', 'string', 'ai', 'OpenAI API Key'),
+      ('ai.openai.baseURL', 'https://api.openai.com/v1', 'string', 'ai', 'OpenAI Base URL'),
+      ('ai.openai.embeddingModel', 'text-embedding-3-small', 'string', 'ai', 'Embedding Model'),
+      ('ai.openai.chatModel', 'gpt-4-turbo-preview', 'string', 'ai', 'Chat Model')
+  `)
+
   // 创建索引以提高查询性能
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_readers_category ON readers(category_id);
@@ -148,6 +200,25 @@ export function initDatabase() {
   `)
 
   console.log('✅ 数据库表结构初始化完成')
+}
+
+// 初始化测试用户
+export function seedTestUsers() {
+  const testUsers = [
+    { username: 'librarian', password: 'lib123', name: '图书管理员', role: 'librarian', email: 'librarian@library.com' },
+    { username: 'teacher', password: 'teach123', name: '教师张老师', role: 'teacher', email: 'teacher@library.com' },
+    { username: 'student', password: 'student123', name: '学生李明', role: 'student', email: 'student@library.com' }
+  ]
+
+  for (const user of testUsers) {
+    const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(user.username)
+    if (!existing) {
+      db.prepare(`
+        INSERT INTO users (username, password, name, role, email)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(user.username, user.password, user.name, user.role, user.email)
+    }
+  }
 }
 
 // 初始化默认数据
@@ -205,6 +276,7 @@ export function setupDatabase() {
   try {
     initDatabase()
     seedDatabase()
+    seedTestUsers()
     console.log('📚 数据库系统准备就绪')
   } catch (error) {
     console.error('❌ 数据库初始化失败:', error)

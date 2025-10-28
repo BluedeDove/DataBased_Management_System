@@ -52,24 +52,30 @@ export class BookService {
 
   createBook(data: Omit<Book, 'id' | 'created_at' | 'updated_at'>): Book {
     // 验证
-    if (!data.isbn || !data.title || !data.author || !data.publisher) {
-      throw new ValidationError('ISBN、书名、作者和出版社不能为空')
+    if (!data.title || !data.author || !data.publisher) {
+      throw new ValidationError('书名、作者和出版社不能为空')
     }
 
     if (!data.category_id) {
       throw new ValidationError('必须选择图书类别')
     }
 
-    // 检查ISBN是否已存在
-    const existing = this.bookRepository.findByIsbn(data.isbn)
-    if (existing) {
-      throw new BusinessError('该ISBN已存在，请使用"增加馆藏"功能')
-    }
-
     // 检查类别是否存在
     const category = this.bookRepository.findCategoryById(data.category_id)
     if (!category) {
       throw new NotFoundError('图书类别')
+    }
+
+    // 自动生成ISBN（如果为空或为 'AUTO'）
+    if (!data.isbn || data.isbn === 'AUTO') {
+      data.isbn = this.bookRepository.generateNextISBN(data.category_id)
+      logger.info('自动生成ISBN', data.isbn)
+    } else {
+      // 检查ISBN是否已存在
+      const existing = this.bookRepository.findByIsbn(data.isbn)
+      if (existing) {
+        throw new BusinessError('该ISBN已存在，请使用"增加馆藏"功能')
+      }
     }
 
     // 确保数量一致
@@ -162,6 +168,23 @@ export class BookService {
   }): BookWithCategory[] {
     logger.debug('高级搜索', criteria)
     return this.bookRepository.advancedSearch(criteria)
+  }
+
+  // 增强的高级搜索
+  advancedSearchBooks(filters: {
+    title?: string
+    author?: string
+    publisher?: string
+    category_id?: number
+    publishDateFrom?: string
+    publishDateTo?: string
+    priceMin?: number
+    priceMax?: number
+    keyword?: string
+    status?: string
+  }): BookWithCategory[] {
+    logger.info('高级搜索图书', filters)
+    return this.bookRepository.advancedSearch(filters)
   }
 
   // 检查图书是否可以借出

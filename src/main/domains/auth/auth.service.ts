@@ -62,11 +62,30 @@ export class AuthService {
     return user || null
   }
 
-  hasPermission(user: User, requiredRole: 'admin' | 'librarian'): boolean {
-    if (requiredRole === 'librarian') {
-      return user.role === 'admin' || user.role === 'librarian'
+  hasPermission(user: User, requiredPermission: string): boolean {
+    const permissions = this.getUserPermissions(user.id)
+
+    // Admin has wildcard access
+    if (permissions.includes('*')) {
+      return true
     }
-    return user.role === 'admin'
+
+    // Check exact match
+    if (permissions.includes(requiredPermission)) {
+      return true
+    }
+
+    // Check wildcard patterns (e.g., 'books:*' matches 'books:read')
+    const [resource, action] = requiredPermission.split(':')
+    if (permissions.includes(`${resource}:*`)) {
+      return true
+    }
+
+    return false
+  }
+
+  getUserPermissions(userId: number): string[] {
+    return this.userRepository.getUserPermissions(userId)
   }
 
   private generateToken(userId: number): string {

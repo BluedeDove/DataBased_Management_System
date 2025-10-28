@@ -63,20 +63,26 @@ export class ReaderService {
 
   createReader(data: Omit<Reader, 'id' | 'created_at' | 'updated_at'>): Reader {
     // 验证
-    if (!data.reader_no || !data.name || !data.category_id) {
-      throw new ValidationError('读者编号、姓名和种类不能为空')
-    }
-
-    // 检查读者编号是否已存在
-    const existing = this.readerRepository.findByReaderNo(data.reader_no)
-    if (existing) {
-      throw new BusinessError('读者编号已存在')
+    if (!data.name || !data.category_id) {
+      throw new ValidationError('姓名和种类不能为空')
     }
 
     // 检查种类是否存在
     const category = this.readerRepository.findCategoryById(data.category_id)
     if (!category) {
       throw new NotFoundError('读者种类')
+    }
+
+    // 自动生成编号（如果为空或为 'AUTO'）
+    if (!data.reader_no || data.reader_no === 'AUTO') {
+      data.reader_no = this.readerRepository.generateNextReaderNo(data.category_id)
+      logger.info('自动生成读者编号', data.reader_no)
+    } else {
+      // 检查读者编号是否已存在
+      const existing = this.readerRepository.findByReaderNo(data.reader_no)
+      if (existing) {
+        throw new BusinessError('读者编号已存在')
+      }
     }
 
     // 计算有效期
@@ -86,7 +92,7 @@ export class ReaderService {
       data.expiry_date = expiryDate.toISOString().split('T')[0]
     }
 
-    logger.info('创建读者', data.name)
+    logger.info('创建读者', data.name, data.reader_no)
     return this.readerRepository.create(data)
   }
 
