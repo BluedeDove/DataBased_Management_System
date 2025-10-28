@@ -81,6 +81,13 @@ export interface ElectronAPI {
     recommendBooks: (query: string, limit?: number) => Promise<any>
     getStatistics: () => Promise<any>
   }
+
+  // 数据导出
+  export: {
+    toCSV: (options: { filename: string; data: any[]; headers?: string[] }) => Promise<any>
+    toJSON: (options: { filename: string; data: any[] }) => Promise<any>
+    report: (options: any) => Promise<any>
+  }
 }
 
 // 将 API 暴露给渲染进程
@@ -157,6 +164,12 @@ const api: ElectronAPI = {
     chat: (message, history, context) => ipcRenderer.invoke('ai:chat', message, history, context),
     recommendBooks: (query, limit) => ipcRenderer.invoke('ai:recommendBooks', query, limit),
     getStatistics: () => ipcRenderer.invoke('ai:getStatistics')
+  },
+
+  export: {
+    toCSV: (options) => ipcRenderer.invoke('export:csv', options),
+    toJSON: (options) => ipcRenderer.invoke('export:json', options),
+    report: (options) => ipcRenderer.invoke('export:report', options)
   }
 }
 

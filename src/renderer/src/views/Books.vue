@@ -38,6 +38,17 @@
       </div>
 
       <div class="toolbar-right">
+        <el-dropdown @command="handleExport" style="margin-right: 12px">
+          <el-button :icon="Download">
+            导出数据<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="csv">导出为CSV</el-dropdown-item>
+              <el-dropdown-item command="json">导出为JSON</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <el-button type="primary" :icon="Plus" @click="showAddDialog = true">
           新增图书
         </el-button>
@@ -350,6 +361,53 @@ const handleSubmit = async () => {
     }
   } catch (error) {
     // 验证失败
+  }
+}
+
+const handleExport = async (command: string) => {
+  if (books.value.length === 0) {
+    ElMessage.warning('暂无数据可导出')
+    return
+  }
+
+  const timestamp = new Date().toISOString().split('T')[0]
+  const filename = `图书数据_${timestamp}`
+
+  try {
+    if (command === 'csv') {
+      const result = await window.api.export.toCSV({
+        filename: `${filename}.csv`,
+        data: books.value.map((book: any) => ({
+          ISBN: book.isbn,
+          书名: book.title,
+          作者: book.author,
+          出版社: book.publisher,
+          类别: book.category_name,
+          出版日期: book.publish_date || '',
+          价格: book.price || 0,
+          总数量: book.total_quantity,
+          可借数量: book.available_quantity,
+          状态: book.status
+        }))
+      })
+
+      if (result.success) {
+        ElMessage.success('导出成功')
+      }
+    } else if (command === 'json') {
+      const result = await window.api.export.toJSON({
+        filename: `${filename}.json`,
+        data: books.value
+      })
+
+      if (result.success) {
+        ElMessage.success('导出成功')
+      }
+    }
+  } catch (error: any) {
+    if (error.message !== '用户取消导出') {
+      ElMessage.error('导出失败')
+    }
   }
 }
 

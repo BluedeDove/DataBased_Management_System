@@ -1,9 +1,11 @@
 # 智能图书管理系统 📚
 
-一个现代化的、企业级的图书馆管理系统，基于 Electron + Vue 3 + TypeScript 构建，采用领域驱动设计（DDD）和分层架构。
+一个现代化的、企业级的图书馆管理系统，基于 Electron + Vue 3 + TypeScript 构建，采用领域驱动设计（DDD）和分层架构，支持AI智能搜索和推荐。
 
 ![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
+![Electron](https://img.shields.io/badge/Electron-28+-blue.svg)
+![Vue](https://img.shields.io/badge/Vue-3.4+-green.svg)
 
 ## ✨ 核心特性
 
@@ -14,12 +16,14 @@
   - 馆藏数量管理
   - 图书状态追踪（正常、损坏、丢失、销毁）
   - 高级搜索（多条件组合查询）
+  - 数据导出（CSV/JSON格式）
 
 - **读者管理**
   - 读者信息管理
   - 读者种类定义（学生、教师、职工等）
   - 读者证管理（激活、挂失、续期）
   - 借阅权限控制
+  - 读者统计分析
 
 - **借还管理**
   - 图书借阅处理
@@ -27,6 +31,7 @@
   - 图书续借
   - 逾期管理
   - 罚款计算
+  - 借阅记录查询
 
 - **统计分析**
   - 图书类别分布统计
@@ -34,6 +39,28 @@
   - 热门图书排行
   - 活跃读者统计
   - 逾期报表
+  - HTML报告导出
+
+### 🤖 AI智能功能（可选）
+- **AI语义搜索**
+  - 基于向量数据库的智能图书搜索
+  - 自然语言查询支持
+  - 相似度排序
+
+- **AI智能推荐**
+  - RAG技术实现个性化图书推荐
+  - 基于用户需求的精准推荐
+  - Markdown格式推荐理由
+
+- **AI对话助手**
+  - 实时交互式图书馆助手
+  - 上下文理解
+  - 专业图书咨询
+
+- **向量管理**
+  - 批量向量生成
+  - 向量覆盖率统计
+  - 自动向量化
 
 ## 🚀 快速开始
 
@@ -172,10 +199,91 @@ src/
 - 逾期罚款：0.1元/天
 - 有逾期图书时不能借新书
 
+## 🔧 高级功能
+
+### 数据导出
+- 支持CSV格式导出
+- 支持JSON格式导出
+- HTML报告生成
+- UTF-8编码支持中文
+
+### AI功能配置
+1. 获取OpenAI API密钥
+2. 配置.env文件
+3. 首次使用需生成向量
+4. 支持自定义API端点
+
+### 开发调试
+- 主进程日志：控制台输出
+- 渲染进程调试：F12开发者工具
+- 数据库位置：`{userData}/library.db`
+- 日志文件：`{userData}/logs/`
+
+## 📚 文档
+
+- **README.md** - 项目概述（本文件）
+- **USAGE.md** - 详细使用指南
+- **DEVELOPMENT.md** - 开发文档
+- **ARCHITECTURE.md** - 架构设计文档
+
+## 🧪 测试
+
+### 运行测试
+
+\`\`\`bash
+npm run test:unit
+\`\`\`
+
+### 测试覆盖率
+
+项目包含：
+- 单元测试（Vitest）
+- 业务逻辑测试
+- Mock测试支持
+
+## 🤝 贡献指南
+
+欢迎提交Issue和Pull Request！
+
+### 开发规范
+- 遵循TypeScript类型安全
+- 使用ESLint代码规范
+- 编写单元测试
+- 提交前进行代码检查
+
+### 提交规范
+- `feat:` 新功能
+- `fix:` 修复bug
+- `docs:` 文档更新
+- `style:` 代码格式
+- `refactor:` 代码重构
+- `test:` 测试相关
+- `chore:` 构建/工具
+
 ## 📄 许可证
 
 MIT License
 
+## 👥 作者
+
+Your Name
+
 ## 🙏 致谢
 
-感谢以下开源项目：Electron, Vue.js, Element Plus, TypeScript
+感谢以下开源项目：Electron, Vue.js, Element Plus, TypeScript, OpenAI
+
+---
+
+**⭐ 如果这个项目对你有帮助，欢迎给个Star！**
+
+## 📞 技术支持
+
+如遇问题请提交Issue，并提供：
+1. 问题描述
+2. 操作步骤
+3. 错误信息
+4. 系统版本
+
+---
+
+**祝使用愉快！** 🎉
