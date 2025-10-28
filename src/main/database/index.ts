@@ -20,9 +20,54 @@ db.pragma('foreign_keys = ON')
 
 // 初始化数据库表结构
 export function initDatabase() {
-  // 1. 用户表（系统用户：管理员、图书管理员、教师、学生）
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
+  // 检查users表是否需要迁移（从2角色升级到4角色）
+  const tableExists = db.prepare(`
+    SELECT name FROM sqlite_master
+    WHERE type='table' AND name='users'
+  `).get()
+
+  if (tableExists) {
+    // 检查表结构中的CHECK约束
+    const tableInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").get() as { sql: string } | undefined
+
+    // 如果是旧schema（只有admin, librarian），需要迁移
+    if (tableInfo && tableInfo.sql.includes("('admin', 'librarian')")) {
+      console.log('🔄 检测到旧表结构，开始数据库迁移...')
+
+      // 1. 创建新表（带正确的约束）
+      db.exec(`
+        CREATE TABLE users_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          username TEXT UNIQUE NOT NULL,
+          password TEXT NOT NULL,
+          name TEXT NOT NULL,
+          role TEXT NOT NULL CHECK(role IN ('admin', 'librarian', 'teacher', 'student')),
+          email TEXT,
+          phone TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `)
+
+      // 2. 复制现有数据
+      db.exec(`
+        INSERT INTO users_new (id, username, password, name, role, email, phone, created_at, updated_at)
+        SELECT id, username, password, name, role, email, phone, created_at, updated_at
+        FROM users
+      `)
+
+      // 3. 删除旧表
+      db.exec('DROP TABLE users')
+
+      // 4. 重命名新表
+      db.exec('ALTER TABLE users_new RENAME TO users')
+
+      console.log('✅ 数据库迁移完成')
+    }
+  } else {
+    // 表不存在，创建新表
+    db.exec(`
+      CREATE TABLE users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE NOT NULL,
       password TEXT NOT NULL,
@@ -34,6 +79,7 @@ export function initDatabase() {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `)
+  }
 
   // 2. 读者种类表
   db.exec(`
