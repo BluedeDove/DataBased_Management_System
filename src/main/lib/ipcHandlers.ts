@@ -138,10 +138,15 @@ export function registerIpcHandlers() {
   })
 
   ipcMain.handle('reader:create', async (_, data) => {
+    console.log('========== [IPC] reader:create 被调用 ==========')
+    console.log('[IPC] 接收到的data:', JSON.stringify(data, null, 2))
     try {
+      console.log('[IPC] 准备调用 readerService.createReader...')
       const reader = readerService.createReader(data)
+      console.log('[IPC] readerService.createReader 返回成功:', reader.id)
       return { success: true, data: reader } as SuccessResponse
     } catch (error) {
+      console.error('[IPC] reader:create 捕获错误:', error)
       return errorHandler.handle(error)
     }
   })
@@ -266,10 +271,15 @@ export function registerIpcHandlers() {
   })
 
   ipcMain.handle('book:create', async (_, data) => {
+    console.log('========== [IPC] book:create 被调用 ==========')
+    console.log('[IPC] 接收到的data:', JSON.stringify(data, null, 2))
     try {
+      console.log('[IPC] 准备调用 bookService.createBook...')
       const book = bookService.createBook(data)
+      console.log('[IPC] bookService.createBook 返回成功:', book.id)
       return { success: true, data: book } as SuccessResponse
     } catch (error) {
+      console.error('[IPC] book:create 捕获错误:', error)
       return errorHandler.handle(error)
     }
   })
