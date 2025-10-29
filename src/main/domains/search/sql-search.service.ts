@@ -1,5 +1,5 @@
 import { db } from '../../database'
-import { ValidationError, PermissionError } from '../../lib/errorHandler'
+import { ValidationError, BusinessError } from '../../lib/errorHandler'
 import { logger } from '../../lib/logger'
 
 export interface QueryResult {
@@ -30,7 +30,7 @@ export class SqlSearchService {
     // 检查是否包含禁止的关键词
     for (const keyword of this.FORBIDDEN_KEYWORDS) {
       if (normalizedQuery.includes(keyword)) {
-        throw new PermissionError(`不允许执行${keyword}操作，只能执行SELECT查询`)
+        throw new BusinessError(`不允许执行${keyword}操作，只能执行SELECT查询`)
       }
     }
 
@@ -40,7 +40,7 @@ export class SqlSearchService {
     )
 
     if (!startsWithAllowed) {
-      throw new PermissionError('只允许执行SELECT或WITH查询')
+      throw new BusinessError('只允许执行SELECT或WITH查询')
     }
 
     try {
