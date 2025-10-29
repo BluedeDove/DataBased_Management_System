@@ -172,30 +172,55 @@ const loadAISettings = async () => {
 }
 
 const handleTestConnection = async () => {
+  console.log('========== [前端] 开始测试AI连接 ==========')
+  console.log('[前端] 当前AI配置:', {
+    apiUrl: aiConfigForm.apiUrl,
+    apiKey: aiConfigForm.apiKey ? `${aiConfigForm.apiKey.substring(0, 10)}...` : '(空)',
+    embeddingModel: aiConfigForm.embeddingModel,
+    chatModel: aiConfigForm.chatModel
+  })
+
   if (!aiConfigForm.apiKey) {
+    console.warn('[前端] API Key为空')
     ElMessage.warning('请先输入API Key')
     return
   }
 
   testingConnection.value = true
+  console.log('[前端] 准备调用config.testAIConnection API...')
+
   try {
-    const result = await window.api.config.testAIConnection({
-      baseURL: aiConfigForm.apiUrl,  // 修正参数名：apiUrl -> baseURL
+    const testParams = {
+      baseURL: aiConfigForm.apiUrl,
       apiKey: aiConfigForm.apiKey,
       embeddingModel: aiConfigForm.embeddingModel,
       chatModel: aiConfigForm.chatModel
+    }
+    console.log('[前端] 调用参数:', {
+      ...testParams,
+      apiKey: testParams.apiKey ? `${testParams.apiKey.substring(0, 10)}...` : '(空)'
     })
 
+    const result = await window.api.config.testAIConnection(testParams)
+
+    console.log('[前端] API调用返回结果:', result)
+
     if (result.success) {
+      console.log('[前端] 连接测试成功')
       ElMessage.success(result.data?.message || '连接测试成功')
     } else {
+      console.error('[前端] 连接测试失败:', result.data || result.error)
       ElMessage.error(result.data?.message || result.error?.message || '连接测试失败')
     }
   } catch (error: any) {
-    console.error('Test connection error:', error)
+    console.error('[前端] 捕获到错误:', error)
+    if (error instanceof Error) {
+      console.error('[前端] 错误堆栈:', error.stack)
+    }
     ElMessage.error(error.message || '连接测试失败')
   } finally {
     testingConnection.value = false
+    console.log('========== [前端] AI连接测试结束 ==========\n')
   }
 }
 

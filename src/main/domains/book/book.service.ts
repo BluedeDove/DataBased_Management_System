@@ -51,40 +51,64 @@ export class BookService {
   }
 
   createBook(data: Omit<Book, 'id' | 'created_at' | 'updated_at'>): Book {
+    logger.info('========== [后端] 开始创建图书 ==========')
+    logger.info('[后端] 接收到的数据:', JSON.stringify(data, null, 2))
+
     // 验证
+    logger.info('[后端] 开始验证数据...')
     if (!data.title || !data.author || !data.publisher) {
+      logger.error('[后端] 验证失败: 书名、作者或出版社为空', {
+        title: data.title,
+        author: data.author,
+        publisher: data.publisher
+      })
       throw new ValidationError('书名、作者和出版社不能为空')
     }
 
     if (!data.category_id) {
+      logger.error('[后端] 验证失败: 未选择类别')
       throw new ValidationError('必须选择图书类别')
     }
+    logger.info('[后端] 数据验证通过')
 
     // 检查类别是否存在
+    logger.info('[后端] 查找图书类别，ID:', data.category_id)
     const category = this.bookRepository.findCategoryById(data.category_id)
     if (!category) {
+      logger.error('[后端] 图书类别不存在:', data.category_id)
       throw new NotFoundError('图书类别')
     }
+    logger.info('[后端] 找到图书类别:', category.name)
 
     // 自动生成ISBN（如果为空或为 'AUTO'）
+    logger.info('[后端] 检查ISBN:', { isbn: data.isbn, trimmed: data.isbn?.trim(), upper: data.isbn?.toUpperCase() })
     if (!data.isbn || data.isbn.trim() === '' || data.isbn.toUpperCase() === 'AUTO') {
+      logger.info('[后端] 需要自动生成ISBN')
       data.isbn = this.bookRepository.generateNextISBN(data.category_id)
-      logger.info('自动生成ISBN', data.isbn)
+      logger.info('[后端] 自动生成ISBN:', data.isbn)
     } else {
       // 检查ISBN是否已存在
+      logger.info('[后端] 检查ISBN是否已存在:', data.isbn)
       const existing = this.bookRepository.findByIsbn(data.isbn)
       if (existing) {
+        logger.error('[后端] ISBN已存在:', data.isbn)
         throw new BusinessError('该ISBN已存在，请使用"增加馆藏"功能')
       }
+      logger.info('[后端] ISBN可用')
     }
 
     // 确保数量一致
     if (!data.available_quantity) {
+      logger.info('[后端] 设置available_quantity =', data.total_quantity)
       data.available_quantity = data.total_quantity
     }
 
-    logger.info('新增图书', data.title)
-    return this.bookRepository.create(data)
+    logger.info('[后端] 准备创建图书到数据库...')
+    logger.info('[后端] 最终数据:', JSON.stringify(data, null, 2))
+    const result = this.bookRepository.create(data)
+    logger.info('[后端] 图书创建成功，ID:', result.id)
+    logger.info('========== [后端] 图书创建结束 ==========\n')
+    return result
   }
 
   updateBook(id: number, updates: Partial<Book>): Book {

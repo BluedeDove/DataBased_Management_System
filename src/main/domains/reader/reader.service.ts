@@ -62,38 +62,58 @@ export class ReaderService {
   }
 
   createReader(data: Omit<Reader, 'id' | 'created_at' | 'updated_at'>): Reader {
+    logger.info('========== [后端] 开始创建读者 ==========')
+    logger.info('[后端] 接收到的数据:', JSON.stringify(data, null, 2))
+
     // 验证
+    logger.info('[后端] 开始验证数据...')
     if (!data.name || !data.category_id) {
+      logger.error('[后端] 验证失败: 姓名或种类为空', { name: data.name, category_id: data.category_id })
       throw new ValidationError('姓名和种类不能为空')
     }
+    logger.info('[后端] 数据验证通过')
 
     // 检查种类是否存在
+    logger.info('[后端] 查找读者种类，ID:', data.category_id)
     const category = this.readerRepository.findCategoryById(data.category_id)
     if (!category) {
+      logger.error('[后端] 读者种类不存在:', data.category_id)
       throw new NotFoundError('读者种类')
     }
+    logger.info('[后端] 找到读者种类:', category.name)
 
     // 自动生成编号（如果为空或为 'AUTO'）
+    logger.info('[后端] 检查读者编号:', { reader_no: data.reader_no, trimmed: data.reader_no?.trim(), upper: data.reader_no?.toUpperCase() })
     if (!data.reader_no || data.reader_no.trim() === '' || data.reader_no.toUpperCase() === 'AUTO') {
+      logger.info('[后端] 需要自动生成编号')
       data.reader_no = this.readerRepository.generateNextReaderNo(data.category_id)
-      logger.info('自动生成读者编号', data.reader_no)
+      logger.info('[后端] 自动生成读者编号:', data.reader_no)
     } else {
       // 检查读者编号是否已存在
+      logger.info('[后端] 检查读者编号是否已存在:', data.reader_no)
       const existing = this.readerRepository.findByReaderNo(data.reader_no)
       if (existing) {
+        logger.error('[后端] 读者编号已存在:', data.reader_no)
         throw new BusinessError('读者编号已存在')
       }
+      logger.info('[后端] 读者编号可用')
     }
 
     // 计算有效期
     if (!data.expiry_date) {
+      logger.info('[后端] 计算有效期，validity_days:', category.validity_days)
       const expiryDate = new Date()
       expiryDate.setDate(expiryDate.getDate() + category.validity_days)
       data.expiry_date = expiryDate.toISOString().split('T')[0]
+      logger.info('[后端] 计算出的有效期:', data.expiry_date)
     }
 
-    logger.info('创建读者', data.name, data.reader_no)
-    return this.readerRepository.create(data)
+    logger.info('[后端] 准备创建读者到数据库...')
+    logger.info('[后端] 最终数据:', JSON.stringify(data, null, 2))
+    const result = this.readerRepository.create(data)
+    logger.info('[后端] 读者创建成功，ID:', result.id)
+    logger.info('========== [后端] 读者创建结束 ==========\n')
+    return result
   }
 
   updateReader(id: number, updates: Partial<Reader>): Reader {

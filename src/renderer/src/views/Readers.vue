@@ -189,22 +189,41 @@ const handleRenew = async (row: any) => {
 }
 
 const handleSubmit = async () => {
+  console.log('========== [前端] 开始提交读者表单 ==========')
+  console.log('[前端] 当前表单数据:', JSON.parse(JSON.stringify(form)))
+  console.log('[前端] 是否为编辑模式:', !!editingReader.value)
+  if (editingReader.value) {
+    console.log('[前端] 编辑的读者ID:', editingReader.value.id)
+  }
+
   try {
+    console.log('[前端] 开始表单验证...')
     await formRef.value.validate()
+    console.log('[前端] 表单验证通过')
+
+    console.log('[前端] 准备调用API...')
     const result = editingReader.value
       ? await window.api.reader.update(editingReader.value.id, form)
       : await window.api.reader.create(form)
 
+    console.log('[前端] API调用返回结果:', result)
+
     if (result.success) {
+      console.log('[前端] 操作成功，准备关闭对话框并刷新列表')
       ElMessage.success(editingReader.value ? '更新成功' : '创建成功')
       showDialog.value = false
       loadReaders()
     } else {
+      console.error('[前端] 操作失败:', result.error)
       ElMessage.error(result.error?.message || '操作失败')
     }
   } catch (error) {
-    console.error('Submit error:', error)
+    console.error('[前端] 捕获到错误:', error)
+    if (error instanceof Error) {
+      console.error('[前端] 错误堆栈:', error.stack)
+    }
   }
+  console.log('========== [前端] 读者表单提交结束 ==========\n')
 }
 
 onMounted(() => {

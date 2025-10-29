@@ -614,27 +614,50 @@ const handleAddCategory = async () => {
 }
 
 const handleSubmit = async () => {
-  if (!formRef.value) return
+  console.log('========== [前端] 开始提交图书表单 ==========')
+  console.log('[前端] formRef是否存在:', !!formRef.value)
+  if (!formRef.value) {
+    console.error('[前端] formRef不存在，返回')
+    return
+  }
+
+  console.log('[前端] 当前表单数据:', JSON.parse(JSON.stringify(form)))
+  console.log('[前端] 是否为编辑模式:', !!editingBook.value)
+  if (editingBook.value) {
+    console.log('[前端] 编辑的图书ID:', editingBook.value.id)
+  }
 
   try {
+    console.log('[前端] 开始表单验证...')
     await formRef.value.validate()
+    console.log('[前端] 表单验证通过')
 
+    console.log('[前端] 设置available_quantity =', form.total_quantity)
     form.available_quantity = form.total_quantity
 
+    console.log('[前端] 准备调用API...')
     const result = editingBook.value
       ? await window.api.book.update(editingBook.value.id, form)
       : await window.api.book.create(form)
 
+    console.log('[前端] API调用返回结果:', result)
+
     if (result.success) {
+      console.log('[前端] 操作成功，准备关闭对话框并刷新列表')
       ElMessage.success(editingBook.value ? '更新成功' : '创建成功')
       showAddDialog.value = false
       loadBooks()
     } else {
+      console.error('[前端] 操作失败:', result.error)
       ElMessage.error(result.error?.message || '操作失败')
     }
   } catch (error) {
-    // 验证失败
+    console.error('[前端] 捕获到错误:', error)
+    if (error instanceof Error) {
+      console.error('[前端] 错误堆栈:', error.stack)
+    }
   }
+  console.log('========== [前端] 图书表单提交结束 ==========\n')
 }
 
 const handleExport = async (command: string) => {
