@@ -163,8 +163,27 @@ const loadCategories = async () => {
 const loadAISettings = async () => {
   try {
     const result = await window.api.config.getAISettings()
+    console.log('[Settings] 加载AI配置返回:', result)
     if (result.success && result.data) {
-      Object.assign(aiConfigForm, result.data)
+      // 后端返回的是baseURL，前端用apiUrl
+      if (result.data.baseURL) {
+        aiConfigForm.apiUrl = result.data.baseURL
+      }
+      if (result.data.apiKey) {
+        aiConfigForm.apiKey = result.data.apiKey
+      }
+      if (result.data.embeddingModel) {
+        aiConfigForm.embeddingModel = result.data.embeddingModel
+      }
+      if (result.data.chatModel) {
+        aiConfigForm.chatModel = result.data.chatModel
+      }
+      console.log('[Settings] AI配置已加载:', {
+        apiUrl: aiConfigForm.apiUrl,
+        apiKey: aiConfigForm.apiKey ? '***' : '(空)',
+        embeddingModel: aiConfigForm.embeddingModel,
+        chatModel: aiConfigForm.chatModel
+      })
     }
   } catch (error) {
     console.error('Failed to load AI settings:', error)
@@ -232,8 +251,9 @@ const handleSaveAIConfig = async () => {
 
   savingConfig.value = true
   try {
+    // 前端用apiUrl，后端需要baseURL
     const result = await window.api.config.updateAISettings({
-      apiUrl: aiConfigForm.apiUrl,
+      baseURL: aiConfigForm.apiUrl,
       apiKey: aiConfigForm.apiKey,
       embeddingModel: aiConfigForm.embeddingModel,
       chatModel: aiConfigForm.chatModel
