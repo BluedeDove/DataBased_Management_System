@@ -67,7 +67,7 @@ export class BookService {
     }
 
     // 自动生成ISBN（如果为空或为 'AUTO'）
-    if (!data.isbn || data.isbn === 'AUTO') {
+    if (!data.isbn || data.isbn.trim() === '' || data.isbn.toUpperCase() === 'AUTO') {
       data.isbn = this.bookRepository.generateNextISBN(data.category_id)
       logger.info('自动生成ISBN', data.isbn)
     } else {

@@ -52,7 +52,7 @@
             </el-dropdown-menu>
           </template>
         </el-dropdown>
-        <el-button v-if="canManageBooks" type="primary" :icon="Plus" @click="showAddDialog = true">
+        <el-button v-if="canManageBooks" type="primary" :icon="Plus" @click="handleAdd">
           新增图书
         </el-button>
         <el-button v-if="canManageBooks" :icon="Setting" @click="showCategoryDialog = true">
@@ -279,7 +279,7 @@
     >
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
         <el-form-item label="ISBN" prop="isbn">
-          <el-input v-model="form.isbn" :disabled="!!editingBook" />
+          <el-input v-model="form.isbn" :disabled="!!editingBook" placeholder="留空或输入AUTO自动生成" />
         </el-form-item>
         <el-form-item label="书名" prop="title">
           <el-input v-model="form.title" />
@@ -423,7 +423,6 @@ const form = reactive({
 })
 
 const rules: FormRules = {
-  isbn: [{ required: true, message: '请输入ISBN', trigger: 'blur' }],
   title: [{ required: true, message: '请输入书名', trigger: 'blur' }],
   author: [{ required: true, message: '请输入作者', trigger: 'blur' }],
   publisher: [{ required: true, message: '请输入出版社', trigger: 'blur' }],
@@ -482,6 +481,27 @@ const handleView = (row: any) => {
       confirmButtonText: '关闭'
     }
   )
+}
+
+const handleAdd = () => {
+  editingBook.value = null
+  Object.assign(form, {
+    isbn: '',
+    title: '',
+    author: '',
+    publisher: '',
+    category_id: undefined,
+    publish_date: '',
+    price: 0,
+    pages: 0,
+    total_quantity: 1,
+    keywords: '',
+    description: '',
+    registration_date: new Date().toISOString().split('T')[0],
+    status: 'normal',
+    available_quantity: 1
+  })
+  showAddDialog.value = true
 }
 
 const handleEdit = (row: any) => {

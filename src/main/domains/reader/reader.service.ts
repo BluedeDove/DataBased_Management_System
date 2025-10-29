@@ -74,7 +74,7 @@ export class ReaderService {
     }
 
     // 自动生成编号（如果为空或为 'AUTO'）
-    if (!data.reader_no || data.reader_no === 'AUTO') {
+    if (!data.reader_no || data.reader_no.trim() === '' || data.reader_no.toUpperCase() === 'AUTO') {
       data.reader_no = this.readerRepository.generateNextReaderNo(data.category_id)
       logger.info('自动生成读者编号', data.reader_no)
     } else {

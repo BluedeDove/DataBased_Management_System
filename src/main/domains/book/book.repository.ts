@@ -342,7 +342,10 @@ export class BookRepository {
     if (result?.isbn) {
       // 从ISBN中提取序号部分
       const lastSequence = result.isbn.slice(prefix.length)
-      sequence = parseInt(lastSequence, 10) + 1
+      const lastNum = parseInt(lastSequence, 10)
+      if (!isNaN(lastNum)) {
+        sequence = lastNum + 1
+      }
     }
 
     // 格式化为6位数字

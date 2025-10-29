@@ -19,7 +19,7 @@
         <el-button :icon="Search" @click="handleSearch">搜索</el-button>
       </div>
       <div class="toolbar-right">
-        <el-button type="primary" :icon="Plus" @click="showDialog = true">
+        <el-button type="primary" :icon="Plus" @click="handleAdd">
           新增读者
         </el-button>
       </div>
@@ -52,7 +52,7 @@
     <el-dialog v-model="showDialog" title="读者信息" width="600px">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
         <el-form-item label="读者编号" prop="reader_no">
-          <el-input v-model="form.reader_no" :disabled="!!editingReader" />
+          <el-input v-model="form.reader_no" :disabled="!!editingReader" placeholder="留空或输入AUTO自动生成" />
         </el-form-item>
         <el-form-item label="姓名" prop="name">
           <el-input v-model="form.name" />
@@ -121,7 +121,6 @@ const form = reactive({
 })
 
 const rules = {
-  reader_no: [{ required: true, message: '请输入读者编号', trigger: 'blur' }],
   name: [{ required: true, message: '请输入姓名', trigger: 'blur' }],
   category_id: [{ required: true, message: '请选择类别', trigger: 'change' }]
 }
@@ -149,6 +148,23 @@ const loadCategories = async () => {
 
 const handleSearch = () => {
   loadReaders()
+}
+
+const handleAdd = () => {
+  editingReader.value = null
+  Object.assign(form, {
+    reader_no: '',
+    name: '',
+    category_id: undefined,
+    gender: 'male',
+    organization: '',
+    phone: '',
+    email: '',
+    address: '',
+    registration_date: new Date().toISOString().split('T')[0],
+    status: 'active'
+  })
+  showDialog.value = true
 }
 
 const handleEdit = (row: any) => {
@@ -183,8 +199,12 @@ const handleSubmit = async () => {
       ElMessage.success(editingReader.value ? '更新成功' : '创建成功')
       showDialog.value = false
       loadReaders()
+    } else {
+      ElMessage.error(result.error?.message || '操作失败')
     }
-  } catch (error) {}
+  } catch (error) {
+    console.error('Submit error:', error)
+  }
 }
 
 onMounted(() => {

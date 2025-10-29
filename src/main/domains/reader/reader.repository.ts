@@ -256,7 +256,10 @@ export class ReaderRepository {
     if (result?.reader_no) {
       // 从编号中提取序号部分
       const lastSequence = result.reader_no.slice(prefix.length)
-      sequence = parseInt(lastSequence, 10) + 1
+      const lastNum = parseInt(lastSequence, 10)
+      if (!isNaN(lastNum)) {
+        sequence = lastNum + 1
+      }
     }
 
     // 格式化为4位数字
