@@ -251,6 +251,15 @@ export function registerIpcHandlers() {
     }
   })
 
+  ipcMain.handle('book:deleteCategory', async (_, id) => {
+    try {
+      bookService.deleteCategory(id)
+      return { success: true, data: null } as SuccessResponse
+    } catch (error) {
+      return errorHandler.handle(error)
+    }
+  })
+
   // ============ 图书相关 ============
   ipcMain.handle('book:getAll', async (_, filters) => {
     try {

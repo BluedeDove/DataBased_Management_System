@@ -33,6 +33,13 @@ export class BookService {
     return this.bookRepository.updateCategory(id, updates)
   }
 
+  deleteCategory(id: number): void {
+    const existing = this.getCategoryById(id)
+    logger.info('删除图书类别', { id, name: existing.name })
+    this.bookRepository.deleteCategory(id)
+    logger.info('图书类别删除成功', { id, name: existing.name })
+  }
+
   // 图书管理
   getAllBooks(filters?: {
     category_id?: number

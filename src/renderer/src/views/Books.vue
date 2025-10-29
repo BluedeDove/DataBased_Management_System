@@ -368,14 +368,26 @@
     </el-dialog>
 
     <!-- 类别管理对话框 -->
-    <el-dialog v-model="showCategoryDialog" title="类别管理" width="500px">
+    <el-dialog v-model="showCategoryDialog" title="类别管理" width="600px">
       <el-button type="primary" :icon="Plus" size="small" @click="handleAddCategory">
         新增类别
       </el-button>
       <el-table :data="categories" style="width: 100%; margin-top: 16px">
         <el-table-column prop="code" label="编码" width="100" />
-        <el-table-column prop="name" label="名称" />
+        <el-table-column prop="name" label="名称" width="150" />
         <el-table-column prop="keywords" label="关键词" />
+        <el-table-column label="操作" width="100" align="center">
+          <template #default="{ row }">
+            <el-button
+              type="danger"
+              size="small"
+              link
+              @click="handleDeleteCategory(row)"
+            >
+              删除
+            </el-button>
+          </template>
+        </el-table-column>
       </el-table>
     </el-dialog>
   </div>
@@ -607,6 +619,30 @@ const handleAddCategory = async () => {
       loadCategories()
     } else {
       ElMessage.error(result.error?.message || '创建失败')
+    }
+  } catch (error) {
+    // 用户取消
+  }
+}
+
+const handleDeleteCategory = async (category: any) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除类别 "${category.name}" 吗？如果该类别下有图书，将无法删除。`,
+      '删除确认',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+
+    const result = await window.api.bookCategory.delete(category.id)
+    if (result.success) {
+      ElMessage.success('删除成功')
+      loadCategories()
+    } else {
+      ElMessage.error(result.error?.message || '删除失败')
     }
   } catch (error) {
     // 用户取消

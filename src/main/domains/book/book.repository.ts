@@ -90,6 +90,23 @@ export class BookRepository {
     return updated
   }
 
+  deleteCategory(id: number): void {
+    // Check if category exists
+    const category = this.findCategoryById(id)
+    if (!category) {
+      throw new NotFoundError('图书类别')
+    }
+
+    // Check if there are books using this category
+    const booksCount = db.prepare('SELECT COUNT(*) as count FROM books WHERE category_id = ?').get(id) as { count: number }
+    if (booksCount.count > 0) {
+      throw new Error(`无法删除该类别，还有${booksCount.count}本图书使用此类别`)
+    }
+
+    // Delete the category
+    db.prepare('DELETE FROM book_categories WHERE id = ?').run(id)
+  }
+
   // 图书相关
   findAll(filters?: {
     category_id?: number

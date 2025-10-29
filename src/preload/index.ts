@@ -40,6 +40,7 @@ export interface ElectronAPI {
     getAll: () => Promise<any>
     create: (data: any) => Promise<any>
     update: (id: number, updates: any) => Promise<any>
+    delete: (id: number) => Promise<any>
   }
 
   // 图书
@@ -145,7 +146,8 @@ const api: ElectronAPI = {
   bookCategory: {
     getAll: () => ipcRenderer.invoke('book:getAllCategories'),
     create: (data) => ipcRenderer.invoke('book:createCategory', data),
-    update: (id, updates) => ipcRenderer.invoke('book:updateCategory', id, updates)
+    update: (id, updates) => ipcRenderer.invoke('book:updateCategory', id, updates),
+    delete: (id) => ipcRenderer.invoke('book:deleteCategory', id)
   },
 
   book: {
