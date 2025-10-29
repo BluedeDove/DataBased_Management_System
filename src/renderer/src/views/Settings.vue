@@ -32,6 +32,39 @@
           </el-table>
         </el-tab-pane>
 
+        <el-tab-pane label="AI配置">
+          <el-form :model="aiConfigForm" label-width="150px" style="max-width: 600px">
+            <el-form-item label="API URL">
+              <el-input v-model="aiConfigForm.apiUrl" placeholder="https://api.openai.com/v1" />
+            </el-form-item>
+            <el-form-item label="API Key">
+              <el-input
+                v-model="aiConfigForm.apiKey"
+                type="password"
+                placeholder="请输入OpenAI API密钥"
+                show-password
+              />
+            </el-form-item>
+            <el-form-item label="Embedding模型">
+              <el-input
+                v-model="aiConfigForm.embeddingModel"
+                placeholder="text-embedding-3-small"
+              />
+            </el-form-item>
+            <el-form-item label="Chat模型">
+              <el-input v-model="aiConfigForm.chatModel" placeholder="gpt-4-turbo-preview" />
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" @click="handleTestConnection" :loading="testingConnection">
+                测试连接
+              </el-button>
+              <el-button type="success" @click="handleSaveAIConfig" :loading="savingConfig">
+                保存配置
+              </el-button>
+            </el-form-item>
+          </el-form>
+        </el-tab-pane>
+
         <el-tab-pane label="关于">
           <div style="text-align: center; padding: 40px">
             <el-icon :size="80" color="#409eff"><Reading /></el-icon>
@@ -87,6 +120,8 @@ import { ElMessage } from 'element-plus'
 const userStore = useUserStore()
 const showCategoryDialog = ref(false)
 const readerCategories = ref<any[]>([])
+const testingConnection = ref(false)
+const savingConfig = ref(false)
 
 const categoryForm = reactive({
   code: '',
@@ -97,10 +132,82 @@ const categoryForm = reactive({
   notes: ''
 })
 
+const aiConfigForm = reactive({
+  apiUrl: 'https://api.openai.com/v1',
+  apiKey: '',
+  embeddingModel: 'text-embedding-3-small',
+  chatModel: 'gpt-4-turbo-preview'
+})
+
 const loadCategories = async () => {
   const result = await window.api.readerCategory.getAll()
   if (result.success) {
     readerCategories.value = result.data
+  }
+}
+
+const loadAISettings = async () => {
+  try {
+    const result = await window.api.config.getAISettings()
+    if (result.success && result.data) {
+      Object.assign(aiConfigForm, result.data)
+    }
+  } catch (error) {
+    console.error('Failed to load AI settings:', error)
+  }
+}
+
+const handleTestConnection = async () => {
+  if (!aiConfigForm.apiKey) {
+    ElMessage.warning('请先输入API Key')
+    return
+  }
+
+  testingConnection.value = true
+  try {
+    const result = await window.api.config.testAIConnection({
+      apiUrl: aiConfigForm.apiUrl,
+      apiKey: aiConfigForm.apiKey,
+      embeddingModel: aiConfigForm.embeddingModel,
+      chatModel: aiConfigForm.chatModel
+    })
+
+    if (result.success) {
+      ElMessage.success('连接测试成功')
+    } else {
+      ElMessage.error(result.error?.message || '连接测试失败')
+    }
+  } catch (error) {
+    ElMessage.error('连接测试失败')
+  } finally {
+    testingConnection.value = false
+  }
+}
+
+const handleSaveAIConfig = async () => {
+  if (!aiConfigForm.apiKey) {
+    ElMessage.warning('请先输入API Key')
+    return
+  }
+
+  savingConfig.value = true
+  try {
+    const result = await window.api.config.updateAISettings({
+      apiUrl: aiConfigForm.apiUrl,
+      apiKey: aiConfigForm.apiKey,
+      embeddingModel: aiConfigForm.embeddingModel,
+      chatModel: aiConfigForm.chatModel
+    })
+
+    if (result.success) {
+      ElMessage.success('保存成功')
+    } else {
+      ElMessage.error(result.error?.message || '保存失败')
+    }
+  } catch (error) {
+    ElMessage.error('保存失败')
+  } finally {
+    savingConfig.value = false
   }
 }
 
@@ -130,5 +237,6 @@ const handleCreateCategory = async () => {
 
 onMounted(() => {
   loadCategories()
+  loadAISettings()
 })
 </script>

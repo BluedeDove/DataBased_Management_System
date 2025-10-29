@@ -99,6 +99,13 @@ export interface ElectronAPI {
     updateAISettings: (settings: any) => Promise<any>
     testAIConnection: () => Promise<any>
   }
+
+  // SQL搜索
+  search: {
+    executeSql: (query: string) => Promise<any>
+    getAllTables: () => Promise<any>
+    getTableSchema: (tableName: string) => Promise<any>
+  }
 }
 
 // 将 API 暴露给渲染进程
@@ -192,6 +199,12 @@ const api: ElectronAPI = {
     getAISettings: () => ipcRenderer.invoke('config:getAISettings'),
     updateAISettings: (settings) => ipcRenderer.invoke('config:updateAISettings', settings),
     testAIConnection: () => ipcRenderer.invoke('config:testAIConnection')
+  },
+
+  search: {
+    executeSql: (query) => ipcRenderer.invoke('search:executeSql', query),
+    getAllTables: () => ipcRenderer.invoke('search:getAllTables'),
+    getTableSchema: (tableName) => ipcRenderer.invoke('search:getTableSchema', tableName)
   }
 }
 

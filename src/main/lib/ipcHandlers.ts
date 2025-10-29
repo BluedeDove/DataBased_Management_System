@@ -6,6 +6,7 @@ import { BorrowingService } from '../domains/borrowing/borrowing.service'
 import { AIService } from '../domains/ai/ai.service'
 import { ConfigService } from '../domains/config/config.service'
 import { RegexSearchService } from '../domains/search/regex-search.service'
+import { SqlSearchService } from '../domains/search/sql-search.service'
 import { exportService } from './exportService'
 import { errorHandler, SuccessResponse } from './errorHandler'
 import { logger } from './logger'
@@ -18,6 +19,7 @@ const borrowingService = new BorrowingService()
 const aiService = new AIService()
 const configService = new ConfigService()
 const regexSearchService = new RegexSearchService()
+const sqlSearchService = new SqlSearchService()
 
 export function registerIpcHandlers() {
   // ============ 认证相关 ============
@@ -586,6 +588,34 @@ export function registerIpcHandlers() {
     try {
       const result = await configService.testAIConnection()
       return { success: result.success, data: result } as SuccessResponse
+    } catch (error) {
+      return errorHandler.handle(error)
+    }
+  })
+
+  // ============ SQL搜索相关 (仅管理员) ============
+  ipcMain.handle('search:executeSql', async (_, query) => {
+    try {
+      const result = sqlSearchService.executeQuery(query)
+      return { success: true, data: result } as SuccessResponse
+    } catch (error) {
+      return errorHandler.handle(error)
+    }
+  })
+
+  ipcMain.handle('search:getAllTables', async () => {
+    try {
+      const tables = sqlSearchService.getAllTables()
+      return { success: true, data: tables } as SuccessResponse
+    } catch (error) {
+      return errorHandler.handle(error)
+    }
+  })
+
+  ipcMain.handle('search:getTableSchema', async (_, tableName) => {
+    try {
+      const schema = sqlSearchService.getTableSchema(tableName)
+      return { success: true, data: schema } as SuccessResponse
     } catch (error) {
       return errorHandler.handle(error)
     }

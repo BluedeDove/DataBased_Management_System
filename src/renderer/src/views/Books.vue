@@ -35,6 +35,9 @@
           />
         </el-select>
         <el-button :icon="Search" @click="handleSearch">搜索</el-button>
+        <el-button @click="showAdvancedSearch = !showAdvancedSearch">
+          {{ showAdvancedSearch ? '收起高级搜索' : '高级搜索' }}
+        </el-button>
       </div>
 
       <div class="toolbar-right">
@@ -57,6 +60,165 @@
         </el-button>
       </div>
     </div>
+
+    <!-- 高级搜索面板 -->
+    <el-collapse-transition>
+      <div v-show="showAdvancedSearch" class="card advanced-search-panel">
+        <el-tabs v-model="activeSearchTab" type="border-card">
+          <!-- 条件搜索 -->
+          <el-tab-pane label="条件搜索" name="conditional">
+            <el-form :model="conditionalForm" label-width="100px">
+              <el-row :gutter="20">
+                <el-col :span="12">
+                  <el-form-item label="书名">
+                    <el-input v-model="conditionalForm.title" placeholder="请输入书名" clearable />
+                  </el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item label="作者">
+                    <el-input v-model="conditionalForm.author" placeholder="请输入作者" clearable />
+                  </el-form-item>
+                </el-col>
+              </el-row>
+              <el-row :gutter="20">
+                <el-col :span="12">
+                  <el-form-item label="出版社">
+                    <el-input v-model="conditionalForm.publisher" placeholder="请输入出版社" clearable />
+                  </el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item label="类别">
+                    <el-select v-model="conditionalForm.category_id" placeholder="选择类别" clearable style="width: 100%">
+                      <el-option
+                        v-for="cat in categories"
+                        :key="cat.id"
+                        :label="cat.name"
+                        :value="cat.id"
+                      />
+                    </el-select>
+                  </el-form-item>
+                </el-col>
+              </el-row>
+              <el-row :gutter="20">
+                <el-col :span="12">
+                  <el-form-item label="出版日期">
+                    <el-date-picker
+                      v-model="conditionalForm.publishDateRange"
+                      type="daterange"
+                      range-separator="至"
+                      start-placeholder="开始日期"
+                      end-placeholder="结束日期"
+                      format="YYYY-MM-DD"
+                      value-format="YYYY-MM-DD"
+                      style="width: 100%"
+                    />
+                  </el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item label="价格范围">
+                    <div style="display: flex; align-items: center; gap: 8px">
+                      <el-input-number v-model="conditionalForm.priceMin" :min="0" :precision="2" placeholder="最低价" style="width: 100%" />
+                      <span>-</span>
+                      <el-input-number v-model="conditionalForm.priceMax" :min="0" :precision="2" placeholder="最高价" style="width: 100%" />
+                    </div>
+                  </el-form-item>
+                </el-col>
+              </el-row>
+              <el-row :gutter="20">
+                <el-col :span="12">
+                  <el-form-item label="关键词">
+                    <el-input v-model="conditionalForm.keyword" placeholder="请输入关键词" clearable />
+                  </el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item label="状态">
+                    <el-select v-model="conditionalForm.status" placeholder="选择状态" clearable style="width: 100%">
+                      <el-option label="正常" value="normal" />
+                      <el-option label="损坏" value="damaged" />
+                      <el-option label="丢失" value="lost" />
+                      <el-option label="已销毁" value="destroyed" />
+                    </el-select>
+                  </el-form-item>
+                </el-col>
+              </el-row>
+              <el-form-item>
+                <el-button type="primary" @click="handleConditionalSearch">搜索</el-button>
+                <el-button @click="resetConditionalForm">重置</el-button>
+              </el-form-item>
+            </el-form>
+          </el-tab-pane>
+
+          <!-- 正则搜索 -->
+          <el-tab-pane label="正则搜索" name="regex">
+            <el-form :model="regexForm" label-width="100px">
+              <el-form-item label="正则表达式">
+                <el-input
+                  v-model="regexForm.pattern"
+                  placeholder="请输入正则表达式，例如：^[A-Z].*"
+                  clearable
+                >
+                  <template #prepend>
+                    <span>/</span>
+                  </template>
+                  <template #append>
+                    <span>/</span>
+                  </template>
+                </el-input>
+              </el-form-item>
+              <el-form-item label="搜索字段">
+                <el-checkbox-group v-model="regexForm.fields">
+                  <el-checkbox label="title">书名</el-checkbox>
+                  <el-checkbox label="author">作者</el-checkbox>
+                  <el-checkbox label="publisher">出版社</el-checkbox>
+                  <el-checkbox label="isbn">ISBN</el-checkbox>
+                  <el-checkbox label="keywords">关键词</el-checkbox>
+                  <el-checkbox label="description">简介</el-checkbox>
+                </el-checkbox-group>
+              </el-form-item>
+              <el-form-item>
+                <el-alert
+                  title="提示：正则表达式使用JavaScript语法，例如 ^[A-Z].* 匹配以大写字母开头的内容"
+                  type="info"
+                  :closable="false"
+                  show-icon
+                />
+              </el-form-item>
+              <el-form-item>
+                <el-button type="primary" @click="handleRegexSearch">搜索</el-button>
+                <el-button @click="resetRegexForm">重置</el-button>
+              </el-form-item>
+            </el-form>
+          </el-tab-pane>
+
+          <!-- SQL搜索 (仅管理员) -->
+          <el-tab-pane v-if="isAdmin" label="SQL搜索" name="sql">
+            <el-form :model="sqlForm" label-width="100px">
+              <el-form-item label="SQL查询">
+                <el-input
+                  v-model="sqlForm.query"
+                  type="textarea"
+                  :rows="10"
+                  placeholder="请输入SQL查询语句，例如：&#10;SELECT * FROM books WHERE price > 50 AND status = 'normal'&#10;&#10;注意：仅支持SELECT查询"
+                  style="font-family: 'Courier New', monospace"
+                />
+              </el-form-item>
+              <el-form-item>
+                <el-alert
+                  title="警告：此功能仅对管理员开放。请确保SQL语句安全，仅支持SELECT查询。"
+                  type="warning"
+                  :closable="false"
+                  show-icon
+                />
+              </el-form-item>
+              <el-form-item>
+                <el-button type="primary" @click="handleSqlSearch">执行查询</el-button>
+                <el-button @click="resetSqlForm">重置</el-button>
+              </el-form-item>
+            </el-form>
+          </el-tab-pane>
+        </el-tabs>
+      </div>
+    </el-collapse-transition>
 
     <!-- 图书列表 -->
     <div class="card">
@@ -191,7 +353,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 
@@ -201,6 +363,40 @@ const categories = ref<any[]>([])
 
 const searchKeyword = ref('')
 const filterCategory = ref<number>()
+
+// Advanced search state
+const showAdvancedSearch = ref(false)
+const activeSearchTab = ref('conditional')
+
+// Check if user is admin (you may need to adjust this based on your auth implementation)
+const isAdmin = computed(() => {
+  // Assuming you have user info stored somewhere, adjust as needed
+  return true // For now, always show SQL tab - adjust based on your auth logic
+})
+
+// Conditional search form
+const conditionalForm = reactive({
+  title: '',
+  author: '',
+  publisher: '',
+  category_id: undefined as number | undefined,
+  publishDateRange: [] as string[],
+  priceMin: undefined as number | undefined,
+  priceMax: undefined as number | undefined,
+  keyword: '',
+  status: ''
+})
+
+// Regex search form
+const regexForm = reactive({
+  pattern: '',
+  fields: [] as string[]
+})
+
+// SQL search form
+const sqlForm = reactive({
+  query: ''
+})
 
 const showAddDialog = ref(false)
 const showCategoryDialog = ref(false)
@@ -432,6 +628,134 @@ const resetForm = () => {
   })
 }
 
+// Advanced search handlers
+const handleConditionalSearch = async () => {
+  loading.value = true
+  try {
+    const criteria: any = {}
+
+    if (conditionalForm.title) criteria.title = conditionalForm.title
+    if (conditionalForm.author) criteria.author = conditionalForm.author
+    if (conditionalForm.publisher) criteria.publisher = conditionalForm.publisher
+    if (conditionalForm.category_id) criteria.category_id = conditionalForm.category_id
+    if (conditionalForm.publishDateRange && conditionalForm.publishDateRange.length === 2) {
+      criteria.publishDateStart = conditionalForm.publishDateRange[0]
+      criteria.publishDateEnd = conditionalForm.publishDateRange[1]
+    }
+    if (conditionalForm.priceMin !== undefined) criteria.priceMin = conditionalForm.priceMin
+    if (conditionalForm.priceMax !== undefined) criteria.priceMax = conditionalForm.priceMax
+    if (conditionalForm.keyword) criteria.keyword = conditionalForm.keyword
+    if (conditionalForm.status) criteria.status = conditionalForm.status
+
+    const result = await window.api.book.advancedSearch(criteria)
+
+    if (result.success) {
+      books.value = result.data
+      ElMessage.success(`找到 ${result.data.length} 条结果`)
+    } else {
+      ElMessage.error(result.error?.message || '搜索失败')
+    }
+  } catch (error) {
+    ElMessage.error('搜索失败')
+    console.error(error)
+  } finally {
+    loading.value = false
+  }
+}
+
+const handleRegexSearch = async () => {
+  if (!regexForm.pattern) {
+    ElMessage.warning('请输入正则表达式')
+    return
+  }
+
+  if (regexForm.fields.length === 0) {
+    ElMessage.warning('请选择至少一个搜索字段')
+    return
+  }
+
+  // Validate regex pattern
+  try {
+    new RegExp(regexForm.pattern)
+  } catch (e) {
+    ElMessage.error('正则表达式格式错误')
+    return
+  }
+
+  loading.value = true
+  try {
+    const result = await window.api.book.regexSearch(regexForm.pattern, regexForm.fields)
+
+    if (result.success) {
+      books.value = result.data
+      ElMessage.success(`找到 ${result.data.length} 条结果`)
+    } else {
+      ElMessage.error(result.error?.message || '搜索失败')
+    }
+  } catch (error) {
+    ElMessage.error('搜索失败')
+    console.error(error)
+  } finally {
+    loading.value = false
+  }
+}
+
+const handleSqlSearch = async () => {
+  if (!sqlForm.query.trim()) {
+    ElMessage.warning('请输入SQL查询语句')
+    return
+  }
+
+  // Basic validation to ensure only SELECT queries
+  const trimmedQuery = sqlForm.query.trim().toUpperCase()
+  if (!trimmedQuery.startsWith('SELECT')) {
+    ElMessage.error('仅支持SELECT查询语句')
+    return
+  }
+
+  loading.value = true
+  try {
+    const result = await window.api.search.executeSql(sqlForm.query)
+
+    if (result.success) {
+      books.value = result.data
+      ElMessage.success(`找到 ${result.data.length} 条结果`)
+    } else {
+      ElMessage.error(result.error?.message || '查询失败')
+    }
+  } catch (error) {
+    ElMessage.error('查询失败')
+    console.error(error)
+  } finally {
+    loading.value = false
+  }
+}
+
+const resetConditionalForm = () => {
+  Object.assign(conditionalForm, {
+    title: '',
+    author: '',
+    publisher: '',
+    category_id: undefined,
+    publishDateRange: [],
+    priceMin: undefined,
+    priceMax: undefined,
+    keyword: '',
+    status: ''
+  })
+}
+
+const resetRegexForm = () => {
+  Object.assign(regexForm, {
+    pattern: '',
+    fields: []
+  })
+}
+
+const resetSqlForm = () => {
+  sqlForm.query = ''
+}
+
 onMounted(() => {
   loadBooks()
   loadCategories()
@@ -453,5 +777,21 @@ onMounted(() => {
 .book-author {
   font-size: 12px;
   color: #909399;
+}
+
+.advanced-search-panel {
+  margin-bottom: 16px;
+}
+
+.advanced-search-panel :deep(.el-tabs__content) {
+  padding: 20px;
+}
+
+.advanced-search-panel :deep(.el-form-item) {
+  margin-bottom: 18px;
+}
+
+.advanced-search-panel :deep(.el-checkbox) {
+  margin-right: 20px;
 }
 </style>
