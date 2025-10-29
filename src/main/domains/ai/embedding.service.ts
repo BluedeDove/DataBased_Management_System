@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { config } from '../../config'
 import { logger } from '../../lib/logger'
+import { ConfigService } from '../config/config.service'
 
 export interface EmbeddingResult {
   embedding: number[]
@@ -15,15 +16,47 @@ export class EmbeddingService {
   private apiKey: string
   private baseURL: string
   private model: string
+  private configService = new ConfigService()
 
   constructor() {
-    this.apiKey = config.ai.openai.apiKey
-    this.baseURL = config.ai.openai.baseURL
-    this.model = config.ai.openai.embeddingModel
+    // 优先使用数据库配置，如果不存在则使用环境变量配置
+    this.loadConfig()
+  }
+
+  private loadConfig() {
+    try {
+      const dbConfig = this.configService.getAISettings()
+      // 如果数据库中有配置且API Key不为空，使用数据库配置
+      if (dbConfig.apiKey) {
+        this.apiKey = dbConfig.apiKey
+        this.baseURL = dbConfig.baseURL
+        this.model = dbConfig.embeddingModel
+        logger.info('使用数据库AI配置')
+      } else {
+        // 否则使用环境变量配置
+        this.apiKey = config.ai.openai.apiKey
+        this.baseURL = config.ai.openai.baseURL
+        this.model = config.ai.openai.embeddingModel
+        logger.info('使用环境变量AI配置')
+      }
+    } catch (error) {
+      // 如果读取数据库配置失败，使用环境变量配置
+      this.apiKey = config.ai.openai.apiKey
+      this.baseURL = config.ai.openai.baseURL
+      this.model = config.ai.openai.embeddingModel
+      logger.warn('读取数据库AI配置失败，使用环境变量配置', error)
+    }
+  }
+
+  // 重新加载配置（在配置更新后调用）
+  reloadConfig() {
+    this.loadConfig()
   }
 
   isAvailable(): boolean {
-    return config.ai.enabled && !!this.apiKey
+    // 每次检查时重新加载配置，确保使用最新的配置
+    this.loadConfig()
+    return !!this.apiKey
   }
 
   async generateEmbedding(text: string): Promise<number[]> {

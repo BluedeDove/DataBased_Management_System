@@ -1,6 +1,7 @@
 import { EmbeddingService } from './embedding.service'
 import { VectorRepository } from './vector.repository'
 import { BookRepository } from '../book/book.repository'
+import { ConfigService } from '../config/config.service'
 import { logger } from '../../lib/logger'
 import { BusinessError } from '../../lib/errorHandler'
 import axios from 'axios'
@@ -23,10 +24,36 @@ export class AIService {
   private embeddingService = new EmbeddingService()
   private vectorRepository = new VectorRepository()
   private bookRepository = new BookRepository()
+  private configService = new ConfigService()
 
   constructor() {
     // 初始化向量表
     this.vectorRepository.initTable()
+  }
+
+  // 获取当前AI配置（优先使用数据库配置）
+  private getAIConfig() {
+    try {
+      const dbConfig = this.configService.getAISettings()
+      if (dbConfig.apiKey) {
+        return {
+          apiKey: dbConfig.apiKey,
+          baseURL: dbConfig.baseURL,
+          chatModel: dbConfig.chatModel,
+          embeddingModel: dbConfig.embeddingModel
+        }
+      }
+    } catch (error) {
+      logger.warn('读取数据库AI配置失败，使用环境变量配置', error)
+    }
+
+    // Fallback to environment variables
+    return {
+      apiKey: config.ai.openai.apiKey,
+      baseURL: config.ai.openai.baseURL,
+      chatModel: config.ai.openai.chatModel,
+      embeddingModel: config.ai.openai.embeddingModel
+    }
   }
 
   // 检查AI服务是否可用
@@ -140,6 +167,9 @@ export class AIService {
     try {
       logger.info('AI助手对话', { messageLength: message.length })
 
+      // 获取当前配置（优先使用数据库配置）
+      const aiConfig = this.getAIConfig()
+
       // 构建系统提示词
       let systemPrompt = `你是一个专业的图书管理员助手。你需要帮助用户管理图书馆、推荐图书、解答问题。
 请用友好、专业的语气回答问题。如果用户询问图书推荐，请基于提供的上下文信息进行推荐。`
@@ -157,16 +187,16 @@ export class AIService {
 
       // 调用OpenAI API
       const response = await axios.post(
-        `${config.ai.openai.baseURL}/chat/completions`,
+        `${aiConfig.baseURL}/chat/completions`,
         {
-          model: config.ai.openai.chatModel,
+          model: aiConfig.chatModel,
           messages: messages,
           temperature: 0.7,
           max_tokens: 1000
         },
         {
           headers: {
-            Authorization: `Bearer ${config.ai.openai.apiKey}`,
+            Authorization: `Bearer ${aiConfig.apiKey}`,
             'Content-Type': 'application/json'
           },
           timeout: 60000
