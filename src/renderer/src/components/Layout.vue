@@ -120,7 +120,15 @@ const passwordForm = ref({
 })
 
 const menuRoutes = computed(() => {
-  return router.getRoutes().find(r => r.path === '/')?.children || []
+  const allRoutes = router.getRoutes().find(r => r.path === '/')?.children || []
+  const userRole = userStore.user?.role
+
+  // 根据用户角色过滤菜单
+  return allRoutes.filter(route => {
+    const roles = route.meta?.roles as string[] | undefined
+    if (!roles || roles.length === 0) return true
+    return roles.includes(userRole || '')
+  })
 })
 
 const activeMenu = computed(() => route.path)

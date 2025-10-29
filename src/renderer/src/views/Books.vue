@@ -52,10 +52,10 @@
             </el-dropdown-menu>
           </template>
         </el-dropdown>
-        <el-button type="primary" :icon="Plus" @click="showAddDialog = true">
+        <el-button v-if="canManageBooks" type="primary" :icon="Plus" @click="showAddDialog = true">
           新增图书
         </el-button>
-        <el-button :icon="Setting" @click="showCategoryDialog = true">
+        <el-button v-if="canManageBooks" :icon="Setting" @click="showCategoryDialog = true">
           类别管理
         </el-button>
       </div>
@@ -190,8 +190,8 @@
             </el-form>
           </el-tab-pane>
 
-          <!-- SQL搜索 (仅管理员) -->
-          <el-tab-pane v-if="isAdmin" label="SQL搜索" name="sql">
+          <!-- SQL搜索 (所有人可用) -->
+          <el-tab-pane label="SQL搜索" name="sql">
             <el-form :model="sqlForm" label-width="100px">
               <el-form-item label="SQL查询">
                 <el-input
@@ -259,10 +259,10 @@
             <el-button type="primary" link size="small" @click="handleView(row)">
               详情
             </el-button>
-            <el-button type="primary" link size="small" @click="handleEdit(row)">
+            <el-button v-if="canManageBooks" type="primary" link size="small" @click="handleEdit(row)">
               编辑
             </el-button>
-            <el-button type="warning" link size="small" @click="handleAddCopies(row)">
+            <el-button v-if="canManageBooks" type="warning" link size="small" @click="handleAddCopies(row)">
               增加馆藏
             </el-button>
           </template>
@@ -356,7 +356,9 @@
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
+import { useUserStore } from '@/store/user'
 
+const userStore = useUserStore()
 const loading = ref(false)
 const books = ref<any[]>([])
 const categories = ref<any[]>([])
@@ -368,11 +370,11 @@ const filterCategory = ref<number>()
 const showAdvancedSearch = ref(false)
 const activeSearchTab = ref('conditional')
 
-// Check if user is admin (you may need to adjust this based on your auth implementation)
-const isAdmin = computed(() => {
-  // Assuming you have user info stored somewhere, adjust as needed
-  return true // For now, always show SQL tab - adjust based on your auth logic
-})
+// 角色权限相关
+const userRole = computed(() => userStore.user?.role || '')
+const isAdmin = computed(() => userRole.value === 'admin')
+const isLibrarian = computed(() => userRole.value === 'librarian')
+const canManageBooks = computed(() => isAdmin.value || isLibrarian.value)
 
 // Conditional search form
 const conditionalForm = reactive({

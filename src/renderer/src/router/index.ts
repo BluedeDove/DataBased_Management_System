@@ -19,43 +19,43 @@ const routes: RouteRecordRaw[] = [
         path: 'dashboard',
         name: 'Dashboard',
         component: () => import('@/views/Dashboard.vue'),
-        meta: { title: '仪表盘', icon: 'DataAnalysis' }
+        meta: { title: '仪表盘', icon: 'DataAnalysis', roles: ['admin', 'librarian', 'teacher', 'student'] }
       },
       {
         path: 'books',
         name: 'Books',
         component: () => import('@/views/Books.vue'),
-        meta: { title: '图书管理', icon: 'Reading' }
+        meta: { title: '图书管理', icon: 'Reading', roles: ['admin', 'librarian', 'teacher', 'student'] }
       },
       {
         path: 'readers',
         name: 'Readers',
         component: () => import('@/views/Readers.vue'),
-        meta: { title: '读者管理', icon: 'User' }
+        meta: { title: '读者管理', icon: 'User', roles: ['admin', 'librarian'] }
       },
       {
         path: 'borrowing',
         name: 'Borrowing',
         component: () => import('@/views/Borrowing.vue'),
-        meta: { title: '借还管理', icon: 'DocumentCopy' }
+        meta: { title: '借还管理', icon: 'DocumentCopy', roles: ['admin', 'librarian', 'teacher', 'student'] }
       },
       {
         path: 'statistics',
         name: 'Statistics',
         component: () => import('@/views/Statistics.vue'),
-        meta: { title: '统计分析', icon: 'PieChart' }
+        meta: { title: '统计分析', icon: 'PieChart', roles: ['admin', 'librarian'] }
       },
       {
         path: 'ai-assistant',
         name: 'AIAssistant',
         component: () => import('@/views/AIAssistant.vue'),
-        meta: { title: 'AI 助手', icon: 'MagicStick' }
+        meta: { title: 'AI 助手', icon: 'MagicStick', roles: ['admin', 'librarian', 'teacher', 'student'] }
       },
       {
         path: 'settings',
         name: 'Settings',
         component: () => import('@/views/Settings.vue'),
-        meta: { title: '系统设置', icon: 'Setting' }
+        meta: { title: '系统设置', icon: 'Setting', roles: ['admin', 'librarian'] }
       }
     ]
   }
