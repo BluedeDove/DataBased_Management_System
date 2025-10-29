@@ -13,7 +13,7 @@
             <el-descriptions-item label="版本">1.0.0</el-descriptions-item>
             <el-descriptions-item label="当前用户">{{ userStore.user?.name }}</el-descriptions-item>
             <el-descriptions-item label="角色">
-              {{ userStore.user?.role === 'admin' ? '管理员' : '图书管理员' }}
+              {{ getRoleLabel(userStore.user?.role) }}
             </el-descriptions-item>
           </el-descriptions>
         </el-tab-pane>
@@ -32,7 +32,7 @@
           </el-table>
         </el-tab-pane>
 
-        <el-tab-pane label="AI配置">
+        <el-tab-pane v-if="isAdmin" label="AI配置">
           <el-form :model="aiConfigForm" label-width="150px" style="max-width: 600px">
             <el-form-item label="API URL">
               <el-input v-model="aiConfigForm.apiUrl" placeholder="https://api.openai.com/v1" />
@@ -113,7 +113,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { useUserStore } from '@/store/user'
 import { ElMessage } from 'element-plus'
 
@@ -122,6 +122,20 @@ const showCategoryDialog = ref(false)
 const readerCategories = ref<any[]>([])
 const testingConnection = ref(false)
 const savingConfig = ref(false)
+
+// 角色权限相关
+const isAdmin = computed(() => userStore.user?.role === 'admin')
+
+// 角色标签映射
+const getRoleLabel = (role?: string) => {
+  const roleMap: Record<string, string> = {
+    'admin': '管理员',
+    'librarian': '图书管理员',
+    'teacher': '教师',
+    'student': '学生'
+  }
+  return roleMap[role || ''] || '未知'
+}
 
 const categoryForm = reactive({
   code: '',
@@ -166,19 +180,20 @@ const handleTestConnection = async () => {
   testingConnection.value = true
   try {
     const result = await window.api.config.testAIConnection({
-      apiUrl: aiConfigForm.apiUrl,
+      baseURL: aiConfigForm.apiUrl,  // 修正参数名：apiUrl -> baseURL
       apiKey: aiConfigForm.apiKey,
       embeddingModel: aiConfigForm.embeddingModel,
       chatModel: aiConfigForm.chatModel
     })
 
     if (result.success) {
-      ElMessage.success('连接测试成功')
+      ElMessage.success(result.data?.message || '连接测试成功')
     } else {
-      ElMessage.error(result.error?.message || '连接测试失败')
+      ElMessage.error(result.data?.message || result.error?.message || '连接测试失败')
     }
-  } catch (error) {
-    ElMessage.error('连接测试失败')
+  } catch (error: any) {
+    console.error('Test connection error:', error)
+    ElMessage.error(error.message || '连接测试失败')
   } finally {
     testingConnection.value = false
   }

@@ -78,18 +78,40 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
+import { useUserStore } from '@/store/user'
 
+const userStore = useUserStore()
 const activeTab = ref('borrow')
 const borrowedBooks = ref<any[]>([])
 const allRecords = ref<any[]>([])
 const returnSearchKeyword = ref('')
 
+// 角色权限相关
+const userRole = computed(() => userStore.user?.role || '')
+const isAdmin = computed(() => userRole.value === 'admin')
+const isLibrarian = computed(() => userRole.value === 'librarian')
+const canViewAllRecords = computed(() => isAdmin.value || isLibrarian.value)
+const currentUserName = computed(() => userStore.user?.name || '')
+
 const borrowForm = reactive({
   readerNo: '',
   bookIsbn: ''
 })
+
+// 过滤记录：教师和学生只能看到自己的记录
+const filterRecordsByUser = (records: any[]) => {
+  if (canViewAllRecords.value) {
+    return records
+  }
+  // 非管理员/图书管理员：根据姓名匹配过滤
+  return records.filter((record: any) =>
+    record.reader_name && currentUserName.value &&
+    (record.reader_name.includes(currentUserName.value) ||
+     currentUserName.value.includes(record.reader_name))
+  )
+}
 
 const handleBorrow = async () => {
   if (!borrowForm.readerNo || !borrowForm.bookIsbn) {
@@ -132,12 +154,20 @@ const handleBorrow = async () => {
 const searchBorrowedBooks = async () => {
   const result = await window.api.borrowing.getAll({ status: 'borrowed' })
   if (result.success) {
-    borrowedBooks.value = result.data.filter((r: any) =>
-      returnSearchKeyword.value
-        ? r.reader_name.includes(returnSearchKeyword.value) ||
-          r.reader_no.includes(returnSearchKeyword.value)
-        : true
-    )
+    let filtered = result.data
+
+    // 根据角色过滤记录
+    filtered = filterRecordsByUser(filtered)
+
+    // 根据搜索关键词过滤
+    if (returnSearchKeyword.value) {
+      filtered = filtered.filter((r: any) =>
+        r.reader_name.includes(returnSearchKeyword.value) ||
+        r.reader_no.includes(returnSearchKeyword.value)
+      )
+    }
+
+    borrowedBooks.value = filtered
   }
 }
 
@@ -168,7 +198,8 @@ const isOverdue = (dueDate: string) => {
 const loadAllRecords = async () => {
   const result = await window.api.borrowing.getAll()
   if (result.success) {
-    allRecords.value = result.data
+    // 根据角色过滤记录
+    allRecords.value = filterRecordsByUser(result.data)
   }
 }
 

@@ -30,13 +30,22 @@ export class ConfigService {
     this.configRepository.updateSetting('ai.openai.chatModel', settings.chatModel)
   }
 
-  async testAIConnection(): Promise<{ success: boolean; message: string }> {
+  async testAIConnection(testSettings?: Partial<AISettings>): Promise<{ success: boolean; message: string }> {
     try {
-      const settings = this.getAISettings()
+      // 使用传入的测试配置，如果没有则从数据库读取
+      const savedSettings = this.getAISettings()
+      const settings: AISettings = {
+        baseURL: testSettings?.baseURL || savedSettings.baseURL,
+        apiKey: testSettings?.apiKey || savedSettings.apiKey,
+        embeddingModel: testSettings?.embeddingModel || savedSettings.embeddingModel,
+        chatModel: testSettings?.chatModel || savedSettings.chatModel
+      }
 
       if (!settings.apiKey) {
         return { success: false, message: 'API Key未配置' }
       }
+
+      logger.info('测试AI连接', { baseURL: settings.baseURL, model: settings.embeddingModel })
 
       // Test embedding API
       const response = await axios.post(
@@ -59,10 +68,20 @@ export class ConfigService {
         return { success: true, message: 'AI服务连接成功' }
       }
 
-      return { success: false, message: '连接失败' }
+      return { success: false, message: `连接失败: HTTP ${response.status}` }
     } catch (error: any) {
-      logger.error('AI连接测试失败', error)
-      return { success: false, message: error.message }
+      logger.error('AI连接测试失败', error.message)
+      let errorMsg = 'AI连接测试失败'
+      if (error.response) {
+        errorMsg = `HTTP ${error.response.status}: ${error.response.data?.error?.message || error.response.statusText}`
+      } else if (error.code === 'ECONNREFUSED') {
+        errorMsg = '无法连接到API服务器，请检查URL是否正确'
+      } else if (error.code === 'ETIMEDOUT') {
+        errorMsg = '连接超时，请检查网络或API服务器状态'
+      } else {
+        errorMsg = error.message || '未知错误'
+      }
+      return { success: false, message: errorMsg }
     }
   }
 }

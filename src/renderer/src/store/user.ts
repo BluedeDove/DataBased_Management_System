@@ -5,7 +5,7 @@ interface User {
   id: number
   username: string
   name: string
-  role: 'admin' | 'librarian'
+  role: 'admin' | 'librarian' | 'teacher' | 'student'
   email?: string
   phone?: string
 }
