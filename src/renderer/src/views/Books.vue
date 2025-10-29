@@ -216,6 +216,35 @@
               </el-form-item>
             </el-form>
           </el-tab-pane>
+
+          <!-- 向量/语义搜索 -->
+          <el-tab-pane label="向量搜索" name="vector">
+            <el-form :model="vectorForm" label-width="100px">
+              <el-form-item label="搜索描述">
+                <el-input
+                  v-model="vectorForm.query"
+                  type="textarea"
+                  :rows="3"
+                  placeholder="用自然语言描述您要找的图书，例如：&#10;- 关于人工智能和机器学习的入门书籍&#10;- 讲述中国历史的小说&#10;- 适合初学者的编程教材"
+                />
+              </el-form-item>
+              <el-form-item label="返回数量">
+                <el-input-number v-model="vectorForm.topK" :min="1" :max="50" />
+              </el-form-item>
+              <el-form-item>
+                <el-alert
+                  title="提示：向量搜索使用AI技术根据语义相似度查找图书，需要先配置AI设置并生成图书向量。"
+                  type="info"
+                  :closable="false"
+                  show-icon
+                />
+              </el-form-item>
+              <el-form-item>
+                <el-button type="primary" @click="handleVectorSearch" :loading="vectorSearching">搜索</el-button>
+                <el-button @click="resetVectorForm">重置</el-button>
+              </el-form-item>
+            </el-form>
+          </el-tab-pane>
         </el-tabs>
       </div>
     </el-collapse-transition>
@@ -228,8 +257,8 @@
         <el-table-column label="书名" width="220">
           <template #default="{ row }">
             <div class="book-cell">
-              <div class="book-title">{{ row.title }}</div>
-              <div class="book-author">{{ row.author }}</div>
+              <div class="book-title" v-html="getHighlightedTitle(row.title)"></div>
+              <div class="book-author" v-html="getHighlightedAuthor(row.author)"></div>
             </div>
           </template>
         </el-table-column>
@@ -400,6 +429,14 @@ const sqlForm = reactive({
   query: ''
 })
 
+// Vector search form
+const vectorForm = reactive({
+  query: '',
+  topK: 10
+})
+
+const vectorSearching = ref(false)
+
 const showAddDialog = ref(false)
 const showCategoryDialog = ref(false)
 const editingBook = ref<any>(null)
@@ -457,7 +494,25 @@ const loadCategories = async () => {
   }
 }
 
+// 搜索关键词高亮
+const lastSearchKeyword = ref('')
+
+const highlightText = (text: string, keyword: string) => {
+  if (!keyword || !text) return text
+  const regex = new RegExp(`(${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')
+  return text.replace(regex, '<mark>$1</mark>')
+}
+
+const getHighlightedTitle = (title: string) => {
+  return highlightText(title, lastSearchKeyword.value)
+}
+
+const getHighlightedAuthor = (author: string) => {
+  return highlightText(author, lastSearchKeyword.value)
+}
+
 const handleSearch = () => {
+  lastSearchKeyword.value = searchKeyword.value
   loadBooks()
 }
 
@@ -669,6 +724,9 @@ const handleConditionalSearch = async () => {
     if (conditionalForm.keyword) criteria.keyword = conditionalForm.keyword
     if (conditionalForm.status) criteria.status = conditionalForm.status
 
+    // Store search keyword for highlighting
+    lastSearchKeyword.value = conditionalForm.title || conditionalForm.author || conditionalForm.keyword || ''
+
     const result = await window.api.book.advancedSearch(criteria)
 
     if (result.success) {
@@ -704,6 +762,9 @@ const handleRegexSearch = async () => {
     return
   }
 
+  // Clear highlight for regex search (too complex to highlight)
+  lastSearchKeyword.value = ''
+
   loading.value = true
   try {
     const result = await window.api.book.regexSearch(regexForm.pattern, regexForm.fields)
@@ -734,6 +795,9 @@ const handleSqlSearch = async () => {
     ElMessage.error('仅支持SELECT查询语句')
     return
   }
+
+  // Clear highlight for SQL search
+  lastSearchKeyword.value = ''
 
   loading.value = true
   try {
@@ -778,6 +842,39 @@ const resetSqlForm = () => {
   sqlForm.query = ''
 }
 
+const handleVectorSearch = async () => {
+  if (!vectorForm.query.trim()) {
+    ElMessage.warning('请输入搜索描述')
+    return
+  }
+
+  // Clear highlight for vector search
+  lastSearchKeyword.value = ''
+
+  vectorSearching.value = true
+  try {
+    const result = await window.api.ai.semanticSearch(vectorForm.query, vectorForm.topK)
+
+    if (result.success) {
+      // semanticSearch returns books with similarity scores
+      books.value = result.data.map((item: any) => item.book || item)
+      ElMessage.success(`找到 ${result.data.length} 条结果`)
+    } else {
+      ElMessage.error(result.error?.message || '向量搜索失败，请确保已配置AI设置并生成图书向量')
+    }
+  } catch (error: any) {
+    ElMessage.error(error.message || '向量搜索失败')
+    console.error(error)
+  } finally {
+    vectorSearching.value = false
+  }
+}
+
+const resetVectorForm = () => {
+  vectorForm.query = ''
+  vectorForm.topK = 10
+}
+
 onMounted(() => {
   loadBooks()
   loadCategories()
@@ -815,5 +912,14 @@ onMounted(() => {
 
 .advanced-search-panel :deep(.el-checkbox) {
   margin-right: 20px;
+}
+
+/* Highlight style */
+:deep(mark) {
+  background-color: #ffe58f;
+  color: #262626;
+  padding: 2px 4px;
+  border-radius: 2px;
+  font-weight: 600;
 }
 </style>
