@@ -23,12 +23,15 @@ export function initDatabase() {
   // 检查users表是否需要迁移（从2角色升级到4角色）
   const tableExists = db.prepare(`
     SELECT name FROM sqlite_master
-    WHERE type='table' AND name='users'
+    WHERE type = 'table' AND name = 'users'
   `).get()
 
   if (tableExists) {
     // 检查表结构中的CHECK约束
-    const tableInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").get() as { sql: string } | undefined
+    const tableInfo = db.prepare(`
+      SELECT sql FROM sqlite_master
+      WHERE type = 'table' AND name = 'users'
+    `).get() as { sql: string } | undefined
 
     // 如果是旧schema（只有admin, librarian），需要迁移
     if (tableInfo && tableInfo.sql.includes("('admin', 'librarian')")) {
