@@ -283,16 +283,33 @@
             <el-tag v-else type="info">已销毁</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" fixed="right" width="200">
+        <el-table-column label="操作" fixed="right" width="280">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="handleView(row)">
               详情
             </el-button>
+            <!-- 教师/学生：显示借阅按钮 -->
+            <el-button
+              v-if="!canManageBooks && row.available_quantity > 0"
+              type="success"
+              link
+              size="small"
+              @click="handleQuickBorrow(row)"
+            >
+              借阅
+            </el-button>
+            <el-tag v-if="!canManageBooks && row.available_quantity === 0" type="info" size="small">
+              已借完
+            </el-tag>
+            <!-- 管理员/图书管理员：显示管理按钮 -->
             <el-button v-if="canManageBooks" type="primary" link size="small" @click="handleEdit(row)">
               编辑
             </el-button>
             <el-button v-if="canManageBooks" type="warning" link size="small" @click="handleAddCopies(row)">
               增加馆藏
+            </el-button>
+            <el-button v-if="canManageBooks" type="danger" link size="small" @click="handleDelete(row)">
+              删除
             </el-button>
           </template>
         </el-table-column>
@@ -359,6 +376,23 @@
         </el-form-item>
         <el-form-item label="简介">
           <el-input v-model="form.description" type="textarea" :rows="3" />
+        </el-form-item>
+        <el-form-item label="封面URL">
+          <el-input v-model="form.cover_url" placeholder="输入图片URL地址" />
+          <div v-if="form.cover_url" style="margin-top: 10px;">
+            <el-image
+              :src="form.cover_url"
+              style="width: 100px; height: 140px; border-radius: 4px;"
+              fit="cover"
+              :preview-src-list="[form.cover_url]"
+            >
+              <template #error>
+                <div style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; background: #f5f7fa; color: #909399; font-size: 12px;">
+                  图片加载失败
+                </div>
+              </template>
+            </el-image>
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -466,6 +500,7 @@ const form = reactive({
   total_quantity: 1,
   keywords: '',
   description: '',
+  cover_url: '',
   registration_date: new Date().toISOString().split('T')[0],
   status: 'normal',
   available_quantity: 1
@@ -600,6 +635,45 @@ const handleAddCopies = async (row: any) => {
   }
 }
 
+const handleDelete = async (row: any) => {
+  console.log('========== [前端] 开始删除图书 ==========')
+  console.log('[前端] 图书信息:', { id: row.id, title: row.title, isbn: row.isbn })
+
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除图书 "${row.title}" (ISBN: ${row.isbn}) 吗？如果有借出记录，将无法删除。`,
+      '删除确认',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    console.log('[前端] 用户确认删除')
+
+    console.log('[前端] 调用delete API...')
+    const result = await window.api.book.delete(row.id)
+    console.log('[前端] API返回结果:', result)
+
+    if (result.success) {
+      console.log('[前端] 删除成功')
+      ElMessage.success('删除成功')
+      loadBooks()
+    } else {
+      console.error('[前端] 删除失败:', result.error)
+      ElMessage.error(result.error?.message || '删除失败')
+    }
+  } catch (error: any) {
+    console.error('[前端] 删除出错:', error)
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error(error.message || '删除失败')
+    } else {
+      console.log('[前端] 用户取消删除')
+    }
+  }
+  console.log('========== [前端] 删除图书结束 ==========\n')
+}
+
 const handleAddCategory = async () => {
   try {
     const { value } = await ElMessageBox.prompt('请输入类别信息（格式：编码,名称）', '新增类别', {
@@ -649,6 +723,66 @@ const handleDeleteCategory = async (category: any) => {
   }
 }
 
+// 快速借阅功能（教师/学生）
+const handleQuickBorrow = async (book: any) => {
+  try {
+    // 1. 查找当前用户对应的读者记录（通过姓名匹配）
+    const currentUserName = userStore.user?.name
+    if (!currentUserName) {
+      ElMessage.error('无法获取当前用户信息')
+      return
+    }
+
+    // 获取所有读者，查找匹配的读者记录
+    const readersResult = await window.api.reader.getAll()
+    if (!readersResult.success) {
+      ElMessage.error('无法获取读者信息')
+      return
+    }
+
+    // 通过姓名匹配查找读者记录
+    const reader = readersResult.data.find((r: any) =>
+      r.name === currentUserName ||
+      r.name.includes(currentUserName) ||
+      currentUserName.includes(r.name)
+    )
+
+    if (!reader) {
+      ElMessage.error('未找到您的读者信息，请联系管理员创建读者账户')
+      return
+    }
+
+    // 2. 确认借阅
+    await ElMessageBox.confirm(
+      `确定要借阅《${book.title}》吗？\n\n` +
+      `作者：${book.author}\n` +
+      `您的读者编号：${reader.reader_no}\n` +
+      `当前可借数量：${book.available_quantity}`,
+      '借阅确认',
+      {
+        confirmButtonText: '确定借阅',
+        cancelButtonText: '取消',
+        type: 'info'
+      }
+    )
+
+    // 3. 调用借阅API
+    const result = await window.api.borrowing.borrow(reader.id, book.id)
+
+    if (result.success) {
+      ElMessage.success('借阅成功！请按时归还')
+      // 刷新图书列表以更新可借数量
+      loadBooks()
+    } else {
+      ElMessage.error(result.error?.message || '借阅失败')
+    }
+  } catch (error: any) {
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error(error.message || '借阅失败')
+    }
+  }
+}
+
 const handleSubmit = async () => {
   console.log('========== [前端] 开始提交图书表单 ==========')
   console.log('[前端] formRef是否存在:', !!formRef.value)
@@ -672,9 +806,12 @@ const handleSubmit = async () => {
     form.available_quantity = form.total_quantity
 
     console.log('[前端] 准备调用API...')
+    // 将响应式对象转换为普通对象，否则IPC无法克隆
+    const plainData = JSON.parse(JSON.stringify(form))
+    console.log('[前端] 转换为普通对象:', plainData)
     const result = editingBook.value
-      ? await window.api.book.update(editingBook.value.id, form)
-      : await window.api.book.create(form)
+      ? await window.api.book.update(editingBook.value.id, plainData)
+      : await window.api.book.create(plainData)
 
     console.log('[前端] API调用返回结果:', result)
 
