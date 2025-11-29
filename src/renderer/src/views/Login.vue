@@ -1,240 +1,189 @@
 <template>
   <div class="login-container">
-    <div class="login-bg">
-      <!-- 动态背景装饰 -->
-      <div class="bg-decoration"></div>
+    <div class="background-blobs">
+      <div class="blob blob-1"></div>
+      <div class="blob blob-2"></div>
     </div>
 
-    <div class="login-card">
-      <div class="login-header">
-        <el-icon class="logo-icon" :size="48"><Reading /></el-icon>
-        <h1 class="login-title">智能图书管理系统</h1>
-        <p class="login-subtitle">Library Management System</p>
+    <div class="login-box glass-card">
+      <div class="login-left">
+        <div class="brand">
+          <div class="logo-icon">
+            <el-icon>
+              <Reading />
+            </el-icon>
+          </div>
+          <h1>LMS</h1>
+          <p>智能图书管理系统</p>
+        </div>
       </div>
 
-      <el-form
-        ref="formRef"
-        :model="form"
-        :rules="rules"
-        class="login-form"
-        @keyup.enter="handleLogin"
-      >
-        <el-form-item prop="username">
-          <el-input
-            v-model="form.username"
-            placeholder="请输入用户名"
-            size="large"
-            :prefix-icon="User"
-          >
-          </el-input>
-        </el-form-item>
+      <div class="login-right">
+        <h2>欢迎回来</h2>
+        <p class="subtitle">请登录您的账号以继续</p>
 
-        <el-form-item prop="password">
-          <el-input
-            v-model="form.password"
-            type="password"
-            placeholder="请输入密码"
-            size="large"
-            show-password
-            :prefix-icon="Lock"
-          >
-          </el-input>
-        </el-form-item>
+        <el-form ref="formRef" :model="form" class="login-form">
+          <el-form-item>
+            <el-input v-model="form.username" placeholder="请输入账号" :prefix-icon="User" size="large" />
+          </el-form-item>
+          <el-form-item>
+            <el-input v-model="form.password" type="password" placeholder="请输入密码" :prefix-icon="Lock" show-password
+              size="large" />
+          </el-form-item>
 
-        <el-form-item>
-          <el-button
-            type="primary"
-            size="large"
-            :loading="loading"
-            class="login-button"
-            @click="handleLogin"
-          >
-            {{ loading ? '登录中...' : '登录' }}
+          <el-button type="primary" :loading="loading" class="submit-btn" size="large" @click="handleLogin">
+            {{ loading ? '登录中...' : '立即登录' }}
           </el-button>
-        </el-form-item>
-      </el-form>
+        </el-form>
 
-      <div class="login-tips">
-        <el-alert
-          type="info"
-          :closable="false"
-          show-icon
-        >
-          <template #title>
-            <div style="font-size: 12px">
-              默认账号：admin 密码：admin123
-            </div>
-          </template>
-        </el-alert>
+        <div class="footer-actions">
+          <span class="tip">默认账号: admin / admin123</span>
+          <el-button link type="primary" @click="$router.push('/register')">注册新账号</el-button>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useUserStore } from '@/store/user'
+import { User, Lock, Reading } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { User, Lock } from '@element-plus/icons-vue'
-import type { FormInstance, FormRules } from 'element-plus'
+import { useUserStore } from '@/store/user'
 
 const router = useRouter()
 const userStore = useUserStore()
-
-const formRef = ref<FormInstance>()
 const loading = ref(false)
-
-const form = reactive({
-  username: '',
-  password: ''
-})
-
-const rules: FormRules = {
-  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
-  password: [
-    { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 6, message: '密码长度不能小于6位', trigger: 'blur' }
-  ]
-}
+const form = ref({ username: '', password: '' })
 
 const handleLogin = async () => {
-  if (!formRef.value) return
-
+  if (!form.value.username || !form.value.password) return
+  loading.value = true
   try {
-    await formRef.value.validate()
-    loading.value = true
-
-    await userStore.login({
-      username: form.username,
-      password: form.password
-    })
-
+    // 调用 store 中的 login action
+    await userStore.login(form.value)
     ElMessage.success('登录成功')
-    router.push('/')
+    router.push('/dashboard')
   } catch (error: any) {
-    if (error instanceof Error) {
-      ElMessage.error(error.message || '登录失败')
-    }
+    console.error('Login failed:', error)
+    ElMessage.error(error.message || '登录失败，请检查账号密码')
   } finally {
     loading.value = false
   }
 }
-
-onMounted(() => {
-  // 如果已登录，直接跳转
-  if (userStore.isLoggedIn) {
-    router.push('/')
-  }
-})
 </script>
 
 <style scoped>
 .login-container {
-  position: relative;
-  width: 100%;
   height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  overflow: hidden;
-}
-
-.login-bg {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-}
-
-.bg-decoration {
-  position: absolute;
-  width: 200%;
-  height: 200%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 1px, transparent 1px);
-  background-size: 50px 50px;
-  animation: moveBackground 20s linear infinite;
-}
-
-@keyframes moveBackground {
-  0% {
-    transform: translate(0, 0);
-  }
-  100% {
-    transform: translate(50px, 50px);
-  }
-}
-
-.login-card {
   position: relative;
-  width: 420px;
-  padding: 48px;
-  background: white;
-  border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  z-index: 1;
-  animation: slideUp 0.6s ease-out;
+  overflow: hidden;
+  background: #f8fafc;
 }
 
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(30px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.background-blobs .blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.6;
+  animation: float 10s infinite ease-in-out;
 }
 
-.login-header {
+.blob-1 {
+  width: 500px;
+  height: 500px;
+  background: #818cf8;
+  top: -100px;
+  left: -100px;
+}
+
+.blob-2 {
+  width: 400px;
+  height: 400px;
+  background: #f472b6;
+  bottom: -50px;
+  right: -50px;
+  animation-delay: -5s;
+}
+
+.login-box {
+  display: flex;
+  width: 900px;
+  height: 520px;
+  z-index: 10;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+}
+
+.login-left {
+  flex: 1;
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  position: relative;
+}
+
+.brand {
   text-align: center;
-  margin-bottom: 40px;
+  z-index: 2;
 }
 
 .logo-icon {
-  color: #667eea;
+  font-size: 48px;
   margin-bottom: 16px;
+  background: rgba(255, 255, 255, 0.2);
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 20px;
+  backdrop-filter: blur(4px);
 }
 
-.login-title {
+.login-right {
+  flex: 1.2;
+  padding: 60px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.login-right h2 {
   font-size: 28px;
-  font-weight: 600;
-  color: #303133;
   margin-bottom: 8px;
+  color: #1e293b;
 }
 
-.login-subtitle {
-  font-size: 14px;
-  color: #909399;
-  letter-spacing: 2px;
+.subtitle {
+  color: #94a3b8;
+  margin-bottom: 40px;
 }
 
-.login-form {
-  margin-bottom: 24px;
-}
-
-.login-button {
+.submit-btn {
   width: 100%;
-  height: 48px;
+  margin-top: 10px;
+  height: 44px;
   font-size: 16px;
-  font-weight: 600;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border: none;
-  border-radius: 8px;
-  transition: transform 0.2s;
 }
 
-.login-button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 16px rgba(102, 126, 234, 0.4);
-}
-
-.login-button:active {
-  transform: translateY(0);
-}
-
-.login-tips {
+.footer-actions {
   margin-top: 24px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+.tip {
+  opacity: 0.7;
 }
 </style>

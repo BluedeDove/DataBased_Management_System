@@ -59,6 +59,17 @@ export function registerIpcHandlers() {
     }
   })
 
+  ipcMain.handle('auth:register', async (_, data) => {
+    try {
+      logger.info('用户注册IPC处理', data.username)
+      const user = await authService.register(data)
+      return { success: true, data: user } as SuccessResponse
+    } catch (error) {
+      logger.error('注册失败', error)
+      return errorHandler.handle(error)
+    }
+  })
+
   ipcMain.handle('auth:getUserPermissions', async (_, userId) => {
     try {
       const permissions = authService.getUserPermissions(userId)
@@ -205,6 +216,22 @@ export function registerIpcHandlers() {
     }
   })
 
+  ipcMain.handle('reader:delete', async (_, id: number) => {
+    console.log('========== [IPC] reader:delete 被调用 ==========')
+    console.log('[IPC] Reader ID:', id)
+    try {
+      console.log('[IPC] 调用 readerService.deleteReader...')
+      readerService.deleteReader(id)
+      console.log('[IPC] 删除成功')
+      return { success: true } as SuccessResponse
+    } catch (error) {
+      console.error('[IPC] 删除失败:', error)
+      return errorHandler.handle(error)
+    } finally {
+      console.log('========== [IPC] reader:delete 结束 ==========\n')
+    }
+  })
+
   ipcMain.handle('reader:canBorrow', async (_, id) => {
     try {
       const result = readerService.canBorrow(id)
@@ -294,11 +321,23 @@ export function registerIpcHandlers() {
   })
 
   ipcMain.handle('book:update', async (_, id, updates) => {
+    console.log('========== [IPC] book:update 被调用 ==========')
+    console.log('[IPC] 接收到的id:', id)
+    console.log('[IPC] 接收到的updates:', JSON.stringify(updates, null, 2))
     try {
+      console.log('[IPC] 准备调用 bookService.updateBook...')
       const book = bookService.updateBook(id, updates)
+      console.log('[IPC] bookService.updateBook 返回成功')
+      console.log('[IPC] 更新后的图书数据:', JSON.stringify(book, null, 2))
       return { success: true, data: book } as SuccessResponse
     } catch (error) {
+      console.error('[IPC] book:update 捕获错误:', error)
+      if (error instanceof Error) {
+        console.error('[IPC] 错误堆栈:', error.stack)
+      }
       return errorHandler.handle(error)
+    } finally {
+      console.log('========== [IPC] book:update 结束 ==========\n')
     }
   })
 
@@ -308,6 +347,22 @@ export function registerIpcHandlers() {
       return { success: true, data: book } as SuccessResponse
     } catch (error) {
       return errorHandler.handle(error)
+    }
+  })
+
+  ipcMain.handle('book:delete', async (_, id: number) => {
+    console.log('========== [IPC] book:delete 被调用 ==========')
+    console.log('[IPC] Book ID:', id)
+    try {
+      console.log('[IPC] 调用 bookService.deleteBook...')
+      bookService.deleteBook(id)
+      console.log('[IPC] 删除成功')
+      return { success: true } as SuccessResponse
+    } catch (error) {
+      console.error('[IPC] 删除失败:', error)
+      return errorHandler.handle(error)
+    } finally {
+      console.log('========== [IPC] book:delete 结束 ==========\n')
     }
   })
 
@@ -492,6 +547,31 @@ export function registerIpcHandlers() {
     }
   })
 
+  ipcMain.handle('borrowing:delete', async (_, id: number) => {
+    console.log('========== [IPC] borrowing:delete 被调用 ==========')
+    console.log('[IPC] Record ID:', id)
+    try {
+      console.log('[IPC] 调用 borrowingService.deleteRecord...')
+      borrowingService.deleteRecord(id)
+      console.log('[IPC] 删除成功')
+      return { success: true } as SuccessResponse
+    } catch (error) {
+      console.error('[IPC] 删除失败:', error)
+      return errorHandler.handle(error)
+    } finally {
+      console.log('========== [IPC] borrowing:delete 结束 ==========\n')
+    }
+  })
+
+  ipcMain.handle('borrowing:getTrend', async (_, days) => {
+    try {
+      const trend = borrowingService.getBorrowingTrend(days || 30)
+      return { success: true, data: trend } as SuccessResponse
+    } catch (error) {
+      return errorHandler.handle(error)
+    }
+  })
+
   // ============ AI功能相关 ============
   ipcMain.handle('ai:isAvailable', async () => {
     try {
@@ -538,12 +618,87 @@ export function registerIpcHandlers() {
     }
   })
 
+  // AI流式对话
+  ipcMain.on('ai:chatStream', async (event, { requestId, message, history, context }) => {
+    console.log('========== [IPC] ai:chatStream 被调用 ==========')
+    console.log('[IPC] Request ID:', requestId)
+    console.log('[IPC] Message:', message)
+    console.log('[IPC] History length:', history?.length || 0)
+
+    try {
+      console.log('[IPC] 准备调用 aiService.chatStream...')
+
+      await aiService.chatStream(
+        message,
+        history || [],
+        context,
+        // onChunk - 发送每个chunk到渲染进程
+        (chunk: string) => {
+          console.log(`[IPC] 转发chunk到渲染进程，长度: ${chunk.length}`)
+          event.sender.send(`ai:chatStream:chunk:${requestId}`, chunk)
+        },
+        // onError - 发送错误到渲染进程
+        (error: Error) => {
+          console.error('[IPC] 流式传输错误:', error.message)
+          event.sender.send(`ai:chatStream:error:${requestId}`, error.message)
+        },
+        // onComplete - 发送完成信号到渲染进程
+        () => {
+          console.log('[IPC] 流式传输完成，发送完成信号')
+          event.sender.send(`ai:chatStream:complete:${requestId}`)
+        }
+      )
+    } catch (error: any) {
+      console.error('[IPC] ai:chatStream 捕获错误:', error)
+      event.sender.send(`ai:chatStream:error:${requestId}`, error.message || '流式对话失败')
+    } finally {
+      console.log('========== [IPC] ai:chatStream 结束 ==========\n')
+    }
+  })
+
   ipcMain.handle('ai:recommendBooks', async (_, query, limit) => {
     try {
       const recommendation = await aiService.recommendBooks(query, limit)
       return { success: true, data: recommendation } as SuccessResponse
     } catch (error) {
       return errorHandler.handle(error)
+    }
+  })
+
+  // AI流式推荐
+  ipcMain.on('ai:recommendBooksStream', async (event, { requestId, query, limit }) => {
+    console.log('========== [IPC] ai:recommendBooksStream 被调用 ==========')
+    console.log('[IPC] Request ID:', requestId)
+    console.log('[IPC] Query:', query)
+    console.log('[IPC] Limit:', limit)
+
+    try {
+      console.log('[IPC] 准备调用 aiService.recommendBooksStream...')
+
+      await aiService.recommendBooksStream(
+        query,
+        limit || 5,
+        // onChunk - 发送每个chunk到渲染进程
+        (chunk: string) => {
+          console.log(`[IPC] 转发推荐chunk到渲染进程，长度: ${chunk.length}`)
+          event.sender.send(`ai:recommendBooksStream:chunk:${requestId}`, chunk)
+        },
+        // onError - 发送错误到渲染进程
+        (error: Error) => {
+          console.error('[IPC] 推荐流式传输错误:', error.message)
+          event.sender.send(`ai:recommendBooksStream:error:${requestId}`, error.message)
+        },
+        // onComplete - 发送完成信号到渲染进程
+        () => {
+          console.log('[IPC] 推荐流式传输完成，发送完成信号')
+          event.sender.send(`ai:recommendBooksStream:complete:${requestId}`)
+        }
+      )
+    } catch (error: any) {
+      console.error('[IPC] ai:recommendBooksStream 捕获错误:', error)
+      event.sender.send(`ai:recommendBooksStream:error:${requestId}`, error.message || '流式推荐失败')
+    } finally {
+      console.log('========== [IPC] ai:recommendBooksStream 结束 ==========\n')
     }
   })
 

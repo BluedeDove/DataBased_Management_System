@@ -18,7 +18,9 @@ export const useUserStore = defineStore('user', () => {
   const isAdmin = computed(() => user.value?.role === 'admin')
 
   async function login(credentials: { username: string; password: string }) {
-    const result = await window.api.auth.login(credentials)
+    // 确保传递给 IPC 的是纯对象，去除 Vue 的响应式代理
+    const plainCredentials = { ...credentials }
+    const result = await window.api.auth.login(plainCredentials)
     if (result.success) {
       user.value = result.data.user
       token.value = result.data.token

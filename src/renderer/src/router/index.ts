@@ -10,6 +10,12 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: false }
   },
   {
+    path: '/register',
+    name: 'Register',
+    component: () => import('@/views/Register.vue'),
+    meta: { requiresAuth: false }
+  },
+  {
     path: '/',
     component: Layout,
     redirect: '/dashboard',
@@ -75,6 +81,15 @@ router.beforeEach((to, _from, next) => {
   } else if (to.path === '/login' && userStore.isLoggedIn) {
     next('/')
   } else {
+    // 权限检查
+    if (to.meta.roles && userStore.user) {
+      const allowedRoles = to.meta.roles as string[]
+      if (!allowedRoles.includes(userStore.user.role)) {
+        // 没有权限，重定向到无权限页面或Dashboard
+        next('/dashboard')
+        return
+      }
+    }
     next()
   }
 })

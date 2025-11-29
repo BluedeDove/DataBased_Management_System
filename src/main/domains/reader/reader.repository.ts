@@ -231,6 +231,19 @@ export class ReaderRepository {
     return result.count > 0
   }
 
+  // 删除读者
+  delete(id: number): void {
+    console.log('[Repository] 开始删除读者数据，ID:', id)
+    const stmt = db.prepare('DELETE FROM readers WHERE id = ?')
+    const result = stmt.run(id)
+
+    if (result.changes === 0) {
+      console.error('[Repository] 读者不存在，ID:', id)
+      throw new NotFoundError('读者')
+    }
+    console.log('[Repository] 删除成功，影响行数:', result.changes)
+  }
+
   // 生成下一个读者编号
   generateNextReaderNo(categoryId: number): string {
     const category = this.findCategoryById(categoryId)

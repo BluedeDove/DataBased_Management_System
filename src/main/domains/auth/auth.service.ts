@@ -1,5 +1,5 @@
 import { UserRepository, User } from './user.repository'
-import { ReaderRepository } from '../reader/reader.repository'
+//import { ReaderRepository } from '../reader/reader.repository'
 import { AuthenticationError, ValidationError } from '../../lib/errorHandler'
 import { logger } from '../../lib/logger'
 import { db } from '../../database'
@@ -27,7 +27,7 @@ export interface RegisterData {
 
 export class AuthService {
   private userRepository = new UserRepository()
-  private readerRepository = new ReaderRepository()
+  //private readerRepository = new ReaderRepository()
   private sessions = new Map<string, number>() // token -> userId
 
   async login(credentials: LoginCredentials): Promise<AuthResult> {

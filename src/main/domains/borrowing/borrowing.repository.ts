@@ -213,4 +213,38 @@ export class BorrowingRepository {
     `)
     return stmt.get() as any
   }
+
+  // 删除借阅记录
+  delete(id: number): void {
+    console.log('[Repository] 开始删除借阅记录，ID:', id)
+    const stmt = db.prepare('DELETE FROM borrowing_records WHERE id = ?')
+    const result = stmt.run(id)
+
+    if (result.changes === 0) {
+      console.error('[Repository] 借阅记录不存在，ID:', id)
+      throw new NotFoundError('借阅记录')
+    }
+    console.log('[Repository] 删除成功，影响行数:', result.changes)
+  }
+
+  // 获取借阅趋势数据（最近30天）
+  getBorrowingTrend(days: number = 30): Array<{ date: string; count: number }> {
+    const stmt = db.prepare(`
+      WITH RECURSIVE dates(date) AS (
+        SELECT date('now', 'localtime')
+        UNION ALL
+        SELECT date(date, '-1 day')
+        FROM dates
+        WHERE date > date('now', 'localtime', '-${days} days')
+      )
+      SELECT
+        dates.date as date,
+        COALESCE(COUNT(br.id), 0) as count
+      FROM dates
+      LEFT JOIN borrowing_records br ON date(br.borrow_date) = dates.date
+      GROUP BY dates.date
+      ORDER BY dates.date ASC
+    `)
+    return stmt.all() as Array<{ date: string; count: number }>
+  }
 }

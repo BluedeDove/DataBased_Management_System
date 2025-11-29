@@ -56,7 +56,7 @@ export class SqlSearchService {
       // 获取列名
       let columns: string[] = []
       if (limitedRows.length > 0) {
-        columns = Object.keys(limitedRows[0])
+        columns = Object.keys(limitedRows[0] as object)
       }
 
       const result: QueryResult = {

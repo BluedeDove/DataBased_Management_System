@@ -119,16 +119,29 @@ export class BookService {
   }
 
   updateBook(id: number, updates: Partial<Book>): Book {
+    console.log('========== [后端Service] 开始更新图书 ==========')
+    console.log('[后端Service] 图书ID:', id)
+    console.log('[后端Service] 更新数据:', JSON.stringify(updates, null, 2))
+
+    console.log('[后端Service] 查询现有图书信息...')
     const existing = this.getBookById(id)
+    console.log('[后端Service] 现有图书:', existing.title)
 
     // 如果更新了总数量，需要相应调整可借数量
     if (updates.total_quantity !== undefined) {
+      console.log('[后端Service] 检测到总数量更新')
       const diff = updates.total_quantity - existing.total_quantity
       updates.available_quantity = Math.max(0, existing.available_quantity + diff)
+      console.log('[后端Service] 总数量变化:', diff)
+      console.log('[后端Service] 新的可借数量:', updates.available_quantity)
     }
 
+    console.log('[后端Service] 调用repository.update更新数据库...')
     logger.info('更新图书信息', existing.title)
-    return this.bookRepository.update(id, updates)
+    const result = this.bookRepository.update(id, updates)
+    console.log('[后端Service] 更新成功，返回结果')
+    console.log('========== [后端Service] 图书更新结束 ==========\n')
+    return result
   }
 
   // 增加馆藏（同一本书增加复本）
@@ -285,6 +298,34 @@ export class BookService {
     `)
 
     return stmt.all() as Array<{ category_name: string; book_count: number; available_count: number }>
+  }
+
+  // 删除图书
+  deleteBook(id: number): void {
+    console.log('========== [Service] 开始删除图书 ==========')
+    console.log('[Service] Book ID:', id)
+
+    const book = this.getBookById(id)
+    console.log('[Service] 图书信息:', { title: book.title, isbn: book.isbn })
+
+    // 检查是否有借出的记录
+    console.log('[Service] 检查借阅记录...')
+    const borrowingStmt = db.prepare(`
+      SELECT COUNT(*) as count FROM borrowing_records
+      WHERE book_id = ? AND status IN ('borrowed', 'overdue')
+    `)
+    const result = borrowingStmt.get(id) as { count: number }
+    console.log('[Service] 未归还借阅记录数:', result.count)
+
+    if (result.count > 0) {
+      console.error('[Service] 删除失败：该图书还有未归还的借阅记录')
+      throw new BusinessError(`该图书还有${result.count}条未归还的借阅记录，无法删除`)
+    }
+
+    console.log('[Service] 调用repository.delete删除数据...')
+    this.bookRepository.delete(id)
+    logger.warn('删除图书', { id, title: book.title, isbn: book.isbn })
+    console.log('========== [Service] 删除图书结束 ==========\n')
   }
 }
 

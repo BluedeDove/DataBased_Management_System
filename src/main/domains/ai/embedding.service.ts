@@ -13,9 +13,9 @@ export interface EmbeddingResult {
 }
 
 export class EmbeddingService {
-  private apiKey: string
-  private baseURL: string
-  private model: string
+  private apiKey!: string
+  private baseURL!: string
+  private model!: string
   private configService = new ConfigService()
 
   constructor() {
@@ -78,7 +78,7 @@ export class EmbeddingService {
             'Authorization': `Bearer ${this.apiKey}`,
             'Content-Type': 'application/json'
           },
-          timeout: 30000
+          timeout: 120000
         }
       )
 
@@ -111,7 +111,7 @@ export class EmbeddingService {
             'Authorization': `Bearer ${this.apiKey}`,
             'Content-Type': 'application/json'
           },
-          timeout: 60000
+          timeout: 120000
         }
       )
 

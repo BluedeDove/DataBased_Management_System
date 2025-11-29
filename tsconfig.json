@@ -21,6 +21,8 @@
       "@main/*": ["src/main/*"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue"],
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue","src/renderer/src/**/*.ts",
+    "src/renderer/src/**/*.d.ts", 
+    "src/renderer/src/**/*.vue"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

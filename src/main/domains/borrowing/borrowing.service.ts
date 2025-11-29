@@ -5,6 +5,7 @@ import { ValidationError, BusinessError, BorrowLimitError, StockUnavailableError
 import { logger } from '../../lib/logger'
 import { config } from '../../config'
 import { db } from '../../database'
+import { NotFoundError } from '../../lib/errorHandler' 
 
 export class BorrowingService {
   private borrowingRepository = new BorrowingRepository()
@@ -305,5 +306,36 @@ export class BorrowingService {
       LIMIT ?
     `)
     return stmt.all(limit) as any
+  }
+
+  // 删除借阅记录
+  deleteRecord(id: number): void {
+    console.log('========== [Service] 开始删除借阅记录 ==========')
+    console.log('[Service] Record ID:', id)
+
+    const record = this.borrowingRepository.findById(id)
+    if (!record) {
+      console.error('[Service] 借阅记录不存在:', id)
+      throw new NotFoundError('借阅记录')
+    }
+    console.log('[Service] 借阅记录信息:', { reader_id: record.reader_id, book_id: record.book_id, status: record.status })
+
+    // 只能删除已归还的记录
+    console.log('[Service] 检查记录状态...')
+    if (record.status !== 'returned') {
+      console.error('[Service] 删除失败：只能删除已归还的借阅记录，当前状态:', record.status)
+      throw new BusinessError('只能删除已归还的借阅记录')
+    }
+
+    console.log('[Service] 调用repository.delete删除数据...')
+    this.borrowingRepository.delete(id)
+    logger.warn('删除借阅记录', { id, reader_id: record.reader_id, book_id: record.book_id })
+    console.log('========== [Service] 删除借阅记录结束 ==========\n')
+  }
+
+  // 获取借阅趋势
+  getBorrowingTrend(days: number = 30): Array<{ date: string; count: number }> {
+    logger.info('获取借阅趋势', { days })
+    return this.borrowingRepository.getBorrowingTrend(days)
   }
 }

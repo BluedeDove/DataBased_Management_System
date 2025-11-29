@@ -1,483 +1,351 @@
 <template>
-  <div class="page-container">
-    <div class="page-header">
-      <h1 class="page-title">AI 智能助手</h1>
-      <p class="page-description">智能图书推荐和语义搜索</p>
-    </div>
-
-    <!-- AI状态提示 -->
-    <el-alert
-      v-if="!aiAvailable"
-      type="warning"
-      title="AI服务未配置"
-      description="请在.env文件中配置OPENAI_API_KEY以启用AI功能"
-      :closable="false"
-      style="margin-bottom: 20px"
-    />
-
-    <el-tabs v-model="activeTab" v-if="aiAvailable">
-      <!-- 语义搜索 -->
-      <el-tab-pane label="语义搜索" name="search">
-        <div class="ai-section">
-          <el-input
-            v-model="searchQuery"
-            placeholder="描述你想找的书，例如：关于人工智能和机器学习的入门书籍"
-            type="textarea"
-            :rows="3"
-            @keyup.ctrl.enter="handleSemanticSearch"
-          />
-          <el-button
-            type="primary"
-            :loading="searchLoading"
-            style="margin-top: 12px"
-            @click="handleSemanticSearch"
-          >
-            <el-icon><Search /></el-icon>
-            智能搜索
-          </el-button>
-
-          <div v-if="searchResults.length > 0" class="search-results">
-            <h3>搜索结果</h3>
-            <el-card
-              v-for="(result, index) in searchResults"
-              :key="result.bookId"
-              class="result-card"
-              shadow="hover"
-            >
-              <div class="result-header">
-                <span class="result-rank">#{{ index + 1 }}</span>
-                <span class="result-similarity">
-                  相关度: {{ (result.similarity * 100).toFixed(1) }}%
-                </span>
-              </div>
-              <h4 class="result-title">{{ result.title }}</h4>
-              <p class="result-author">作者: {{ result.author }}</p>
-              <p class="result-desc">{{ result.description || '暂无简介' }}</p>
-              <el-button type="primary" link @click="viewBookDetail(result.bookId)">
-                查看详情
-              </el-button>
-            </el-card>
-          </div>
-        </div>
-      </el-tab-pane>
-
-      <!-- 智能推荐 -->
-      <el-tab-pane label="智能推荐" name="recommend">
-        <div class="ai-section">
-          <el-input
-            v-model="recommendQuery"
-            placeholder="告诉我你的阅读需求，例如：我想提升编程能力，有哪些推荐？"
-            type="textarea"
-            :rows="3"
-            @keyup.ctrl.enter="handleRecommend"
-          />
-          <el-button
-            type="primary"
-            :loading="recommendLoading"
-            style="margin-top: 12px"
-            @click="handleRecommend"
-          >
+  <div class="page-container ai-container">
+    <div class="chat-window glass-card">
+      <div class="chat-header">
+        <div class="header-content">
+          <div class="icon-wrapper">
             <el-icon><MagicStick /></el-icon>
-            获取推荐
-          </el-button>
-
-          <div v-if="recommendation" class="recommendation">
-            <h3>AI 推荐</h3>
-            <div class="markdown-content" v-html="renderMarkdown(recommendation)"></div>
+          </div>
+          <div>
+            <h3>智能图书助手</h3>
+            <p>我可以为您推荐图书、查询信息或解答疑问</p>
           </div>
         </div>
-      </el-tab-pane>
+        <el-tag type="info" effect="plain" round>Powered by AI</el-tag>
+      </div>
 
-      <!-- AI 对话 -->
-      <el-tab-pane label="AI 对话" name="chat">
-        <div class="chat-container">
-          <div class="chat-messages" ref="messagesRef">
-            <div
-              v-for="(msg, index) in chatMessages"
-              :key="index"
-              :class="['chat-message', msg.role]"
-            >
-              <div class="message-avatar">
-                <el-icon v-if="msg.role === 'user'" :size="24"><User /></el-icon>
-                <el-icon v-else :size="24"><Robot /></el-icon>
-              </div>
-              <div class="message-content">
-                <div class="message-text" v-html="renderMarkdown(msg.content)"></div>
-              </div>
+      <div class="chat-messages" ref="messagesRef">
+        <div v-for="(msg, index) in chatHistory" :key="index" 
+             class="message-row" :class="msg.role">
+          <div class="avatar">
+            <el-icon v-if="msg.role === 'assistant'"><Service /></el-icon>
+            <el-icon v-else><User /></el-icon>
+          </div>
+          <div class="bubble">
+            <div v-if="msg.loading" class="typing-indicator">
+              <span></span><span></span><span></span>
             </div>
-          </div>
-
-          <div class="chat-input">
-            <el-input
-              v-model="chatInput"
-              placeholder="输入消息... (Ctrl+Enter发送)"
-              type="textarea"
-              :rows="3"
-              :disabled="chatLoading"
-              @keyup.ctrl.enter="handleSendChat"
-            />
-            <el-button
-              type="primary"
-              :loading="chatLoading"
-              @click="handleSendChat"
-            >
-              发送
-            </el-button>
+            <div v-else v-html="formatContent(msg.content)"></div>
           </div>
         </div>
-      </el-tab-pane>
+      </div>
 
-      <!-- 向量管理 -->
-      <el-tab-pane label="向量管理" name="vectors">
-        <div class="ai-section">
-          <el-descriptions title="向量数据库状态" :column="2" border>
-            <el-descriptions-item label="已向量化图书">
-              {{ vectorStats.totalVectors }}
-            </el-descriptions-item>
-            <el-descriptions-item label="覆盖率">
-              {{ vectorStats.coverageRate.toFixed(1) }}%
-            </el-descriptions-item>
-          </el-descriptions>
-
-          <div style="margin-top: 20px">
-            <el-button
-              type="primary"
-              :loading="vectorLoading"
-              @click="handleBatchCreateVectors"
-            >
-              <el-icon><Upload /></el-icon>
-              批量生成向量
-            </el-button>
-            <el-text type="info" style="margin-left: 12px">
-              将为所有未向量化的图书生成向量（需要API密钥）
-            </el-text>
-          </div>
+      <div class="chat-input-area">
+        <div class="tools-bar">
+          <el-tooltip content="根据描述推荐图书" placement="top">
+            <el-button size="small" circle :icon="Reading" @click="triggerTool('recommend')" />
+          </el-tooltip>
+          <el-button size="small" round @click="setInput('最近有什么新书？')">📚 新书推荐</el-button>
+          <el-button size="small" round @click="setInput('适合初学者的Python书')">🐍 Python入门</el-button>
         </div>
-      </el-tab-pane>
-    </el-tabs>
+        <div class="input-wrapper">
+          <el-input
+            v-model="inputMessage"
+            type="textarea"
+            :rows="2"
+            placeholder="输入您的问题，按 Enter 发送..."
+            @keydown.enter.prevent="sendMessage"
+            :disabled="loading"
+          />
+          <el-button type="primary" :loading="loading" @click="sendMessage" class="send-btn">
+            发送
+          </el-button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, nextTick } from 'vue'
+import { ref, nextTick, onMounted } from 'vue'
+import { MagicStick, User, Service, Reading } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 
-const activeTab = ref('search')
-const aiAvailable = ref(false)
+interface Message {
+  role: 'user' | 'assistant'
+  content: string
+  loading?: boolean
+}
 
-// 语义搜索
-const searchQuery = ref('')
-const searchLoading = ref(false)
-const searchResults = ref<any[]>([])
+const inputMessage = ref('')
+const loading = ref(false)
+const messagesRef = ref<HTMLElement | null>(null)
+const chatHistory = ref<Message[]>([
+  { role: 'assistant', content: '你好！我是图书馆智能助手。你可以问我关于馆藏图书的问题，或者让我为你推荐书籍。' }
+])
 
-// 智能推荐
-const recommendQuery = ref('')
-const recommendLoading = ref(false)
-const recommendation = ref('')
+const setInput = (text: string) => {
+  inputMessage.value = text
+}
 
-// AI对话
-const chatMessages = ref<Array<{ role: 'user' | 'assistant'; content: string }>>([])
-const chatInput = ref('')
-const chatLoading = ref(false)
-const messagesRef = ref<HTMLElement>()
-
-// 向量管理
-const vectorStats = reactive({
-  totalVectors: 0,
-  coverageRate: 0
-})
-const vectorLoading = ref(false)
-
-// 检查AI可用性
-const checkAIAvailability = async () => {
-  const result = await window.api.ai.isAvailable()
-  if (result.success) {
-    aiAvailable.value = result.data
+const triggerTool = (tool: string) => {
+  if (tool === 'recommend') {
+    inputMessage.value = '请为我推荐几本关于...的书'
   }
 }
 
-// 渲染Markdown
-const renderMarkdown = (text: string): string => {
-  const html = marked(text) as string
-  return DOMPurify.sanitize(html)
-}
-
-// 语义搜索
-const handleSemanticSearch = async () => {
-  if (!searchQuery.value.trim()) {
-    ElMessage.warning('请输入搜索内容')
-    return
-  }
-
-  searchLoading.value = true
-  try {
-    const result = await window.api.ai.semanticSearch(searchQuery.value, 10)
-    if (result.success) {
-      searchResults.value = result.data
-      if (result.data.length === 0) {
-        ElMessage.info('未找到相关图书，请尝试其他关键词')
-      }
-    } else {
-      ElMessage.error(result.error?.message || '搜索失败')
+const scrollToBottom = () => {
+  nextTick(() => {
+    if (messagesRef.value) {
+      messagesRef.value.scrollTop = messagesRef.value.scrollHeight
     }
-  } catch (error) {
-    ElMessage.error('搜索失败')
-  } finally {
-    searchLoading.value = false
-  }
+  })
 }
 
-// 智能推荐
-const handleRecommend = async () => {
-  if (!recommendQuery.value.trim()) {
-    ElMessage.warning('请描述您的需求')
-    return
-  }
-
-  recommendLoading.value = true
-  try {
-    const result = await window.api.ai.recommendBooks(recommendQuery.value, 5)
-    if (result.success) {
-      recommendation.value = result.data
-    } else {
-      ElMessage.error(result.error?.message || '推荐失败')
-    }
-  } catch (error) {
-    ElMessage.error('推荐失败')
-  } finally {
-    recommendLoading.value = false
-  }
+const formatContent = (content: string) => {
+  const html = marked(content)
+  return DOMPurify.sanitize(html as string)
 }
 
-// 发送聊天消息
-const handleSendChat = async () => {
-  if (!chatInput.value.trim()) return
+const sendMessage = async () => {
+  const text = inputMessage.value.trim()
+  if (!text || loading.value) return
 
-  const userMessage = chatInput.value.trim()
-  chatMessages.value.push({ role: 'user', content: userMessage })
-  chatInput.value = ''
+  // Add user message
+  chatHistory.value.push({ role: 'user', content: text })
+  inputMessage.value = ''
+  loading.value = true
+  scrollToBottom()
 
-  chatLoading.value = true
-  await nextTick()
+  // Add placeholder for AI response
+  const aiMsgIndex = chatHistory.value.push({ role: 'assistant', content: '', loading: true }) - 1
   scrollToBottom()
 
   try {
-    const history = chatMessages.value.slice(0, -1)
-    const result = await window.api.ai.chat(userMessage, history)
-
-    if (result.success) {
-      chatMessages.value.push({ role: 'assistant', content: result.data })
-      await nextTick()
-      scrollToBottom()
+    // 简化处理：如果由推荐需求，调用推荐接口；否则调用普通对话
+    // 这里为了演示Agent能力，可以做简单的意图识别（实际应由后端Agent完成）
+    const isRecommendation = text.includes('推荐') || text.includes('书') || text.includes('找')
+    
+    if (isRecommendation) {
+      // 调用流式推荐
+      await new Promise<void>((resolve, reject) => {
+        let fullContent = ''
+        const cleanup = window.api.ai.recommendBooksStream(
+          text,
+          3, // limit
+          (chunk) => {
+            chatHistory.value[aiMsgIndex].loading = false
+            fullContent += chunk
+            chatHistory.value[aiMsgIndex].content = fullContent
+            scrollToBottom()
+          },
+          (error) => {
+            console.error(error)
+            reject(new Error(error))
+          },
+          () => {
+            resolve()
+          }
+        )
+      })
     } else {
-      ElMessage.error(result.error?.message || '对话失败')
+      // 普通闲聊
+      await new Promise<void>((resolve, reject) => {
+        let fullContent = ''
+        // 这里调用普通chatStream，需确保preload暴露了这个方法
+        // 假设我们可以重用 recommendBooksStream 或者 backend 的 chatStream
+        // 由于 ai.service.ts 暴露了 chatStream，我们需要确保 preload 也暴露了
+        
+        // 检查 preload 是否有 chatStream (我们在前面分析过，preload 确实有 chatStream)
+        const cleanup = window.api.ai.chatStream(
+          text,
+          [], // history
+          undefined, // context
+          (chunk) => {
+            chatHistory.value[aiMsgIndex].loading = false
+            fullContent += chunk
+            chatHistory.value[aiMsgIndex].content = fullContent
+            scrollToBottom()
+          },
+          (error) => reject(new Error(error)),
+          () => resolve()
+        )
+      })
     }
-  } catch (error) {
-    ElMessage.error('对话失败')
+  } catch (error: any) {
+    chatHistory.value[aiMsgIndex].content = `抱歉，遇到了一些问题：${error.message || '网络请求超时'}`
+    chatHistory.value[aiMsgIndex].loading = false
   } finally {
-    chatLoading.value = false
+    loading.value = false
+    scrollToBottom()
   }
 }
-
-// 滚动到底部
-const scrollToBottom = () => {
-  if (messagesRef.value) {
-    messagesRef.value.scrollTop = messagesRef.value.scrollHeight
-  }
-}
-
-// 查看图书详情
-const viewBookDetail = (bookId: number) => {
-  ElMessage.info(`查看图书 ID: ${bookId}`)
-}
-
-// 批量生成向量
-const handleBatchCreateVectors = async () => {
-  try {
-    await ElMessage.confirm(
-      '批量生成向量需要调用AI API，可能需要较长时间并产生费用，确定继续吗？',
-      '提示'
-    )
-
-    vectorLoading.value = true
-
-    // 获取所有图书
-    const booksResult = await window.api.book.getAll()
-    if (!booksResult.success) {
-      ElMessage.error('获取图书列表失败')
-      return
-    }
-
-    const bookIds = booksResult.data.map((book: any) => book.id)
-    const result = await window.api.ai.batchCreateEmbeddings(bookIds)
-
-    if (result.success) {
-      ElMessage.success('向量生成完成')
-      loadVectorStats()
-    } else {
-      ElMessage.error(result.error?.message || '生成失败')
-    }
-  } catch (error) {
-    // 用户取消
-  } finally {
-    vectorLoading.value = false
-  }
-}
-
-// 加载向量统计
-const loadVectorStats = async () => {
-  const result = await window.api.ai.getStatistics()
-  if (result.success) {
-    Object.assign(vectorStats, result.data)
-  }
-}
-
-onMounted(() => {
-  checkAIAvailability()
-  loadVectorStats()
-})
 </script>
 
 <style scoped>
-.ai-section {
-  padding: 24px;
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+.ai-container {
+  height: calc(100vh - 48px); /* Subtract padding */
+  padding: 0;
+  display: flex;
+  justify-content: center;
+  overflow: hidden; /* Prevent outer scroll */
 }
 
-.search-results {
-  margin-top: 24px;
+.chat-window {
+  width: 100%;
+  max-width: 900px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.85); /* Opaque for readability */
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
 }
 
-.result-card {
-  margin-top: 16px;
-}
-
-.result-header {
+.chat-header {
+  padding: 20px;
+  border-bottom: 1px solid rgba(0,0,0,0.05);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  background: rgba(255,255,255,0.5);
 }
 
-.result-rank {
-  font-size: 20px;
-  font-weight: 600;
-  color: #409eff;
-}
-
-.result-similarity {
-  font-size: 12px;
-  color: #67c23a;
-  padding: 4px 12px;
-  background: #f0f9ff;
-  border-radius: 12px;
-}
-
-.result-title {
-  font-size: 18px;
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-
-.result-author {
-  color: #606266;
-  margin-bottom: 8px;
-}
-
-.result-desc {
-  color: #909399;
-  margin-bottom: 12px;
-}
-
-.recommendation {
-  margin-top: 24px;
-  padding: 20px;
-  background: #f5f7fa;
-  border-radius: 8px;
-}
-
-.markdown-content {
-  line-height: 1.8;
-}
-
-.markdown-content :deep(h1),
-.markdown-content :deep(h2),
-.markdown-content :deep(h3) {
-  margin-top: 16px;
-  margin-bottom: 12px;
-}
-
-.markdown-content :deep(p) {
-  margin-bottom: 12px;
-}
-
-.markdown-content :deep(ul),
-.markdown-content :deep(ol) {
-  padding-left: 24px;
-  margin-bottom: 12px;
-}
-
-.chat-container {
-  height: calc(100vh - 300px);
+.header-content {
   display: flex;
-  flex-direction: column;
-  background: white;
+  align-items: center;
+  gap: 16px;
+}
+
+.icon-wrapper {
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, #6366f1, #ec4899);
   border-radius: 12px;
-  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 24px;
+}
+
+.chat-header h3 {
+  margin: 0 0 4px 0;
+  font-size: 18px;
+}
+
+.chat-header p {
+  margin: 0;
+  font-size: 13px;
+  color: #64748b;
 }
 
 .chat-messages {
   flex: 1;
-  padding: 20px;
   overflow-y: auto;
-}
-
-.chat-message {
+  padding: 20px;
   display: flex;
-  gap: 12px;
-  margin-bottom: 20px;
+  flex-direction: column;
+  gap: 24px;
+  scroll-behavior: smooth;
 }
 
-.chat-message.user {
+.message-row {
+  display: flex;
+  gap: 16px;
+  max-width: 85%;
+}
+
+.message-row.user {
+  align-self: flex-end;
   flex-direction: row-reverse;
 }
 
-.message-avatar {
-  width: 40px;
-  height: 40px;
+.avatar {
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
+  background: #e2e8f0;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #409eff;
-  color: white;
   flex-shrink: 0;
 }
 
-.chat-message.assistant .message-avatar {
-  background: #67c23a;
+.assistant .avatar {
+  background: #e0e7ff;
+  color: #4f46e5;
 }
 
-.message-content {
-  max-width: 70%;
+.user .avatar {
+  background: #fce7f3;
+  color: #db2777;
+}
+
+.bubble {
   padding: 12px 16px;
   border-radius: 12px;
-  background: #f5f7fa;
+  background: white;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  font-size: 15px;
+  line-height: 1.6;
 }
 
-.chat-message.user .message-content {
-  background: #409eff;
+.user .bubble {
+  background: #4f46e5;
   color: white;
+  border-bottom-right-radius: 4px;
 }
 
-.chat-input {
+.assistant .bubble {
+  background: white;
+  border-top-left-radius: 4px;
+}
+
+.chat-input-area {
   padding: 20px;
-  border-top: 1px solid #dcdfe6;
+  background: white;
+  border-top: 1px solid rgba(0,0,0,0.05);
+}
+
+.tools-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  overflow-x: auto;
+}
+
+.input-wrapper {
   display: flex;
   gap: 12px;
+  align-items: flex-end;
 }
+
+.input-wrapper :deep(.el-textarea__inner) {
+  resize: none; /* Disable resize */
+  border-radius: 12px;
+}
+
+.send-btn {
+  height: 52px;
+  padding: 0 24px;
+  font-size: 16px;
+}
+
+/* Typing Indicator */
+.typing-indicator span {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  background-color: #94a3b8;
+  border-radius: 50%;
+  animation: bounce 1.4s infinite ease-in-out both;
+  margin: 0 2px;
+}
+
+.typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+.typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes bounce {
+  0%, 80%, 100% { transform: scale(0); }
+  40% { transform: scale(1); }
+}
+
+/* Markdown Styles */
+ :deep(.bubble p) { margin: 0 0 8px 0; }
+ :deep(.bubble p:last-child) { margin: 0; }
+ :deep(.bubble ul), :deep(.bubble ol) { padding-left: 20px; margin: 8px 0; }
 </style>

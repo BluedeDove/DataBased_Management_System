@@ -238,6 +238,34 @@ export class ReaderService {
       overdueCount: stats.overdue_count || 0
     }
   }
+
+  // 删除读者
+  deleteReader(id: number): void {
+    console.log('========== [Service] 开始删除读者 ==========')
+    console.log('[Service] Reader ID:', id)
+
+    const reader = this.getReaderById(id)
+    console.log('[Service] 读者信息:', { name: reader.name, reader_no: reader.reader_no })
+
+    // 检查是否有未归还的借阅记录
+    console.log('[Service] 检查借阅记录...')
+    const borrowingStmt = db.prepare(`
+      SELECT COUNT(*) as count FROM borrowing_records
+      WHERE reader_id = ? AND status IN ('borrowed', 'overdue')
+    `)
+    const result = borrowingStmt.get(id) as { count: number }
+    console.log('[Service] 未归还借阅记录数:', result.count)
+
+    if (result.count > 0) {
+      console.error('[Service] 删除失败：该读者还有未归还的借阅记录')
+      throw new BusinessError(`该读者还有${result.count}条未归还的借阅记录，无法删除`)
+    }
+
+    console.log('[Service] 调用repository.delete删除数据...')
+    this.readerRepository.delete(id)
+    logger.warn('删除读者', { id, name: reader.name, reader_no: reader.reader_no })
+    console.log('========== [Service] 删除读者结束 ==========\n')
+  }
 }
 
 // 导入 db 用于统计查询

@@ -10,6 +10,15 @@ export interface ElectronAPI {
     changePassword: (userId: number, oldPassword: string, newPassword: string) => Promise<any>
     getUserPermissions: (userId: number) => Promise<any>
     checkPermission: (userId: number, permission: string) => Promise<any>
+    register: (data: {
+      username: string
+      password: string
+      name: string
+      identity: 'teacher' | 'student'
+      id_card: string
+      phone: string
+      email?: string
+    }) => Promise<any>
   }
 
   // 读者种类
@@ -33,6 +42,7 @@ export interface ElectronAPI {
     renew: (id: number, days: number) => Promise<any>
     canBorrow: (id: number) => Promise<any>
     getStatistics: (id: number) => Promise<any>
+    delete: (id: number) => Promise<any>
   }
 
   // 图书类别
@@ -59,6 +69,7 @@ export interface ElectronAPI {
     getPopular: (limit?: number) => Promise<any>
     getNew: (limit?: number) => Promise<any>
     getCategoryStatistics: () => Promise<any>
+    delete: (id: number) => Promise<any>
   }
 
   // 借阅
@@ -74,6 +85,8 @@ export interface ElectronAPI {
     getBookHistory: (bookId: number) => Promise<any>
     getPopular: (limit?: number) => Promise<any>
     getActiveReaders: (limit?: number) => Promise<any>
+    delete: (id: number) => Promise<any>
+    getTrend: (days?: number) => Promise<any>
   }
 
   // AI功能
@@ -83,7 +96,22 @@ export interface ElectronAPI {
     batchCreateEmbeddings: (bookIds: number[]) => Promise<any>
     semanticSearch: (query: string, topK?: number) => Promise<any>
     chat: (message: string, history?: any[], context?: string) => Promise<any>
+    chatStream: (
+      message: string,
+      history: any[],
+      context: string | undefined,
+      onChunk: (chunk: string) => void,
+      onError: (error: string) => void,
+      onComplete: () => void
+    ) => () => void
     recommendBooks: (query: string, limit?: number) => Promise<any>
+    recommendBooksStream: (
+      query: string,
+      limit: number,
+      onChunk: (chunk: string) => void,
+      onError: (error: string) => void,
+      onComplete: () => void
+    ) => () => void
     getStatistics: () => Promise<any>
   }
 
@@ -119,7 +147,8 @@ const api: ElectronAPI = {
       ipcRenderer.invoke('auth:changePassword', userId, oldPassword, newPassword),
     getUserPermissions: (userId) => ipcRenderer.invoke('auth:getUserPermissions', userId),
     checkPermission: (userId, permission) =>
-      ipcRenderer.invoke('auth:checkPermission', userId, permission)
+      ipcRenderer.invoke('auth:checkPermission', userId, permission),
+    register: (data) => ipcRenderer.invoke('auth:register', data)
   },
 
   readerCategory: {
@@ -140,7 +169,8 @@ const api: ElectronAPI = {
     activate: (id) => ipcRenderer.invoke('reader:activate', id),
     renew: (id, days) => ipcRenderer.invoke('reader:renew', id, days),
     canBorrow: (id) => ipcRenderer.invoke('reader:canBorrow', id),
-    getStatistics: (id) => ipcRenderer.invoke('reader:getStatistics', id)
+    getStatistics: (id) => ipcRenderer.invoke('reader:getStatistics', id),
+    delete: (id) => ipcRenderer.invoke('reader:delete', id)
   },
 
   bookCategory: {
@@ -164,7 +194,8 @@ const api: ElectronAPI = {
     getBorrowingStatus: (id) => ipcRenderer.invoke('book:getBorrowingStatus', id),
     getPopular: (limit) => ipcRenderer.invoke('book:getPopular', limit),
     getNew: (limit) => ipcRenderer.invoke('book:getNew', limit),
-    getCategoryStatistics: () => ipcRenderer.invoke('book:getCategoryStatistics')
+    getCategoryStatistics: () => ipcRenderer.invoke('book:getCategoryStatistics'),
+    delete: (id) => ipcRenderer.invoke('book:delete', id)
   },
 
   borrowing: {
@@ -178,7 +209,9 @@ const api: ElectronAPI = {
     getReaderHistory: (readerId) => ipcRenderer.invoke('borrowing:getReaderHistory', readerId),
     getBookHistory: (bookId) => ipcRenderer.invoke('borrowing:getBookHistory', bookId),
     getPopular: (limit) => ipcRenderer.invoke('borrowing:getPopular', limit),
-    getActiveReaders: (limit) => ipcRenderer.invoke('borrowing:getActiveReaders', limit)
+    getActiveReaders: (limit) => ipcRenderer.invoke('borrowing:getActiveReaders', limit),
+    delete: (id) => ipcRenderer.invoke('borrowing:delete', id),
+    getTrend: (days) => ipcRenderer.invoke('borrowing:getTrend', days)
   },
 
   ai: {
@@ -187,7 +220,85 @@ const api: ElectronAPI = {
     batchCreateEmbeddings: (bookIds) => ipcRenderer.invoke('ai:batchCreateEmbeddings', bookIds),
     semanticSearch: (query, topK) => ipcRenderer.invoke('ai:semanticSearch', query, topK),
     chat: (message, history, context) => ipcRenderer.invoke('ai:chat', message, history, context),
+    chatStream: (message, history, context, onChunk, onError, onComplete) => {
+      // 生成唯一的请求ID
+      const requestId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+      console.log('[Preload] 创建流式聊天请求，ID:', requestId)
+
+      // 注册监听器
+      const chunkListener = (_event: any, chunk: string) => {
+        console.log('[Preload] 收到chunk，长度:', chunk.length)
+        onChunk(chunk)
+      }
+      const errorListener = (_event: any, error: string) => {
+        console.error('[Preload] 收到错误:', error)
+        onError(error)
+      }
+      const completeListener = () => {
+        console.log('[Preload] 流式传输完成')
+        onComplete()
+        // 自动清理监听器
+        cleanup()
+      }
+
+      ipcRenderer.on(`ai:chatStream:chunk:${requestId}`, chunkListener)
+      ipcRenderer.on(`ai:chatStream:error:${requestId}`, errorListener)
+      ipcRenderer.on(`ai:chatStream:complete:${requestId}`, completeListener)
+
+      // 发送请求
+      console.log('[Preload] 发送流式聊天请求到主进程')
+      ipcRenderer.send('ai:chatStream', { requestId, message, history, context })
+
+      // 返回清理函数
+      const cleanup = () => {
+        console.log('[Preload] 清理流式聊天监听器')
+        ipcRenderer.removeListener(`ai:chatStream:chunk:${requestId}`, chunkListener)
+        ipcRenderer.removeListener(`ai:chatStream:error:${requestId}`, errorListener)
+        ipcRenderer.removeListener(`ai:chatStream:complete:${requestId}`, completeListener)
+      }
+
+      return cleanup
+    },
     recommendBooks: (query, limit) => ipcRenderer.invoke('ai:recommendBooks', query, limit),
+    recommendBooksStream: (query, limit, onChunk, onError, onComplete) => {
+      // 生成唯一的请求ID
+      const requestId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+      console.log('[Preload] 创建流式推荐请求，ID:', requestId)
+
+      // 注册监听器
+      const chunkListener = (_event: any, chunk: string) => {
+        console.log('[Preload] 收到推荐chunk，长度:', chunk.length)
+        onChunk(chunk)
+      }
+      const errorListener = (_event: any, error: string) => {
+        console.error('[Preload] 收到推荐错误:', error)
+        onError(error)
+      }
+      const completeListener = () => {
+        console.log('[Preload] 流式推荐完成')
+        onComplete()
+        // 自动清理监听器
+        cleanup()
+      }
+
+      ipcRenderer.on(`ai:recommendBooksStream:chunk:${requestId}`, chunkListener)
+      ipcRenderer.on(`ai:recommendBooksStream:error:${requestId}`, errorListener)
+      ipcRenderer.on(`ai:recommendBooksStream:complete:${requestId}`, completeListener)
+
+      // 发送请求
+      console.log('[Preload] 发送流式推荐请求到主进程')
+      ipcRenderer.send('ai:recommendBooksStream', { requestId, query, limit })
+
+      // 返回清理函数
+      const cleanup = () => {
+        console.log('[Preload] 清理流式推荐监听器')
+        ipcRenderer.removeListener(`ai:recommendBooksStream:chunk:${requestId}`, chunkListener)
+        ipcRenderer.removeListener(`ai:recommendBooksStream:error:${requestId}`, errorListener)
+        ipcRenderer.removeListener(`ai:recommendBooksStream:complete:${requestId}`, completeListener)
+      }
+
+      return cleanup
+    },
     getStatistics: () => ipcRenderer.invoke('ai:getStatistics')
   },
 

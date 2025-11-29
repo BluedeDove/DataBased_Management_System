@@ -40,10 +40,11 @@
             <el-tag v-else type="warning">过期</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" fixed="right" width="200">
+        <el-table-column label="操作" fixed="right" width="250">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="handleEdit(row)">编辑</el-button>
             <el-button type="success" link size="small" @click="handleRenew(row)">续期</el-button>
+            <el-button type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -188,6 +189,45 @@ const handleRenew = async (row: any) => {
   } catch (error) {}
 }
 
+const handleDelete = async (row: any) => {
+  console.log('========== [前端] 开始删除读者 ==========')
+  console.log('[前端] 读者信息:', { id: row.id, name: row.name, reader_no: row.reader_no })
+
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除读者 "${row.name}" (${row.reader_no}) 吗？如果该读者有未归还的借阅记录，将无法删除。`,
+      '删除确认',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    console.log('[前端] 用户确认删除')
+
+    console.log('[前端] 调用delete API...')
+    const result = await window.api.reader.delete(row.id)
+    console.log('[前端] API返回结果:', result)
+
+    if (result.success) {
+      console.log('[前端] 删除成功')
+      ElMessage.success('删除成功')
+      loadReaders()
+    } else {
+      console.error('[前端] 删除失败:', result.error)
+      ElMessage.error(result.error?.message || '删除失败')
+    }
+  } catch (error: any) {
+    console.error('[前端] 删除出错:', error)
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error(error.message || '删除失败')
+    } else {
+      console.log('[前端] 用户取消删除')
+    }
+  }
+  console.log('========== [前端] 删除读者结束 ==========\n')
+}
+
 const handleSubmit = async () => {
   console.log('========== [前端] 开始提交读者表单 ==========')
   console.log('[前端] 当前表单数据:', JSON.parse(JSON.stringify(form)))
@@ -202,9 +242,12 @@ const handleSubmit = async () => {
     console.log('[前端] 表单验证通过')
 
     console.log('[前端] 准备调用API...')
+    // 将响应式对象转换为普通对象，否则IPC无法克隆
+    const plainData = JSON.parse(JSON.stringify(form))
+    console.log('[前端] 转换为普通对象:', plainData)
     const result = editingReader.value
-      ? await window.api.reader.update(editingReader.value.id, form)
-      : await window.api.reader.create(form)
+      ? await window.api.reader.update(editingReader.value.id, plainData)
+      : await window.api.reader.create(plainData)
 
     console.log('[前端] API调用返回结果:', result)
 

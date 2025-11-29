@@ -1,191 +1,100 @@
 <template>
   <el-container class="layout-container">
-    <!-- 侧边栏 -->
-    <el-aside :width="isCollapse ? '64px' : '240px'" class="sidebar">
-      <div class="logo-container">
-        <el-icon v-if="isCollapse" class="logo-icon" :size="32"><Reading /></el-icon>
-        <template v-else>
-          <el-icon class="logo-icon" :size="32"><Reading /></el-icon>
-          <span class="logo-text">智能图书馆</span>
-        </template>
+    <el-aside width="240px" class="glass-sidebar">
+      <div class="logo-area">
+        <el-icon :size="24" color="#6366f1">
+          <Reading />
+        </el-icon>
+        <span class="app-name">智能图书馆</span>
       </div>
 
-      <el-menu
-        :default-active="activeMenu"
-        :collapse="isCollapse"
-        :collapse-transition="false"
-        class="sidebar-menu"
-        router
-      >
-        <el-menu-item
-          v-for="route in menuRoutes"
-          :key="route.path"
-          :index="'/' + route.path"
-        >
-          <el-icon><component :is="route.meta?.icon" /></el-icon>
-          <template #title>{{ route.meta?.title }}</template>
+      <el-menu :default-active="route.path" router class="custom-menu" background-color="transparent"
+        text-color="#64748b" active-text-color="#6366f1">
+        <el-menu-item index="/dashboard">
+          <el-icon>
+            <Odometer />
+          </el-icon><span>控制台</span>
+        </el-menu-item>
+        <el-menu-item index="/books">
+          <el-icon>
+            <Collection />
+          </el-icon><span>图书管理</span>
+        </el-menu-item>
+        <el-menu-item index="/ai-assistant">
+          <el-icon>
+            <MagicStick />
+          </el-icon><span>AI 助手</span>
+        </el-menu-item>
+        <el-menu-item v-if="hasPermission(['admin', 'librarian'])" index="/readers">
+          <el-icon>
+            <User />
+          </el-icon><span>读者管理</span>
+        </el-menu-item>
+        <el-menu-item index="/borrowing">
+          <el-icon>
+            <Notebook />
+          </el-icon><span>借阅管理</span>
+        </el-menu-item>
+        <el-menu-item v-if="hasPermission(['admin', 'librarian'])" index="/statistics">
+          <el-icon>
+            <TrendCharts />
+          </el-icon><span>统计分析</span>
+        </el-menu-item>
+        <el-menu-item v-if="hasPermission(['admin', 'librarian'])" index="/settings">
+          <el-icon>
+            <Setting />
+          </el-icon><span>系统设置</span>
         </el-menu-item>
       </el-menu>
     </el-aside>
 
-    <!-- 主内容区 -->
-    <el-container class="main-container">
-      <!-- 顶部导航 -->
-      <el-header class="header">
-        <div class="header-left">
-          <el-button
-            :icon="isCollapse ? 'Expand' : 'Fold'"
-            circle
-            @click="isCollapse = !isCollapse"
-          />
-          <el-breadcrumb separator="/">
-            <el-breadcrumb-item>{{ currentPageTitle }}</el-breadcrumb-item>
-          </el-breadcrumb>
-        </div>
-
-        <div class="header-right">
-          <el-dropdown @command="handleCommand">
-            <div class="user-info">
-              <el-avatar :size="36">{{ userStore.user?.name?.charAt(0) }}</el-avatar>
-              <span class="user-name">{{ userStore.user?.name }}</span>
-              <el-icon><ArrowDown /></el-icon>
-            </div>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="profile">
-                  <el-icon><User /></el-icon>
-                  个人资料
-                </el-dropdown-item>
-                <el-dropdown-item command="changePassword">
-                  <el-icon><Lock /></el-icon>
-                  修改密码
-                </el-dropdown-item>
-                <el-dropdown-item divided command="logout">
-                  <el-icon><SwitchButton /></el-icon>
-                  退出登录
-                </el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
+    <el-container>
+      <el-header class="glass-header">
+        <div class="header-content">
+          <h2 class="current-title">{{ route.meta.title || '首页' }}</h2>
+          <div class="user-profile">
+            <el-avatar :size="36" class="user-avatar">{{ userStore.user?.name?.charAt(0) }}</el-avatar>
+            <span class="username">{{ userStore.user?.name }}</span>
+            <el-button link type="danger" @click="logout">退出</el-button>
+          </div>
         </div>
       </el-header>
 
-      <!-- 内容区 -->
-      <el-main class="content">
+      <el-main class="main-content">
+        <!-- 核心：过渡动画 + 缓存 -->
         <router-view v-slot="{ Component }">
-          <transition name="fade-transform" mode="out-in">
-            <component :is="Component" />
+          <transition name="fade-slide" mode="out-in">
+            <keep-alive include="AIAssistant">
+              <component :is="Component" />
+            </keep-alive>
           </transition>
         </router-view>
       </el-main>
     </el-container>
   </el-container>
-
-  <!-- 修改密码对话框 -->
-  <el-dialog v-model="showChangePassword" title="修改密码" width="400px">
-    <el-form :model="passwordForm" label-width="100px">
-      <el-form-item label="原密码">
-        <el-input v-model="passwordForm.oldPassword" type="password" show-password />
-      </el-form-item>
-      <el-form-item label="新密码">
-        <el-input v-model="passwordForm.newPassword" type="password" show-password />
-      </el-form-item>
-      <el-form-item label="确认密码">
-        <el-input v-model="passwordForm.confirmPassword" type="password" show-password />
-      </el-form-item>
-    </el-form>
-    <template #footer>
-      <el-button @click="showChangePassword = false">取消</el-button>
-      <el-button type="primary" @click="handleChangePassword">确定</el-button>
-    </template>
-  </el-dialog>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+// 路径修正：@ 指向 src/renderer/src，文件夹是 store
 import { useUserStore } from '@/store/user'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { Reading, Odometer, Collection, MagicStick, User, Notebook, TrendCharts, Setting } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
+import { computed } from 'vue'
 const userStore = useUserStore()
 
-const isCollapse = ref(false)
-const showChangePassword = ref(false)
-const passwordForm = ref({
-  oldPassword: '',
-  newPassword: '',
-  confirmPassword: ''
-})
-
-const menuRoutes = computed(() => {
-  const allRoutes = router.getRoutes().find(r => r.path === '/')?.children || []
+// 权限检查
+const hasPermission = (roles: string[]) => {
   const userRole = userStore.user?.role
-
-  // 根据用户角色过滤菜单
-  return allRoutes.filter(route => {
-    const roles = route.meta?.roles as string[] | undefined
-    if (!roles || roles.length === 0) return true
-    return roles.includes(userRole || '')
-  })
-})
-
-const activeMenu = computed(() => route.path)
-const currentPageTitle = computed(() => route.meta?.title as string || '')
-
-const handleCommand = (command: string) => {
-  switch (command) {
-    case 'profile':
-      ElMessage.info('个人资料功能开发中')
-      break
-    case 'changePassword':
-      showChangePassword.value = true
-      break
-    case 'logout':
-      handleLogout()
-      break
-  }
+  if (!userRole) return false
+  return roles.includes(userRole)
 }
 
-const handleChangePassword = async () => {
-  if (!passwordForm.value.oldPassword || !passwordForm.value.newPassword) {
-    ElMessage.warning('请填写完整')
-    return
-  }
-
-  if (passwordForm.value.newPassword !== passwordForm.value.confirmPassword) {
-    ElMessage.warning('两次密码不一致')
-    return
-  }
-
-  try {
-    await userStore.changePassword(
-      passwordForm.value.oldPassword,
-      passwordForm.value.newPassword
-    )
-    ElMessage.success('密码修改成功，请重新登录')
-    showChangePassword.value = false
-    handleLogout()
-  } catch (error: any) {
-    ElMessage.error(error.message || '修改密码失败')
-  }
-}
-
-const handleLogout = async () => {
-  try {
-    await ElMessageBox.confirm('确定要退出登录吗？', '提示', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning'
-    })
-
-    await userStore.logout()
-    router.push('/login')
-    ElMessage.success('已退出登录')
-  } catch (error) {
-    // 用户取消
-  }
+const logout = async () => {
+  await userStore.logout()
+  router.push('/login')
 }
 </script>
 
@@ -194,114 +103,80 @@ const handleLogout = async () => {
   height: 100vh;
 }
 
-.sidebar {
-  background: #001529;
-  transition: width 0.3s;
-  overflow: hidden;
+.glass-sidebar {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(10px);
+  border-right: 1px solid rgba(255, 255, 255, 0.6);
+  display: flex;
+  flex-direction: column;
 }
 
-.logo-container {
-  height: 64px;
+.logo-area {
+  height: 60px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  padding: 0 20px;
-  background: rgba(255, 255, 255, 0.05);
+  gap: 10px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #333;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
 }
 
-.logo-icon {
-  color: #1890ff;
+.custom-menu {
+  border-right: none;
+  padding: 10px;
 }
 
-.logo-text {
+.custom-menu :deep(.el-menu-item) {
+  border-radius: 8px;
+  margin-bottom: 4px;
+}
+
+.custom-menu :deep(.el-menu-item.is-active) {
+  background: rgba(99, 102, 241, 0.1);
+  font-weight: 600;
+}
+
+.glass-header {
+  height: 64px;
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.5);
+  padding: 0 24px;
+}
+
+.header-content {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.current-title {
   font-size: 18px;
   font-weight: 600;
-  color: white;
-  white-space: nowrap;
+  color: #1e293b;
+  margin: 0;
 }
 
-.sidebar-menu {
-  border-right: none;
-  background: #001529;
+.user-profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
-.sidebar-menu :deep(.el-menu-item) {
-  color: rgba(255, 255, 255, 0.65);
-}
-
-.sidebar-menu :deep(.el-menu-item:hover) {
-  background: rgba(255, 255, 255, 0.08);
+.user-avatar {
+  background: linear-gradient(135deg, #6366f1, #818cf8);
   color: white;
 }
 
-.sidebar-menu :deep(.el-menu-item.is-active) {
-  background: #1890ff;
-  color: white;
-}
-
-.main-container {
-  background: #f0f2f5;
-}
-
-.header {
-  background: white;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0 20px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.user-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background 0.3s;
-}
-
-.user-info:hover {
-  background: #f5f7fa;
-}
-
-.user-name {
+.username {
   font-size: 14px;
   font-weight: 500;
 }
 
-.content {
-  padding: 24px;
-  overflow-y: auto;
-}
-
-/* 页面过渡动画 */
-.fade-transform-leave-active,
-.fade-transform-enter-active {
-  transition: all 0.3s;
-}
-
-.fade-transform-enter-from {
-  opacity: 0;
-  transform: translateX(-30px);
-}
-
-.fade-transform-leave-to {
-  opacity: 0;
-  transform: translateX(30px);
+.main-content {
+  padding: 0;
 }
 </style>

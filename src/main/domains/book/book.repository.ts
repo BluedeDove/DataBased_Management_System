@@ -197,6 +197,10 @@ export class BookRepository {
   }
 
   update(id: number, updates: Partial<Book>): Book {
+    console.log('========== [Repository] 开始数据库更新 ==========')
+    console.log('[Repository] 图书ID:', id)
+    console.log('[Repository] 更新字段:', Object.keys(updates))
+
     const fields: string[] = []
     const values: any[] = []
 
@@ -204,17 +208,33 @@ export class BookRepository {
       if (key !== 'id' && key !== 'isbn' && key !== 'created_at' && key !== 'updated_at') {
         fields.push(`${key} = ?`)
         values.push(updates[key as keyof Book])
+        console.log(`[Repository] 添加字段: ${key} = ${updates[key as keyof Book]}`)
       }
     })
+
+    console.log('[Repository] 构建的SQL字段:', fields.join(', '))
+    console.log('[Repository] SQL参数值:', values)
 
     if (fields.length > 0) {
       fields.push('updated_at = CURRENT_TIMESTAMP')
       values.push(id)
-      db.prepare(`UPDATE books SET ${fields.join(', ')} WHERE id = ?`).run(...values)
+      const sql = `UPDATE books SET ${fields.join(', ')} WHERE id = ?`
+      console.log('[Repository] 完整SQL语句:', sql)
+      console.log('[Repository] 执行UPDATE...')
+      db.prepare(sql).run(...values)
+      console.log('[Repository] UPDATE执行成功')
+    } else {
+      console.log('[Repository] 警告：没有字段需要更新')
     }
 
+    console.log('[Repository] 查询更新后的图书数据...')
     const updated = this.findById(id)
-    if (!updated) throw new NotFoundError('图书')
+    if (!updated) {
+      console.error('[Repository] 错误：更新后查询不到图书！')
+      throw new NotFoundError('图书')
+    }
+    console.log('[Repository] 查询成功，返回更新后的数据')
+    console.log('========== [Repository] 数据库更新结束 ==========\n')
     return updated
   }
 
@@ -368,5 +388,18 @@ export class BookRepository {
     // 格式化为6位数字
     const sequenceStr = sequence.toString().padStart(6, '0')
     return `${prefix}${sequenceStr}`
+  }
+
+  // 删除图书
+  delete(id: number): void {
+    console.log('[Repository] 开始删除图书数据，ID:', id)
+    const stmt = db.prepare('DELETE FROM books WHERE id = ?')
+    const result = stmt.run(id)
+
+    if (result.changes === 0) {
+      console.error('[Repository] 图书不存在，ID:', id)
+      throw new NotFoundError('图书')
+    }
+    console.log('[Repository] 删除成功，影响行数:', result.changes)
   }
 }

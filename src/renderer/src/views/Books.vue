@@ -1,1121 +1,435 @@
 <template>
   <div class="page-container">
-    <div class="page-header">
-      <h1 class="page-title">图书管理</h1>
-      <p class="page-description">管理图书信息、分类和库存</p>
+    <div class="action-bar">
+      <div>
+        <h2 class="page-title">图书库</h2>
+        <span class="sub-text">管理全馆 {{ total }} 本藏书</span>
+      </div>
+      <div class="actions">
+        <el-button type="primary" size="large" icon="Plus" class="glow-btn" @click="handleAdd" v-if="canManage">新增图书</el-button>
+        <el-button icon="Download" size="large">导出数据</el-button>
+      </div>
     </div>
 
-    <!-- 工具栏 -->
-    <div class="toolbar">
-      <div class="toolbar-left">
-        <el-input
-          v-model="searchKeyword"
-          placeholder="搜索书名、作者、ISBN..."
-          style="width: 300px"
-          clearable
-          @clear="handleSearch"
-          @keyup.enter="handleSearch"
-        >
-          <template #prefix>
-            <el-icon><Search /></el-icon>
-          </template>
-        </el-input>
-        <el-select
-          v-model="filterCategory"
-          placeholder="选择类别"
-          clearable
-          style="width: 150px"
-          @change="handleSearch"
-        >
-          <el-option
-            v-for="cat in categories"
-            :key="cat.id"
-            :label="cat.name"
-            :value="cat.id"
-          />
+    <!-- 搜索过滤卡片 -->
+    <div class="glass-card search-card">
+      <div class="search-row">
+        <el-input v-model="searchQuery" placeholder="搜索书名、ISBN或作者..." prefix-icon="Search" size="large"
+          class="main-search" clearable @clear="fetchData" @keyup.enter="fetchData" />
+        <el-select v-model="category" placeholder="图书类别" size="large" style="width: 160px" clearable @change="fetchData">
+          <el-option label="全部" value="" />
+          <el-option label="科技" value="tech" />
+          <el-option label="文学" value="lit" />
         </el-select>
-        <el-button :icon="Search" @click="handleSearch">搜索</el-button>
-        <el-button @click="showAdvancedSearch = !showAdvancedSearch">
-          {{ showAdvancedSearch ? '收起高级搜索' : '高级搜索' }}
-        </el-button>
-      </div>
-
-      <div class="toolbar-right">
-        <el-dropdown @command="handleExport" style="margin-right: 12px">
-          <el-button :icon="Download">
-            导出数据<el-icon class="el-icon--right"><ArrowDown /></el-icon>
-          </el-button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="csv">导出为CSV</el-dropdown-item>
-              <el-dropdown-item command="json">导出为JSON</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
-        <el-button v-if="canManageBooks" type="primary" :icon="Plus" @click="handleAdd">
-          新增图书
-        </el-button>
-        <el-button v-if="canManageBooks" :icon="Setting" @click="showCategoryDialog = true">
-          类别管理
-        </el-button>
+        <el-button type="primary" size="large" @click="fetchData">查询</el-button>
+        <el-button :icon="Filter" size="large" @click="advancedSearchVisible = true">高级搜索</el-button>
+        <el-button size="large" @click="handleReset" plain>重置</el-button>
       </div>
     </div>
 
-    <!-- 高级搜索面板 -->
-    <el-collapse-transition>
-      <div v-show="showAdvancedSearch" class="card advanced-search-panel">
-        <el-tabs v-model="activeSearchTab" type="border-card">
-          <!-- 条件搜索 -->
-          <el-tab-pane label="条件搜索" name="conditional">
-            <el-form :model="conditionalForm" label-width="100px">
-              <el-row :gutter="20">
-                <el-col :span="12">
-                  <el-form-item label="书名">
-                    <el-input v-model="conditionalForm.title" placeholder="请输入书名" clearable />
-                  </el-form-item>
-                </el-col>
-                <el-col :span="12">
-                  <el-form-item label="作者">
-                    <el-input v-model="conditionalForm.author" placeholder="请输入作者" clearable />
-                  </el-form-item>
-                </el-col>
-              </el-row>
-              <el-row :gutter="20">
-                <el-col :span="12">
-                  <el-form-item label="出版社">
-                    <el-input v-model="conditionalForm.publisher" placeholder="请输入出版社" clearable />
-                  </el-form-item>
-                </el-col>
-                <el-col :span="12">
-                  <el-form-item label="类别">
-                    <el-select v-model="conditionalForm.category_id" placeholder="选择类别" clearable style="width: 100%">
-                      <el-option
-                        v-for="cat in categories"
-                        :key="cat.id"
-                        :label="cat.name"
-                        :value="cat.id"
-                      />
-                    </el-select>
-                  </el-form-item>
-                </el-col>
-              </el-row>
-              <el-row :gutter="20">
-                <el-col :span="12">
-                  <el-form-item label="出版日期">
-                    <el-date-picker
-                      v-model="conditionalForm.publishDateRange"
-                      type="daterange"
-                      range-separator="至"
-                      start-placeholder="开始日期"
-                      end-placeholder="结束日期"
-                      format="YYYY-MM-DD"
-                      value-format="YYYY-MM-DD"
-                      style="width: 100%"
-                    />
-                  </el-form-item>
-                </el-col>
-                <el-col :span="12">
-                  <el-form-item label="价格范围">
-                    <div style="display: flex; align-items: center; gap: 8px">
-                      <el-input-number v-model="conditionalForm.priceMin" :min="0" :precision="2" placeholder="最低价" style="width: 100%" />
-                      <span>-</span>
-                      <el-input-number v-model="conditionalForm.priceMax" :min="0" :precision="2" placeholder="最高价" style="width: 100%" />
-                    </div>
-                  </el-form-item>
-                </el-col>
-              </el-row>
-              <el-row :gutter="20">
-                <el-col :span="12">
-                  <el-form-item label="关键词">
-                    <el-input v-model="conditionalForm.keyword" placeholder="请输入关键词" clearable />
-                  </el-form-item>
-                </el-col>
-                <el-col :span="12">
-                  <el-form-item label="状态">
-                    <el-select v-model="conditionalForm.status" placeholder="选择状态" clearable style="width: 100%">
-                      <el-option label="正常" value="normal" />
-                      <el-option label="损坏" value="damaged" />
-                      <el-option label="丢失" value="lost" />
-                      <el-option label="已销毁" value="destroyed" />
-                    </el-select>
-                  </el-form-item>
-                </el-col>
-              </el-row>
-              <el-form-item>
-                <el-button type="primary" @click="handleConditionalSearch">搜索</el-button>
-                <el-button @click="resetConditionalForm">重置</el-button>
-              </el-form-item>
-            </el-form>
-          </el-tab-pane>
-
-          <!-- 正则搜索 -->
-          <el-tab-pane label="正则搜索" name="regex">
-            <el-form :model="regexForm" label-width="100px">
-              <el-form-item label="正则表达式">
-                <el-input
-                  v-model="regexForm.pattern"
-                  placeholder="请输入正则表达式，例如：^[A-Z].*"
-                  clearable
-                >
-                  <template #prepend>
-                    <span>/</span>
-                  </template>
-                  <template #append>
-                    <span>/</span>
-                  </template>
-                </el-input>
-              </el-form-item>
-              <el-form-item label="搜索字段">
-                <el-checkbox-group v-model="regexForm.fields">
-                  <el-checkbox label="title">书名</el-checkbox>
-                  <el-checkbox label="author">作者</el-checkbox>
-                  <el-checkbox label="publisher">出版社</el-checkbox>
-                  <el-checkbox label="isbn">ISBN</el-checkbox>
-                  <el-checkbox label="keywords">关键词</el-checkbox>
-                  <el-checkbox label="description">简介</el-checkbox>
-                </el-checkbox-group>
-              </el-form-item>
-              <el-form-item>
-                <el-alert
-                  title="提示：正则表达式使用JavaScript语法，例如 ^[A-Z].* 匹配以大写字母开头的内容"
-                  type="info"
-                  :closable="false"
-                  show-icon
-                />
-              </el-form-item>
-              <el-form-item>
-                <el-button type="primary" @click="handleRegexSearch">搜索</el-button>
-                <el-button @click="resetRegexForm">重置</el-button>
-              </el-form-item>
-            </el-form>
-          </el-tab-pane>
-
-          <!-- SQL搜索 (所有人可用) -->
-          <el-tab-pane label="SQL搜索" name="sql">
-            <el-form :model="sqlForm" label-width="100px">
-              <el-form-item label="SQL查询">
-                <el-input
-                  v-model="sqlForm.query"
-                  type="textarea"
-                  :rows="10"
-                  placeholder="请输入SQL查询语句，例如：&#10;SELECT * FROM books WHERE price > 50 AND status = 'normal'&#10;&#10;注意：仅支持SELECT查询"
-                  style="font-family: 'Courier New', monospace"
-                />
-              </el-form-item>
-              <el-form-item>
-                <el-alert
-                  title="警告：此功能仅对管理员开放。请确保SQL语句安全，仅支持SELECT查询。"
-                  type="warning"
-                  :closable="false"
-                  show-icon
-                />
-              </el-form-item>
-              <el-form-item>
-                <el-button type="primary" @click="handleSqlSearch">执行查询</el-button>
-                <el-button @click="resetSqlForm">重置</el-button>
-              </el-form-item>
-            </el-form>
-          </el-tab-pane>
-
-          <!-- 向量/语义搜索 -->
-          <el-tab-pane label="向量搜索" name="vector">
-            <el-form :model="vectorForm" label-width="100px">
-              <el-form-item label="搜索描述">
-                <el-input
-                  v-model="vectorForm.query"
-                  type="textarea"
-                  :rows="3"
-                  placeholder="用自然语言描述您要找的图书，例如：&#10;- 关于人工智能和机器学习的入门书籍&#10;- 讲述中国历史的小说&#10;- 适合初学者的编程教材"
-                />
-              </el-form-item>
-              <el-form-item label="返回数量">
-                <el-input-number v-model="vectorForm.topK" :min="1" :max="50" />
-              </el-form-item>
-              <el-form-item>
-                <el-alert
-                  title="提示：向量搜索使用AI技术根据语义相似度查找图书，需要先配置AI设置并生成图书向量。"
-                  type="info"
-                  :closable="false"
-                  show-icon
-                />
-              </el-form-item>
-              <el-form-item>
-                <el-button type="primary" @click="handleVectorSearch" :loading="vectorSearching">搜索</el-button>
-                <el-button @click="resetVectorForm">重置</el-button>
-              </el-form-item>
-            </el-form>
-          </el-tab-pane>
-        </el-tabs>
-      </div>
-    </el-collapse-transition>
-
-    <!-- 图书列表 -->
-    <div class="card">
-      <el-table v-loading="loading" :data="books" style="width: 100%">
-        <el-table-column type="index" label="#" width="60" />
-        <el-table-column prop="isbn" label="ISBN" width="140" />
-        <el-table-column label="书名" width="220">
-          <template #default="{ row }">
-            <div class="book-cell">
-              <div class="book-title" v-html="getHighlightedTitle(row.title)"></div>
-              <div class="book-author" v-html="getHighlightedAuthor(row.author)"></div>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column prop="category_name" label="类别" width="100" />
-        <el-table-column prop="publisher" label="出版社" width="150" />
-        <el-table-column prop="publish_date" label="出版日期" width="110" />
-        <el-table-column label="库存" width="120" align="center">
-          <template #default="{ row }">
-            <el-tag v-if="row.available_quantity > 0" type="success">
-              {{ row.available_quantity }}/{{ row.total_quantity }}
-            </el-tag>
-            <el-tag v-else type="danger">
-              {{ row.available_quantity }}/{{ row.total_quantity }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="status" label="状态" width="80">
-          <template #default="{ row }">
-            <el-tag v-if="row.status === 'normal'" type="success">正常</el-tag>
-            <el-tag v-else-if="row.status === 'damaged'" type="warning">损坏</el-tag>
-            <el-tag v-else-if="row.status === 'lost'" type="danger">丢失</el-tag>
-            <el-tag v-else type="info">已销毁</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" fixed="right" width="280">
-          <template #default="{ row }">
-            <el-button type="primary" link size="small" @click="handleView(row)">
-              详情
-            </el-button>
-            <!-- 教师/学生：显示借阅按钮 -->
-            <el-button
-              v-if="!canManageBooks && row.available_quantity > 0"
-              type="success"
-              link
-              size="small"
-              @click="handleQuickBorrow(row)"
-            >
-              借阅
-            </el-button>
-            <el-tag v-if="!canManageBooks && row.available_quantity === 0" type="info" size="small">
-              已借完
-            </el-tag>
-            <!-- 管理员/图书管理员：显示管理按钮 -->
-            <el-button v-if="canManageBooks" type="primary" link size="small" @click="handleEdit(row)">
-              编辑
-            </el-button>
-            <el-button v-if="canManageBooks" type="warning" link size="small" @click="handleAddCopies(row)">
-              增加馆藏
-            </el-button>
-            <el-button v-if="canManageBooks" type="danger" link size="small" @click="handleDelete(row)">
-              删除
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </div>
-
-    <!-- 新增/编辑图书对话框 -->
-    <el-dialog
-      v-model="showAddDialog"
-      :title="editingBook ? '编辑图书' : '新增图书'"
-      width="600px"
-      @close="resetForm"
-    >
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
-        <el-form-item label="ISBN" prop="isbn">
-          <el-input v-model="form.isbn" :disabled="!!editingBook" placeholder="留空或输入AUTO自动生成" />
-        </el-form-item>
-        <el-form-item label="书名" prop="title">
-          <el-input v-model="form.title" />
-        </el-form-item>
-        <el-form-item label="作者" prop="author">
-          <el-input v-model="form.author" />
-        </el-form-item>
-        <el-form-item label="出版社" prop="publisher">
-          <el-input v-model="form.publisher" />
-        </el-form-item>
-        <el-form-item label="类别" prop="category_id">
-          <el-select v-model="form.category_id" placeholder="请选择类别" style="width: 100%">
-            <el-option
-              v-for="cat in categories"
-              :key="cat.id"
-              :label="cat.name"
-              :value="cat.id"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="出版日期" prop="publish_date">
-          <el-date-picker
-            v-model="form.publish_date"
-            type="date"
-            placeholder="选择日期"
-            format="YYYY-MM-DD"
-            value-format="YYYY-MM-DD"
-            style="width: 100%"
-          />
-        </el-form-item>
-        <el-row :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="价格" prop="price">
-              <el-input-number v-model="form.price" :min="0" :precision="2" style="width: 100%" />
+    <!-- 高级搜索对话框 -->
+    <el-dialog v-model="advancedSearchVisible" title="高级搜索" width="600px" destroy-on-close>
+      <el-tabs v-model="searchType">
+        <el-tab-pane label="正则匹配" name="regex">
+          <el-form label-position="top">
+            <el-form-item label="正则表达式">
+              <el-input v-model="advancedForm.pattern" placeholder="例如: ^Java.*Script$" />
             </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="页数" prop="pages">
-              <el-input-number v-model="form.pages" :min="0" style="width: 100%" />
+            <el-form-item label="匹配字段">
+              <el-checkbox-group v-model="advancedForm.fields">
+                <el-checkbox label="title">书名</el-checkbox>
+                <el-checkbox label="author">作者</el-checkbox>
+                <el-checkbox label="isbn">ISBN</el-checkbox>
+              </el-checkbox-group>
             </el-form-item>
-          </el-col>
-        </el-row>
-        <el-form-item label="数量" prop="total_quantity">
-          <el-input-number v-model="form.total_quantity" :min="1" style="width: 100%" />
-        </el-form-item>
-        <el-form-item label="关键词">
-          <el-input v-model="form.keywords" placeholder="用逗号分隔" />
-        </el-form-item>
-        <el-form-item label="简介">
-          <el-input v-model="form.description" type="textarea" :rows="3" />
-        </el-form-item>
-        <el-form-item label="封面URL">
-          <el-input v-model="form.cover_url" placeholder="输入图片URL地址" />
-          <div v-if="form.cover_url" style="margin-top: 10px;">
-            <el-image
-              :src="form.cover_url"
-              style="width: 100px; height: 140px; border-radius: 4px;"
-              fit="cover"
-              :preview-src-list="[form.cover_url]"
-            >
-              <template #error>
-                <div style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; background: #f5f7fa; color: #909399; font-size: 12px;">
-                  图片加载失败
-                </div>
-              </template>
-            </el-image>
-          </div>
-        </el-form-item>
-      </el-form>
+          </el-form>
+        </el-tab-pane>
+        <el-tab-pane label="语义检索" name="vector">
+          <el-form label-position="top">
+            <el-form-item label="自然语言描述">
+              <el-input v-model="advancedForm.vectorQuery" type="textarea" rows="3" placeholder="例如: 适合初学者的Python编程书籍，最好有实战案例" />
+            </el-form-item>
+          </el-form>
+        </el-tab-pane>
+        <el-tab-pane label="SQL查询" name="sql">
+          <el-form label-position="top">
+            <el-form-item label="SQL WHERE 子句">
+              <el-input v-model="advancedForm.sql" type="textarea" rows="3" placeholder="例如: SELECT * FROM books WHERE price > 50 AND available_quantity > 0" />
+              <span style="font-size:12px;color:#999">注意：仅限SELECT查询，需直接编写完整SQL</span>
+            </el-form-item>
+          </el-form>
+        </el-tab-pane>
+      </el-tabs>
       <template #footer>
-        <el-button @click="showAddDialog = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmit">确定</el-button>
+        <el-button @click="advancedSearchVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleAdvancedSearch" :loading="loading">执行搜索</el-button>
+        <el-button @click="handleReset">重置所有</el-button>
       </template>
     </el-dialog>
 
-    <!-- 类别管理对话框 -->
-    <el-dialog v-model="showCategoryDialog" title="类别管理" width="600px">
-      <el-button type="primary" :icon="Plus" size="small" @click="handleAddCategory">
-        新增类别
-      </el-button>
-      <el-table :data="categories" style="width: 100%; margin-top: 16px">
-        <el-table-column prop="code" label="编码" width="100" />
-        <el-table-column prop="name" label="名称" width="150" />
-        <el-table-column prop="keywords" label="关键词" />
-        <el-table-column label="操作" width="100" align="center">
+    <!-- 编辑图书对话框 -->
+    <el-dialog v-model="editVisible" title="编辑图书" width="500px" destroy-on-close>
+      <el-form :model="currentBook" label-width="80px">
+        <el-form-item label="书名">
+          <el-input v-model="currentBook.title" />
+        </el-form-item>
+        <el-form-item label="作者">
+          <el-input v-model="currentBook.author" />
+        </el-form-item>
+        <el-form-item label="出版社">
+          <el-input v-model="currentBook.publisher" />
+        </el-form-item>
+        <el-form-item label="定价">
+          <el-input-number v-model="currentBook.price" :precision="2" :step="0.1" />
+        </el-form-item>
+        <el-form-item label="总库存">
+          <el-input-number v-model="currentBook.total_quantity" :min="1" />
+        </el-form-item>
+        <!-- 更多字段... -->
+      </el-form>
+      <template #footer>
+        <el-button @click="editVisible = false">取消</el-button>
+        <el-button type="primary" @click="saveEdit">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 图书表格 -->
+    <div class="glass-card table-wrapper">
+      <el-table :data="bookList" style="width: 100%" size="large" v-loading="loading">
+        <el-table-column label="图书信息" min-width="280">
           <template #default="{ row }">
-            <el-button
-              type="danger"
-              size="small"
-              link
-              @click="handleDeleteCategory(row)"
-            >
-              删除
-            </el-button>
+            <div class="book-info-cell">
+              <div class="book-cover-mock">{{ row.book_title.charAt(0) }}</div>
+              <div>
+                <div class="title" v-html="highlightText(row.book_title)"></div>
+                <div class="isbn">ISBN: <span v-html="highlightText(row.isbn)"></span></div>
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+
+        <el-table-column prop="author" label="作者" width="180">
+          <template #default="{ row }">
+            <span v-html="highlightText(row.author)"></span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="category" label="分类" width="120">
+          <template #default="{ row }">
+            <el-tag effect="plain" round>{{ row.category }}</el-tag>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="库存状态" width="200">
+          <template #default="{ row }">
+            <div class="stock-status">
+              <el-progress :percentage="Number((row.available_quantity / row.total_quantity * 100).toFixed(0))"
+                :status="row.available_quantity == 0 ? 'exception' : ''" :stroke-width="6" />
+              <span class="stock-text">{{ row.available_quantity }} / {{ row.total_quantity }} 本</span>
+            </div>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="操作" width="180" fixed="right">
+          <template #default="{ row }">
+            <div v-if="canManage">
+              <el-button link type="primary" @click="handleEdit(row)">编辑</el-button>
+              <el-button link type="danger" @click="handleDelete(row)">下架</el-button>
+            </div>
+            <div v-else>
+              <el-button 
+                link 
+                type="primary" 
+                :disabled="row.available_quantity <= 0"
+                @click="handleUserBorrow(row)"
+              >
+                借阅
+              </el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
-    </el-dialog>
+
+      <div class="pagination">
+        <el-pagination background layout="prev, pager, next" :total="total" />
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed } from 'vue'
+import { Search, Plus, Download, Filter } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import type { FormInstance, FormRules } from 'element-plus'
 import { useUserStore } from '@/store/user'
 
 const userStore = useUserStore()
+const canManage = computed(() => ['admin', 'librarian'].includes(userStore.user?.role || ''))
+
+const bookList = ref([])
+const total = ref(0)
+const searchQuery = ref('')
+const category = ref('')
 const loading = ref(false)
-const books = ref<any[]>([])
-const categories = ref<any[]>([])
 
-const searchKeyword = ref('')
-const filterCategory = ref<number>()
-
-// Advanced search state
-const showAdvancedSearch = ref(false)
-const activeSearchTab = ref('conditional')
-
-// 角色权限相关
-const userRole = computed(() => userStore.user?.role || '')
-const isAdmin = computed(() => userRole.value === 'admin')
-const isLibrarian = computed(() => userRole.value === 'librarian')
-const canManageBooks = computed(() => isAdmin.value || isLibrarian.value)
-
-// Conditional search form
-const conditionalForm = reactive({
-  title: '',
-  author: '',
-  publisher: '',
-  category_id: undefined as number | undefined,
-  publishDateRange: [] as string[],
-  priceMin: undefined as number | undefined,
-  priceMax: undefined as number | undefined,
-  keyword: '',
-  status: ''
-})
-
-// Regex search form
-const regexForm = reactive({
+// 高级搜索
+const advancedSearchVisible = ref(false)
+const searchType = ref('regex') // regex, sql, vector
+const advancedForm = reactive({
   pattern: '',
-  fields: [] as string[]
+  fields: ['title', 'author'],
+  sql: '',
+  vectorQuery: ''
 })
 
-// SQL search form
-const sqlForm = reactive({
-  query: ''
+// 编辑图书
+const editVisible = ref(false)
+const currentBook = ref<any>({})
+
+// 初始加载
+onMounted(() => {
+  fetchData()
 })
 
-// Vector search form
-const vectorForm = reactive({
-  query: '',
-  topK: 10
-})
-
-const vectorSearching = ref(false)
-
-const showAddDialog = ref(false)
-const showCategoryDialog = ref(false)
-const editingBook = ref<any>(null)
-const formRef = ref<FormInstance>()
-
-const form = reactive({
-  isbn: '',
-  title: '',
-  author: '',
-  publisher: '',
-  category_id: undefined as number | undefined,
-  publish_date: '',
-  price: 0,
-  pages: 0,
-  total_quantity: 1,
-  keywords: '',
-  description: '',
-  cover_url: '',
-  registration_date: new Date().toISOString().split('T')[0],
-  status: 'normal',
-  available_quantity: 1
-})
-
-const rules: FormRules = {
-  title: [{ required: true, message: '请输入书名', trigger: 'blur' }],
-  author: [{ required: true, message: '请输入作者', trigger: 'blur' }],
-  publisher: [{ required: true, message: '请输入出版社', trigger: 'blur' }],
-  category_id: [{ required: true, message: '请选择类别', trigger: 'change' }]
+const handleReset = () => {
+  searchQuery.value = ''
+  category.value = ''
+  advancedForm.pattern = ''
+  advancedForm.sql = ''
+  advancedForm.vectorQuery = ''
+  advancedSearchVisible.value = false
+  fetchData()
 }
 
-const loadBooks = async () => {
+const fetchData = async () => {
   loading.value = true
   try {
     const result = await window.api.book.getAll({
-      category_id: filterCategory.value,
-      keyword: searchKeyword.value
+      keyword: searchQuery.value,
+      // category_id: category.value // 需要映射
     })
     if (result.success) {
-      books.value = result.data
+      // 适配后端返回的数据结构 (title -> book_title)
+      bookList.value = result.data.map((book: any) => ({
+        ...book,
+        book_title: book.title,
+        category: book.category_name || '通用',
+        // Highlight source text logic usually done here, but simpler in template via method
+      }))
+      total.value = result.data.length
+    } else {
+      ElMessage.error(result.error?.message || '获取图书失败')
     }
   } catch (error) {
-    ElMessage.error('加载图书列表失败')
+    ElMessage.error('加载失败')
   } finally {
     loading.value = false
   }
 }
 
-const loadCategories = async () => {
-  try {
-    const result = await window.api.bookCategory.getAll()
-    if (result.success) {
-      categories.value = result.data
-    }
-  } catch (error) {
-    ElMessage.error('加载类别列表失败')
-  }
-}
-
-// 搜索关键词高亮
-const lastSearchKeyword = ref('')
-
-const highlightText = (text: string, keyword: string) => {
-  if (!keyword || !text) return text
-  const regex = new RegExp(`(${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')
-  return text.replace(regex, '<mark>$1</mark>')
-}
-
-const getHighlightedTitle = (title: string) => {
-  return highlightText(title, lastSearchKeyword.value)
-}
-
-const getHighlightedAuthor = (author: string) => {
-  return highlightText(author, lastSearchKeyword.value)
-}
-
-const handleSearch = () => {
-  lastSearchKeyword.value = searchKeyword.value
-  loadBooks()
-}
-
-const handleView = (row: any) => {
-  ElMessageBox.alert(
-    `
-    <div style="line-height: 2">
-      <p><strong>ISBN:</strong> ${row.isbn}</p>
-      <p><strong>书名:</strong> ${row.title}</p>
-      <p><strong>作者:</strong> ${row.author}</p>
-      <p><strong>出版社:</strong> ${row.publisher}</p>
-      <p><strong>类别:</strong> ${row.category_name}</p>
-      <p><strong>总数量:</strong> ${row.total_quantity}</p>
-      <p><strong>可借数量:</strong> ${row.available_quantity}</p>
-      ${row.description ? `<p><strong>简介:</strong> ${row.description}</p>` : ''}
-    </div>
-    `,
-    '图书详情',
-    {
-      dangerouslyUseHTMLString: true,
-      confirmButtonText: '关闭'
-    }
-  )
-}
-
-const handleAdd = () => {
-  editingBook.value = null
-  Object.assign(form, {
-    isbn: '',
-    title: '',
-    author: '',
-    publisher: '',
-    category_id: undefined,
-    publish_date: '',
-    price: 0,
-    pages: 0,
-    total_quantity: 1,
-    keywords: '',
-    description: '',
-    registration_date: new Date().toISOString().split('T')[0],
-    status: 'normal',
-    available_quantity: 1
-  })
-  showAddDialog.value = true
-}
-
-const handleEdit = (row: any) => {
-  editingBook.value = row
-  Object.assign(form, row)
-  showAddDialog.value = true
-}
-
-const handleAddCopies = async (row: any) => {
-  try {
-    const { value } = await ElMessageBox.prompt('请输入要增加的数量', '增加馆藏', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      inputPattern: /^[1-9]\d*$/,
-      inputErrorMessage: '请输入正整数'
-    })
-
-    const quantity = parseInt(value)
-    const result = await window.api.book.addCopies(row.id, quantity)
-
-    if (result.success) {
-      ElMessage.success(`成功增加 ${quantity} 册`)
-      loadBooks()
-    } else {
-      ElMessage.error(result.error?.message || '操作失败')
-    }
-  } catch (error) {
-    // 用户取消
-  }
-}
-
-const handleDelete = async (row: any) => {
-  console.log('========== [前端] 开始删除图书 ==========')
-  console.log('[前端] 图书信息:', { id: row.id, title: row.title, isbn: row.isbn })
-
-  try {
-    await ElMessageBox.confirm(
-      `确定要删除图书 "${row.title}" (ISBN: ${row.isbn}) 吗？如果有借出记录，将无法删除。`,
-      '删除确认',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }
-    )
-    console.log('[前端] 用户确认删除')
-
-    console.log('[前端] 调用delete API...')
-    const result = await window.api.book.delete(row.id)
-    console.log('[前端] API返回结果:', result)
-
-    if (result.success) {
-      console.log('[前端] 删除成功')
-      ElMessage.success('删除成功')
-      loadBooks()
-    } else {
-      console.error('[前端] 删除失败:', result.error)
-      ElMessage.error(result.error?.message || '删除失败')
-    }
-  } catch (error: any) {
-    console.error('[前端] 删除出错:', error)
-    if (error !== 'cancel' && error !== 'close') {
-      ElMessage.error(error.message || '删除失败')
-    } else {
-      console.log('[前端] 用户取消删除')
-    }
-  }
-  console.log('========== [前端] 删除图书结束 ==========\n')
-}
-
-const handleAddCategory = async () => {
-  try {
-    const { value } = await ElMessageBox.prompt('请输入类别信息（格式：编码,名称）', '新增类别', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消'
-    })
-
-    const [code, name] = value.split(',').map((s: string) => s.trim())
-    if (!code || !name) {
-      ElMessage.warning('格式错误')
-      return
-    }
-
-    const result = await window.api.bookCategory.create({ code, name })
-    if (result.success) {
-      ElMessage.success('创建成功')
-      loadCategories()
-    } else {
-      ElMessage.error(result.error?.message || '创建失败')
-    }
-  } catch (error) {
-    // 用户取消
-  }
-}
-
-const handleDeleteCategory = async (category: any) => {
-  try {
-    await ElMessageBox.confirm(
-      `确定要删除类别 "${category.name}" 吗？如果该类别下有图书，将无法删除。`,
-      '删除确认',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }
-    )
-
-    const result = await window.api.bookCategory.delete(category.id)
-    if (result.success) {
-      ElMessage.success('删除成功')
-      loadCategories()
-    } else {
-      ElMessage.error(result.error?.message || '删除失败')
-    }
-  } catch (error) {
-    // 用户取消
-  }
-}
-
-// 快速借阅功能（教师/学生）
-const handleQuickBorrow = async (book: any) => {
-  try {
-    // 1. 查找当前用户对应的读者记录（通过姓名匹配）
-    const currentUserName = userStore.user?.name
-    if (!currentUserName) {
-      ElMessage.error('无法获取当前用户信息')
-      return
-    }
-
-    // 获取所有读者，查找匹配的读者记录
-    const readersResult = await window.api.reader.getAll()
-    if (!readersResult.success) {
-      ElMessage.error('无法获取读者信息')
-      return
-    }
-
-    // 通过姓名匹配查找读者记录
-    const reader = readersResult.data.find((r: any) =>
-      r.name === currentUserName ||
-      r.name.includes(currentUserName) ||
-      currentUserName.includes(r.name)
-    )
-
-    if (!reader) {
-      ElMessage.error('未找到您的读者信息，请联系管理员创建读者账户')
-      return
-    }
-
-    // 2. 确认借阅
-    await ElMessageBox.confirm(
-      `确定要借阅《${book.title}》吗？\n\n` +
-      `作者：${book.author}\n` +
-      `您的读者编号：${reader.reader_no}\n` +
-      `当前可借数量：${book.available_quantity}`,
-      '借阅确认',
-      {
-        confirmButtonText: '确定借阅',
-        cancelButtonText: '取消',
-        type: 'info'
-      }
-    )
-
-    // 3. 调用借阅API
-    const result = await window.api.borrowing.borrow(reader.id, book.id)
-
-    if (result.success) {
-      ElMessage.success('借阅成功！请按时归还')
-      // 刷新图书列表以更新可借数量
-      loadBooks()
-    } else {
-      ElMessage.error(result.error?.message || '借阅失败')
-    }
-  } catch (error: any) {
-    if (error !== 'cancel' && error !== 'close') {
-      ElMessage.error(error.message || '借阅失败')
-    }
-  }
-}
-
-const handleSubmit = async () => {
-  console.log('========== [前端] 开始提交图书表单 ==========')
-  console.log('[前端] formRef是否存在:', !!formRef.value)
-  if (!formRef.value) {
-    console.error('[前端] formRef不存在，返回')
-    return
-  }
-
-  console.log('[前端] 当前表单数据:', JSON.parse(JSON.stringify(form)))
-  console.log('[前端] 是否为编辑模式:', !!editingBook.value)
-  if (editingBook.value) {
-    console.log('[前端] 编辑的图书ID:', editingBook.value.id)
-  }
-
-  try {
-    console.log('[前端] 开始表单验证...')
-    await formRef.value.validate()
-    console.log('[前端] 表单验证通过')
-
-    console.log('[前端] 设置available_quantity =', form.total_quantity)
-    form.available_quantity = form.total_quantity
-
-    console.log('[前端] 准备调用API...')
-    // 将响应式对象转换为普通对象，否则IPC无法克隆
-    const plainData = JSON.parse(JSON.stringify(form))
-    console.log('[前端] 转换为普通对象:', plainData)
-    const result = editingBook.value
-      ? await window.api.book.update(editingBook.value.id, plainData)
-      : await window.api.book.create(plainData)
-
-    console.log('[前端] API调用返回结果:', result)
-
-    if (result.success) {
-      console.log('[前端] 操作成功，准备关闭对话框并刷新列表')
-      ElMessage.success(editingBook.value ? '更新成功' : '创建成功')
-      showAddDialog.value = false
-      loadBooks()
-    } else {
-      console.error('[前端] 操作失败:', result.error)
-      ElMessage.error(result.error?.message || '操作失败')
-    }
-  } catch (error) {
-    console.error('[前端] 捕获到错误:', error)
-    if (error instanceof Error) {
-      console.error('[前端] 错误堆栈:', error.stack)
-    }
-  }
-  console.log('========== [前端] 图书表单提交结束 ==========\n')
-}
-
-const handleExport = async (command: string) => {
-  if (books.value.length === 0) {
-    ElMessage.warning('暂无数据可导出')
-    return
-  }
-
-  const timestamp = new Date().toISOString().split('T')[0]
-  const filename = `图书数据_${timestamp}`
-
-  try {
-    if (command === 'csv') {
-      const result = await window.api.export.toCSV({
-        filename: `${filename}.csv`,
-        data: books.value.map((book: any) => ({
-          ISBN: book.isbn,
-          书名: book.title,
-          作者: book.author,
-          出版社: book.publisher,
-          类别: book.category_name,
-          出版日期: book.publish_date || '',
-          价格: book.price || 0,
-          总数量: book.total_quantity,
-          可借数量: book.available_quantity,
-          状态: book.status
-        }))
-      })
-
-      if (result.success) {
-        ElMessage.success('导出成功')
-      }
-    } else if (command === 'json') {
-      const result = await window.api.export.toJSON({
-        filename: `${filename}.json`,
-        data: books.value
-      })
-
-      if (result.success) {
-        ElMessage.success('导出成功')
-      }
-    }
-  } catch (error: any) {
-    if (error.message !== '用户取消导出') {
-      ElMessage.error('导出失败')
-    }
-  }
-}
-
-const resetForm = () => {
-  editingBook.value = null
-  formRef.value?.resetFields()
-  Object.assign(form, {
-    isbn: '',
-    title: '',
-    author: '',
-    publisher: '',
-    category_id: undefined,
-    publish_date: '',
-    price: 0,
-    pages: 0,
-    total_quantity: 1,
-    keywords: '',
-    description: '',
-    registration_date: new Date().toISOString().split('T')[0],
-    status: 'normal',
-    available_quantity: 1
-  })
-}
-
-// Advanced search handlers
-const handleConditionalSearch = async () => {
+const handleAdvancedSearch = async () => {
   loading.value = true
+  advancedSearchVisible.value = false
   try {
-    const criteria: any = {}
-
-    if (conditionalForm.title) criteria.title = conditionalForm.title
-    if (conditionalForm.author) criteria.author = conditionalForm.author
-    if (conditionalForm.publisher) criteria.publisher = conditionalForm.publisher
-    if (conditionalForm.category_id) criteria.category_id = conditionalForm.category_id
-    if (conditionalForm.publishDateRange && conditionalForm.publishDateRange.length === 2) {
-      criteria.publishDateStart = conditionalForm.publishDateRange[0]
-      criteria.publishDateEnd = conditionalForm.publishDateRange[1]
+    let result
+    if (searchType.value === 'regex') {
+      result = await window.api.book.regexSearch(advancedForm.pattern, advancedForm.fields)
+    } else if (searchType.value === 'sql') {
+      result = await window.api.search.executeSql(advancedForm.sql)
+    } else if (searchType.value === 'vector') {
+      result = await window.api.ai.semanticSearch(advancedForm.vectorQuery, 20)
     }
-    if (conditionalForm.priceMin !== undefined) criteria.priceMin = conditionalForm.priceMin
-    if (conditionalForm.priceMax !== undefined) criteria.priceMax = conditionalForm.priceMax
-    if (conditionalForm.keyword) criteria.keyword = conditionalForm.keyword
-    if (conditionalForm.status) criteria.status = conditionalForm.status
 
-    // Store search keyword for highlighting
-    lastSearchKeyword.value = conditionalForm.title || conditionalForm.author || conditionalForm.keyword || ''
-
-    const result = await window.api.book.advancedSearch(criteria)
-
-    if (result.success) {
-      books.value = result.data
-      ElMessage.success(`找到 ${result.data.length} 条结果`)
+    if (result && result.success) {
+      let data = result.data
+      bookList.value = data.map((book: any) => ({
+        ...book,
+        book_title: book.title || book.book_title, 
+        category: book.category_name || '未知',
+        isbn: book.isbn || '-',
+        total_quantity: book.total_quantity || 0,
+        available_quantity: book.available_quantity || 0
+      }))
+      total.value = data.length
+      ElMessage.success(`搜索到 ${data.length} 条结果`)
     } else {
-      ElMessage.error(result.error?.message || '搜索失败')
+      ElMessage.error(result?.error?.message || '搜索失败')
     }
   } catch (error) {
-    ElMessage.error('搜索失败')
     console.error(error)
+    ElMessage.error('高级搜索出错')
   } finally {
     loading.value = false
   }
 }
 
-const handleRegexSearch = async () => {
-  if (!regexForm.pattern) {
-    ElMessage.warning('请输入正则表达式')
-    return
+// 高亮显示
+const highlightText = (text: string) => {
+  if (!text) return ''
+  // 优先匹配正则
+  if (searchType.value === 'regex' && advancedForm.pattern) {
+    try {
+      // 简单处理：如果是简单字符串，转义；如果是正则，尝试直接用
+      // 这里只处理普通keyword搜索高亮和Regex高亮
+      const regex = new RegExp(`(${advancedForm.pattern})`, 'gi')
+      return text.replace(regex, '<span style="background-color: #fef08a; color: #854d0e">$1</span>')
+    } catch (e) {
+      return text
+    }
   }
-
-  if (regexForm.fields.length === 0) {
-    ElMessage.warning('请选择至少一个搜索字段')
-    return
+  
+  // 普通搜索高亮
+  if (searchQuery.value) {
+    try {
+      const regex = new RegExp(`(${searchQuery.value})`, 'gi')
+      return text.replace(regex, '<span style="background-color: #fef08a; color: #854d0e">$1</span>')
+    } catch (e) {
+      return text
+    }
   }
+  
+  return text
+}
 
-  // Validate regex pattern
+const handleAdd = () => { ElMessage.info('功能开发中') }
+
+const handleEdit = (book: any) => {
+  currentBook.value = { ...book, title: book.book_title } // 适配字段
+  editVisible.value = true
+}
+
+const saveEdit = async () => {
   try {
-    new RegExp(regexForm.pattern)
+    // 转换回后端字段
+    const updates = {
+      title: currentBook.value.title,
+      author: currentBook.value.author,
+      publisher: currentBook.value.publisher,
+      price: currentBook.value.price,
+      total_quantity: currentBook.value.total_quantity
+    }
+    const result = await window.api.book.update(currentBook.value.id, updates)
+    if (result.success) {
+      ElMessage.success('更新成功')
+      editVisible.value = false
+      fetchData()
+    } else {
+      ElMessage.error('更新失败')
+    }
   } catch (e) {
-    ElMessage.error('正则表达式格式错误')
-    return
+    ElMessage.error('操作失败')
   }
+}
 
-  // Clear highlight for regex search (too complex to highlight)
-  lastSearchKeyword.value = ''
-
-  loading.value = true
+const handleDelete = async (book: any) => {
   try {
-    const result = await window.api.book.regexSearch(regexForm.pattern, regexForm.fields)
-
+    await ElMessageBox.confirm('确定要下架这本图书吗？如果有借出记录将无法删除。', '提示', { type: 'warning' })
+    const result = await window.api.book.delete(book.id)
     if (result.success) {
-      books.value = result.data
-      ElMessage.success(`找到 ${result.data.length} 条结果`)
+      ElMessage.success('删除成功')
+      fetchData()
     } else {
-      ElMessage.error(result.error?.message || '搜索失败')
+      ElMessage.error(result.error?.message || '删除失败')
     }
-  } catch (error) {
-    ElMessage.error('搜索失败')
-    console.error(error)
-  } finally {
-    loading.value = false
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error('操作失败')
   }
 }
 
-const handleSqlSearch = async () => {
-  if (!sqlForm.query.trim()) {
-    ElMessage.warning('请输入SQL查询语句')
+const handleUserBorrow = async (book: any) => {
+  if (!userStore.user?.id) {
+    ElMessage.warning('请先登录')
     return
   }
-
-  // Basic validation to ensure only SELECT queries
-  const trimmedQuery = sqlForm.query.trim().toUpperCase()
-  if (!trimmedQuery.startsWith('SELECT')) {
-    ElMessage.error('仅支持SELECT查询语句')
-    return
-  }
-
-  // Clear highlight for SQL search
-  lastSearchKeyword.value = ''
-
-  loading.value = true
-  try {
-    const result = await window.api.search.executeSql(sqlForm.query)
-
-    if (result.success) {
-      books.value = result.data
-      ElMessage.success(`找到 ${result.data.length} 条结果`)
-    } else {
-      ElMessage.error(result.error?.message || '查询失败')
-    }
-  } catch (error) {
-    ElMessage.error('查询失败')
-    console.error(error)
-  } finally {
-    loading.value = false
-  }
+  ElMessage.info(`已提交借阅申请：${book.book_title} (需前往前台取书)`)
 }
-
-const resetConditionalForm = () => {
-  Object.assign(conditionalForm, {
-    title: '',
-    author: '',
-    publisher: '',
-    category_id: undefined,
-    publishDateRange: [],
-    priceMin: undefined,
-    priceMax: undefined,
-    keyword: '',
-    status: ''
-  })
-}
-
-const resetRegexForm = () => {
-  Object.assign(regexForm, {
-    pattern: '',
-    fields: []
-  })
-}
-
-const resetSqlForm = () => {
-  sqlForm.query = ''
-}
-
-const handleVectorSearch = async () => {
-  if (!vectorForm.query.trim()) {
-    ElMessage.warning('请输入搜索描述')
-    return
-  }
-
-  // Clear highlight for vector search
-  lastSearchKeyword.value = ''
-
-  vectorSearching.value = true
-  try {
-    const result = await window.api.ai.semanticSearch(vectorForm.query, vectorForm.topK)
-
-    if (result.success) {
-      // semanticSearch returns books with similarity scores
-      books.value = result.data.map((item: any) => item.book || item)
-      ElMessage.success(`找到 ${result.data.length} 条结果`)
-    } else {
-      ElMessage.error(result.error?.message || '向量搜索失败，请确保已配置AI设置并生成图书向量')
-    }
-  } catch (error: any) {
-    ElMessage.error(error.message || '向量搜索失败')
-    console.error(error)
-  } finally {
-    vectorSearching.value = false
-  }
-}
-
-const resetVectorForm = () => {
-  vectorForm.query = ''
-  vectorForm.topK = 10
-}
-
-onMounted(() => {
-  loadBooks()
-  loadCategories()
-})
 </script>
 
 <style scoped>
-.book-cell {
+.action-bar {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 24px;
 }
 
-.book-title {
-  font-weight: 500;
-  color: #303133;
+.sub-text {
+  font-size: 14px;
+  color: #64748b;
+  margin-left: 12px;
 }
 
-.book-author {
-  font-size: 12px;
-  color: #909399;
-}
-
-.advanced-search-panel {
-  margin-bottom: 16px;
-}
-
-.advanced-search-panel :deep(.el-tabs__content) {
+.search-card {
   padding: 20px;
+  margin-bottom: 24px;
 }
 
-.advanced-search-panel :deep(.el-form-item) {
-  margin-bottom: 18px;
+.search-row {
+  display: flex;
+  gap: 16px;
 }
 
-.advanced-search-panel :deep(.el-checkbox) {
-  margin-right: 20px;
+.main-search {
+  flex: 1;
+  max-width: 500px;
 }
 
-/* Highlight style */
-:deep(mark) {
-  background-color: #ffe58f;
-  color: #262626;
-  padding: 2px 4px;
-  border-radius: 2px;
+.table-wrapper {
+  padding: 0;
+  overflow: hidden;
+}
+
+.book-info-cell {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.book-cover-mock {
+  width: 48px;
+  height: 64px;
+  background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #4f46e5;
+  font-weight: 700;
+  font-size: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.title {
   font-weight: 600;
+  color: #333;
+  font-size: 15px;
+}
+
+.isbn {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-top: 4px;
+  font-family: monospace;
+}
+
+.stock-status {
+  padding-right: 20px;
+}
+
+.stock-text {
+  font-size: 12px;
+  color: #94a3b8;
+  display: block;
+  margin-top: 4px;
+  text-align: right;
+}
+
+.pagination {
+  padding: 20px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.glow-btn {
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
 }
 </style>

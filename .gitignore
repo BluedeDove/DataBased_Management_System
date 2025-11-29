@@ -247,3 +247,6 @@ Thumbs.db
 build/
 .cache/
 .vite/
+
+# Project Documentation (Local only)
+docs/

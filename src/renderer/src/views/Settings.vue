@@ -65,6 +65,31 @@
           </el-form>
         </el-tab-pane>
 
+        <el-tab-pane v-if="isAdmin" label="向量管理">
+          <el-descriptions title="向量数据库状态" :column="2" border>
+            <el-descriptions-item label="已向量化图书">
+              {{ vectorStats.totalVectors }}
+            </el-descriptions-item>
+            <el-descriptions-item label="覆盖率">
+              {{ vectorStats.coverageRate.toFixed(1) }}%
+            </el-descriptions-item>
+          </el-descriptions>
+
+          <div style="margin-top: 20px">
+            <el-button
+              type="primary"
+              :loading="vectorLoading"
+              @click="handleBatchCreateVectors"
+            >
+              <el-icon><Upload /></el-icon>
+              批量生成向量
+            </el-button>
+            <el-text type="info" style="margin-left: 12px">
+              将为所有未向量化的图书生成向量（需要API密钥）
+            </el-text>
+          </div>
+        </el-tab-pane>
+
         <el-tab-pane label="关于">
           <div style="text-align: center; padding: 40px">
             <el-icon :size="80" color="#409eff"><Reading /></el-icon>
@@ -115,7 +140,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed } from 'vue'
 import { useUserStore } from '@/store/user'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 const userStore = useUserStore()
 const showCategoryDialog = ref(false)
@@ -152,6 +177,13 @@ const aiConfigForm = reactive({
   embeddingModel: 'text-embedding-3-small',
   chatModel: 'gpt-4-turbo-preview'
 })
+
+// 向量管理
+const vectorStats = reactive({
+  totalVectors: 0,
+  coverageRate: 0
+})
+const vectorLoading = ref(false)
 
 const loadCategories = async () => {
   const result = await window.api.readerCategory.getAll()
@@ -272,31 +304,124 @@ const handleSaveAIConfig = async () => {
 }
 
 const handleCreateCategory = async () => {
+  console.log('========== [前端] 开始创建读者种类 ==========')
   if (!categoryForm.code || !categoryForm.name) {
+    console.warn('[前端] 验证失败: 编码或名称为空')
     ElMessage.warning('请填写完整信息')
     return
   }
 
-  const result = await window.api.readerCategory.create(categoryForm)
+  console.log('[前端] 表单数据:', JSON.parse(JSON.stringify(categoryForm)))
+
+  // 将响应式对象转换为普通对象，否则IPC无法克隆
+  const plainData = JSON.parse(JSON.stringify(categoryForm))
+  console.log('[前端] 转换为普通对象:', plainData)
+
+  try {
+    const result = await window.api.readerCategory.create(plainData)
+    console.log('[前端] API调用返回结果:', result)
+
+    if (result.success) {
+      console.log('[前端] 创建成功')
+      ElMessage.success('创建成功')
+      showCategoryDialog.value = false
+      loadCategories()
+      Object.assign(categoryForm, {
+        code: '',
+        name: '',
+        max_borrow_count: 5,
+        max_borrow_days: 30,
+        validity_days: 365,
+        notes: ''
+      })
+    } else {
+      console.error('[前端] 创建失败:', result.error)
+      ElMessage.error(result.error?.message || '创建失败')
+    }
+  } catch (error) {
+    console.error('[前端] 捕获到错误:', error)
+    if (error instanceof Error) {
+      console.error('[前端] 错误堆栈:', error.stack)
+    }
+    ElMessage.error('创建失败')
+  }
+  console.log('========== [前端] 读者种类创建结束 ==========\n')
+}
+
+// 批量生成向量
+const handleBatchCreateVectors = async () => {
+  console.log('========== [前端] 开始批量生成向量 ==========')
+  try {
+    await ElMessageBox.confirm(
+      '批量生成向量需要调用AI API，可能需要较长时间并产生费用，确定继续吗？',
+      '提示',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    console.log('[前端] 用户确认继续')
+
+    vectorLoading.value = true
+
+    // 获取所有图书
+    console.log('[前端] 正在获取所有图书...')
+    const booksResult = await window.api.book.getAll()
+    console.log('[前端] 获取图书结果:', booksResult)
+
+    if (!booksResult.success) {
+      console.error('[前端] 获取图书列表失败:', booksResult.error)
+      ElMessage.error('获取图书列表失败')
+      return
+    }
+
+    const bookIds = booksResult.data.map((book: any) => book.id)
+    console.log(`[前端] 共获取到${bookIds.length}本图书，ID列表:`, bookIds)
+
+    if (bookIds.length === 0) {
+      console.warn('[前端] 没有图书需要生成向量')
+      ElMessage.warning('没有图书可以生成向量')
+      return
+    }
+
+    console.log('[前端] 开始调用batchCreateEmbeddings API...')
+    const result = await window.api.ai.batchCreateEmbeddings(bookIds)
+    console.log('[前端] API调用返回结果:', result)
+
+    if (result.success) {
+      console.log('[前端] 向量生成成功')
+      ElMessage.success(`成功为${bookIds.length}本图书生成向量`)
+      loadVectorStats()
+    } else {
+      console.error('[前端] 向量生成失败:', result.error)
+      ElMessage.error(result.error?.message || '生成失败')
+    }
+  } catch (error: any) {
+    console.error('[前端] 批量生成向量出错:', error)
+    if (error !== 'cancel' && error !== 'close') {
+      // 不是用户取消
+      ElMessage.error(error.message || '生成向量失败')
+    } else {
+      console.log('[前端] 用户取消了操作')
+    }
+  } finally {
+    vectorLoading.value = false
+    console.log('========== [前端] 批量生成向量结束 ==========\n')
+  }
+}
+
+// 加载向量统计
+const loadVectorStats = async () => {
+  const result = await window.api.ai.getStatistics()
   if (result.success) {
-    ElMessage.success('创建成功')
-    showCategoryDialog.value = false
-    loadCategories()
-    Object.assign(categoryForm, {
-      code: '',
-      name: '',
-      max_borrow_count: 5,
-      max_borrow_days: 30,
-      validity_days: 365,
-      notes: ''
-    })
-  } else {
-    ElMessage.error(result.error?.message || '创建失败')
+    Object.assign(vectorStats, result.data)
   }
 }
 
 onMounted(() => {
   loadCategories()
   loadAISettings()
+  loadVectorStats()
 })
 </script>

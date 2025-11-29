@@ -2,6 +2,7 @@ import Database from 'better-sqlite3'
 import { app } from 'electron'
 import path from 'path'
 import fs from 'fs'
+import * as bcrypt from 'bcryptjs'
 
 // 数据库文件路径
 const userDataPath = app.getPath('userData')
@@ -45,10 +46,12 @@ export function initDatabase() {
           password TEXT NOT NULL,
           name TEXT NOT NULL,
           role TEXT NOT NULL CHECK(role IN ('admin', 'librarian', 'teacher', 'student')),
+          reader_id INTEGER,
           email TEXT,
           phone TEXT,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (reader_id) REFERENCES readers(id) ON DELETE SET NULL
         )
       `)
 
@@ -67,8 +70,41 @@ export function initDatabase() {
 
       console.log('✅ 数据库迁移完成')
     }
+
+    // 检查是否需要添加 reader_id 字段
+    if (tableInfo && !tableInfo.sql.includes('reader_id')) {
+      console.log('🔄 添加 users.reader_id 字段...')
+
+      // SQLite不支持直接添加带外键的列，需要重建表
+      db.exec(`
+        CREATE TABLE users_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          username TEXT UNIQUE NOT NULL,
+          password TEXT NOT NULL,
+          name TEXT NOT NULL,
+          role TEXT NOT NULL CHECK(role IN ('admin', 'librarian', 'teacher', 'student')),
+          reader_id INTEGER,
+          email TEXT,
+          phone TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (reader_id) REFERENCES readers(id) ON DELETE SET NULL
+        )
+      `)
+
+      db.exec(`
+        INSERT INTO users_new (id, username, password, name, role, email, phone, created_at, updated_at)
+        SELECT id, username, password, name, role, email, phone, created_at, updated_at
+        FROM users
+      `)
+
+      db.exec('DROP TABLE users')
+      db.exec('ALTER TABLE users_new RENAME TO users')
+
+      console.log('✅ reader_id 字段添加完成')
+    }
   } else {
-    // 表不存在，创建新表
+    // 表不存在，创建新表（包含 reader_id 字段）
     db.exec(`
       CREATE TABLE users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -76,10 +112,12 @@ export function initDatabase() {
       password TEXT NOT NULL,
       name TEXT NOT NULL,
       role TEXT NOT NULL CHECK(role IN ('admin', 'librarian', 'teacher', 'student')),
+      reader_id INTEGER,
       email TEXT,
       phone TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (reader_id) REFERENCES readers(id) ON DELETE SET NULL
     )
   `)
   }
@@ -100,26 +138,83 @@ export function initDatabase() {
   `)
 
   // 3. 读者表
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS readers (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      reader_no TEXT UNIQUE NOT NULL,
-      name TEXT NOT NULL,
-      category_id INTEGER NOT NULL,
-      gender TEXT CHECK(gender IN ('male', 'female', 'other')),
-      organization TEXT,
-      address TEXT,
-      phone TEXT,
-      email TEXT,
-      registration_date DATE DEFAULT (date('now')),
-      expiry_date DATE,
-      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'suspended', 'expired')),
-      notes TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (category_id) REFERENCES reader_categories(id) ON DELETE RESTRICT
-    )
-  `)
+  const readersTableExists = db.prepare(`
+    SELECT name FROM sqlite_master
+    WHERE type = 'table' AND name = 'readers'
+  `).get()
+
+  if (readersTableExists) {
+    // 检查是否需要添加 user_id 字段
+    const readersTableInfo = db.prepare(`
+      SELECT sql FROM sqlite_master
+      WHERE type = 'table' AND name = 'readers'
+    `).get() as { sql: string } | undefined
+
+    if (readersTableInfo && !readersTableInfo.sql.includes('user_id')) {
+      console.log('🔄 添加 readers.user_id 字段...')
+
+      // SQLite不支持直接添加带外键的列，需要重建表
+      db.exec(`
+        CREATE TABLE readers_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          reader_no TEXT UNIQUE NOT NULL,
+          name TEXT NOT NULL,
+          category_id INTEGER NOT NULL,
+          user_id INTEGER,
+          gender TEXT CHECK(gender IN ('male', 'female', 'other')),
+          id_card TEXT UNIQUE,
+          organization TEXT,
+          address TEXT,
+          phone TEXT,
+          email TEXT,
+          registration_date DATE DEFAULT (date('now')),
+          expiry_date DATE,
+          status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'suspended', 'expired', 'pending')),
+          notes TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (category_id) REFERENCES reader_categories(id) ON DELETE RESTRICT,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+        )
+      `)
+
+      db.exec(`
+        INSERT INTO readers_new (id, reader_no, name, category_id, gender, organization, address, phone, email, registration_date, expiry_date, status, notes, created_at, updated_at)
+        SELECT id, reader_no, name, category_id, gender, organization, address, phone, email, registration_date, expiry_date, status, notes, created_at, updated_at
+        FROM readers
+      `)
+
+      db.exec('DROP TABLE readers')
+      db.exec('ALTER TABLE readers_new RENAME TO readers')
+
+      console.log('✅ user_id 字段添加完成')
+    }
+  } else {
+    // 表不存在，创建新表（包含 user_id 和 id_card 字段）
+    db.exec(`
+      CREATE TABLE readers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        reader_no TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        category_id INTEGER NOT NULL,
+        user_id INTEGER,
+        gender TEXT CHECK(gender IN ('male', 'female', 'other')),
+        id_card TEXT UNIQUE,
+        organization TEXT,
+        address TEXT,
+        phone TEXT,
+        email TEXT,
+        registration_date DATE DEFAULT (date('now')),
+        expiry_date DATE,
+        status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'suspended', 'expired', 'pending')),
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (category_id) REFERENCES reader_categories(id) ON DELETE RESTRICT,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+      )
+    `)
+  }
 
   // 4. 图书类别表
   db.exec(`
@@ -276,11 +371,14 @@ export function seedDatabase() {
   const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number }
 
   if (userCount.count === 0) {
-    // 创建默认管理员账户（密码：admin123，实际应使用bcrypt加密）
+    // 创建默认管理员账户
+    const salt = bcrypt.genSaltSync(10)
+    const hashedPassword = bcrypt.hashSync('admin123', salt)
+    
     db.prepare(`
       INSERT INTO users (username, password, name, role, email)
       VALUES (?, ?, ?, ?, ?)
-    `).run('admin', 'admin123', '系统管理员', 'admin', 'admin@library.com')
+    `).run('admin', hashedPassword, '系统管理员', 'admin', 'admin@library.com')
 
     // 创建默认读者种类
     const readerCategories = [
@@ -320,12 +418,33 @@ export function seedDatabase() {
   }
 }
 
+// 修复旧的明文密码
+function fixAdminPassword() {
+  try {
+    const adminUser = db.prepare('SELECT id, password FROM users WHERE username = ?').get('admin') as { id: number, password: string } | undefined
+    
+    if (adminUser && adminUser.password === 'admin123') {
+      console.log('🔄 检测到管理员密码为明文，正在进行加密修复...')
+      const salt = bcrypt.genSaltSync(10)
+      const hashedPassword = bcrypt.hashSync('admin123', salt)
+      
+      db.prepare('UPDATE users SET password = ? WHERE id = ?').run(hashedPassword, adminUser.id)
+      console.log('✅ 管理员密码已加密修复')
+    }
+  } catch (error) {
+    console.error('❌ 修复管理员密码失败:', error)
+  }
+}
+
 // 在应用启动时初始化数据库
 export function setupDatabase() {
   try {
     initDatabase()
     seedDatabase()
-    seedTestUsers()
+    fixAdminPassword() // 添加修复步骤
+    // 注意：测试用户数据已移至独立脚本
+    // 如需生成测试数据，请运行: npm run generate:testdata
+    // seedTestUsers()  // 已移除自动调用
     console.log('📚 数据库系统准备就绪')
   } catch (error) {
     console.error('❌ 数据库初始化失败:', error)
