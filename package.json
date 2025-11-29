@@ -16,7 +16,8 @@
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix",
     "test:unit": "vitest",
     "test:e2e": "playwright test",
-    "generate:testdata": "tsx scripts/generateTestData.ts"
+    "generate:testdata": "tsx scripts/generateTestData.ts",
+    "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
