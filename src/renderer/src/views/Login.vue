@@ -5,6 +5,9 @@
       <div class="blob blob-2"></div>
     </div>
 
+    <!-- 新增：背景图片层，与渐变点融合 -->
+    <div class="background-image"></div>
+
     <div class="login-box glass-card">
       <div class="login-left">
         <div class="brand">
@@ -91,6 +94,28 @@ const handleLogin = async () => {
   filter: blur(80px);
   opacity: 0.6;
   animation: float 10s infinite ease-in-out;
+}
+
+/* 背景图片层 - 与渐变点融合 */
+.background-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image:
+    /* 渐变叠加层 - 与现有blob颜色融合 */
+    linear-gradient(135deg, rgba(99, 102, 241, 0.3) 0%, rgba(244, 114, 182, 0.3) 100%),
+    /* 背景图片 */
+    url('https://library.gdut.edu.cn/images/bannar2401.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-blend-mode: overlay; /* 混合模式实现融合效果 */
+  opacity: 0.5; /* 较明显的透明度 */
+  z-index: 2; /* 在blobs之上(z-index: 1)，在登录框之下 */
+  filter: blur(1px) brightness(1.1); /* 轻微模糊和亮度调整 */
+  pointer-events: none; /* 防止干扰交互 */
 }
 
 .blob-1 {

@@ -306,6 +306,15 @@ export function registerIpcHandlers() {
     }
   })
 
+  ipcMain.handle('book:getByIsbn', async (_, isbn) => {
+    try {
+      const book = bookService.getBookByIsbn(isbn)
+      return { success: true, data: book } as SuccessResponse
+    } catch (error) {
+      return errorHandler.handle(error)
+    }
+  })
+
   ipcMain.handle('book:create', async (_, data) => {
     console.log('========== [IPC] book:create 被调用 ==========')
     console.log('[IPC] 接收到的data:', JSON.stringify(data, null, 2))
@@ -449,20 +458,41 @@ export function registerIpcHandlers() {
 
   // ============ 借阅相关 ============
   ipcMain.handle('borrowing:borrow', async (_, readerId, bookId) => {
+    console.log('========== [IPC] borrowing:borrow 被调用 ==========')
+    console.log('[IPC] 读者ID:', readerId)
+    console.log('[IPC] 图书ID:', bookId)
     try {
+      console.log('[IPC] 准备调用 borrowingService.borrowBook...')
       const record = await borrowingService.borrowBook(readerId, bookId)
+      console.log('[IPC] borrowingService.borrowBook 返回成功，记录ID:', record.id)
       return { success: true, data: record } as SuccessResponse
     } catch (error) {
+      console.error('[IPC] borrowing:borrow 捕获错误:', error)
+      if (error instanceof Error) {
+        console.error('[IPC] 错误堆栈:', error.stack)
+      }
       return errorHandler.handle(error)
+    } finally {
+      console.log('========== [IPC] borrowing:borrow 结束 ==========\n')
     }
   })
 
   ipcMain.handle('borrowing:return', async (_, recordId) => {
+    console.log('========== [IPC] borrowing:return 被调用 ==========')
+    console.log('[IPC] 记录ID:', recordId)
     try {
+      console.log('[IPC] 准备调用 borrowingService.returnBook...')
       const record = await borrowingService.returnBook(recordId)
+      console.log('[IPC] borrowingService.returnBook 返回成功，记录ID:', record.id)
       return { success: true, data: record } as SuccessResponse
     } catch (error) {
+      console.error('[IPC] borrowing:return 捕获错误:', error)
+      if (error instanceof Error) {
+        console.error('[IPC] 错误堆栈:', error.stack)
+      }
       return errorHandler.handle(error)
+    } finally {
+      console.log('========== [IPC] borrowing:return 结束 ==========\n')
     }
   })
 
@@ -771,7 +801,8 @@ export function registerIpcHandlers() {
   ipcMain.handle('search:executeSql', async (_, query) => {
     try {
       const result = sqlSearchService.executeQuery(query)
-      return { success: true, data: result } as SuccessResponse
+      // 返回rows而不是整个QueryResult对象，以保持与其他搜索API的一致性
+      return { success: true, data: result.rows } as SuccessResponse
     } catch (error) {
       return errorHandler.handle(error)
     }

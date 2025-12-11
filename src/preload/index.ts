@@ -57,6 +57,7 @@ export interface ElectronAPI {
   book: {
     getAll: (filters?: any) => Promise<any>
     getById: (id: number) => Promise<any>
+    getByIsbn: (isbn: string) => Promise<any>
     create: (data: any) => Promise<any>
     update: (id: number, updates: any) => Promise<any>
     addCopies: (id: number, quantity: number) => Promise<any>
@@ -183,6 +184,7 @@ const api: ElectronAPI = {
   book: {
     getAll: (filters) => ipcRenderer.invoke('book:getAll', filters),
     getById: (id) => ipcRenderer.invoke('book:getById', id),
+    getByIsbn: (isbn) => ipcRenderer.invoke('book:getByIsbn', isbn),
     create: (data) => ipcRenderer.invoke('book:create', data),
     update: (id, updates) => ipcRenderer.invoke('book:update', id, updates),
     addCopies: (id, quantity) => ipcRenderer.invoke('book:addCopies', id, quantity),

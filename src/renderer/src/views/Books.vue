@@ -136,13 +136,14 @@
               <el-button link type="danger" @click="handleDelete(row)">下架</el-button>
             </div>
             <div v-else>
-              <el-button 
-                link 
-                type="primary" 
-                :disabled="row.available_quantity <= 0"
+              <el-button
+                link
+                type="primary"
+                :disabled="row.available_quantity <= 0 || borrowing.has(row.id)"
+                :loading="borrowing.has(row.id)"
                 @click="handleUserBorrow(row)"
               >
-                借阅
+                {{ borrowing.has(row.id) ? '借阅中...' : '借阅' }}
               </el-button>
             </div>
           </template>
@@ -170,6 +171,7 @@ const total = ref(0)
 const searchQuery = ref('')
 const category = ref('')
 const loading = ref(false)
+const borrowing = ref<Set<number>>(new Set()) // 正在借阅的图书ID集合
 
 // 高级搜索
 const advancedSearchVisible = ref(false)
@@ -340,7 +342,71 @@ const handleUserBorrow = async (book: any) => {
     ElMessage.warning('请先登录')
     return
   }
-  ElMessage.info(`已提交借阅申请：${book.book_title} (需前往前台取书)`)
+
+  if (book.available_quantity <= 0) {
+    ElMessage.warning('该图书暂时无可借库存')
+    return
+  }
+
+  // 检查用户角色：只有教师和学生可以自助借阅
+  if (!userStore.user.reader_id) {
+    ElMessage.info('管理员和图书管理员请使用专门的借阅管理页面进行借阅操作')
+    return
+  }
+
+  // 检查是否已经在借阅过程中
+  if (borrowing.value.has(book.id)) {
+    ElMessage.warning('正在借阅中，请稍候...')
+    return
+  }
+
+  try {
+    console.log('========== [图书页面] 用户借阅开始 ==========')
+    console.log('[图书页面] 借阅图书:', book.book_title, 'ISBN:', book.isbn)
+    console.log('[图书页面] 用户角色:', userStore.user.role)
+    console.log('[图书页面] 用户读者ID:', userStore.user.reader_id)
+    
+    // 标记为正在借阅
+    borrowing.value.add(book.id)
+    
+    // 1. 直接使用用户的reader_id查找读者记录
+    console.log('[图书页面] 查找读者记录...')
+    const readerResult = await window.api.reader.getById(userStore.user.reader_id)
+    
+    if (!readerResult.success) {
+      console.error('[图书页面] 读者记录查找失败:', readerResult.error)
+      ElMessage.error('无法找到您的读者记录，请联系管理员')
+      return
+    }
+
+    const reader = readerResult.data
+    console.log('[图书页面] 找到读者记录:', reader.name, '编号:', reader.reader_no)
+
+    // 2. 调用借阅API
+    console.log('[图书页面] 调用借阅API...')
+    const result = await window.api.borrowing.borrow(reader.id, book.id)
+    console.log('[图书页面] 借阅API结果:', result)
+
+    if (result.success) {
+      console.log('[图书页面] 借阅成功!')
+      ElMessage.success(`借阅成功：《${book.book_title}》`)
+      
+      // 刷新图书列表以更新库存
+      console.log('[图书页面] 刷新图书列表...')
+      await fetchData()
+      console.log('[图书页面] 图书列表刷新完成')
+    } else {
+      console.error('[图书页面] 借阅失败:', result.error)
+      ElMessage.error(result.error?.message || '借阅失败')
+    }
+  } catch (error) {
+    console.error('[图书页面] 借阅操作异常:', error)
+    ElMessage.error('借阅操作失败: ' + (error instanceof Error ? error.message : String(error)))
+  } finally {
+    // 移除借阅标记
+    borrowing.value.delete(book.id)
+    console.log('========== [图书页面] 用户借阅结束 ==========\n')
+  }
 }
 </script>
 

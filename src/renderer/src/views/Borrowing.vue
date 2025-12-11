@@ -139,6 +139,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Search } from '@element-plus/icons-vue'
 import { useUserStore } from '@/store/user'
 
 const userStore = useUserStore()
@@ -190,34 +191,67 @@ const handleBorrow = async () => {
   }
 
   try {
-    // 先查找读者和图书
+    console.log('========== [前端] 开始借书流程 ==========')
+    console.log('[前端] 输入数据:', { readerNo: borrowForm.readerNo, bookIsbn: borrowForm.bookIsbn })
+    
+    // 先查找读者
+    console.log('[前端] 查找读者，编号:', borrowForm.readerNo)
     const readerResult = await window.api.reader.getByNo(borrowForm.readerNo)
-    const bookResult = await window.api.book.getAll({ keyword: borrowForm.bookIsbn })
+    console.log('[前端] 读者查找结果:', readerResult)
+    
+    if (!readerResult.success) {
+      console.error('[前端] 读者查找失败:', readerResult.error)
+      ElMessage.error('读者不存在或查找失败: ' + (readerResult.error?.message || '未知错误'))
+      return
+    }
 
-    if (!readerResult.success || !bookResult.success) {
-      ElMessage.error('读者或图书不存在')
+    // 查找图书
+    console.log('[前端] 查找图书，ISBN:', borrowForm.bookIsbn)
+    const bookResult = await window.api.book.getByIsbn(borrowForm.bookIsbn)
+    console.log('[前端] 图书查找结果:', bookResult)
+
+    if (!bookResult.success) {
+      console.error('[前端] 图书查找失败:', bookResult.error)
+      ElMessage.error('图书不存在或查找失败: ' + (bookResult.error?.message || '未知错误'))
       return
     }
 
     const reader = readerResult.data
-    const book = bookResult.data.find((b: any) => b.isbn === borrowForm.bookIsbn)
+    const book = bookResult.data
 
-    if (!book) {
-      ElMessage.error('图书不存在')
-      return
-    }
+    console.log('[前端] 找到读者和图书:', {
+      readerId: reader.id,
+      readerName: reader.name,
+      bookId: book.id,
+      bookTitle: book.title,
+      bookAvailableQuantity: book.available_quantity
+    })
 
+    console.log('[前端] 调用借书API...')
     const result = await window.api.borrowing.borrow(reader.id, book.id)
+    console.log('[前端] 借书API结果:', result)
 
     if (result.success) {
+      console.log('[前端] 借书成功，记录ID:', result.data?.id)
       ElMessage.success('借书成功')
       borrowForm.readerNo = ''
       borrowForm.bookIsbn = ''
+      // 刷新借阅列表
+      console.log('[前端] 刷新借阅列表...')
+      await searchBorrowedBooks()
+      console.log('[前端] 借阅列表刷新完成')
     } else {
+      console.error('[前端] 借书失败:', result.error)
       ElMessage.error(result.error?.message || '借书失败')
     }
   } catch (error) {
-    ElMessage.error('操作失败')
+    console.error('[前端] 借书操作异常:', error)
+    if (error instanceof Error) {
+      console.error('[前端] 错误堆栈:', error.stack)
+    }
+    ElMessage.error('操作失败: ' + (error instanceof Error ? error.message : String(error)))
+  } finally {
+    console.log('========== [前端] 借书流程结束 ==========\n')
   }
 }
 

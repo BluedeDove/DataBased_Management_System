@@ -240,22 +240,32 @@ export class BookRepository {
 
   // 减少可借数量
   decreaseAvailableQuantity(id: number, amount: number = 1): void {
-    db.prepare(`
+    const stmt = db.prepare(`
       UPDATE books
       SET available_quantity = available_quantity - ?,
           updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).run(amount, id)
+      WHERE id = ? AND available_quantity >= ?
+    `)
+    const result = stmt.run(amount, id, amount)
+    
+    if (result.changes === 0) {
+      throw new Error(`图书可借数量不足，无法减少 ${amount} 本`)
+    }
   }
 
   // 增加可借数量
   increaseAvailableQuantity(id: number, amount: number = 1): void {
-    db.prepare(`
+    const stmt = db.prepare(`
       UPDATE books
       SET available_quantity = available_quantity + ?,
           updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `).run(amount, id)
+    `)
+    const result = stmt.run(amount, id)
+    
+    if (result.changes === 0) {
+      throw new Error(`图书不存在，ID: ${id}`)
+    }
   }
 
   // 高级搜索

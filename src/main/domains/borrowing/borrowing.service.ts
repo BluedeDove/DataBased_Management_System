@@ -16,127 +16,218 @@ export class BorrowingService {
   async borrowBook(readerId: number, bookId: number): Promise<BorrowingRecord> {
     logger.info('借书请求', { readerId, bookId })
 
-    // 1. 验证读者
-    const reader = this.readerRepository.findById(readerId)
-    if (!reader) {
-      throw new ValidationError('读者不存在')
-    }
+    // 在try块外声明变量，以便在catch块中访问
+    let reader: any = null
+    let book: any = null
 
-    if (reader.status !== 'active') {
-      throw new BusinessError('读者证未激活或已挂失')
-    }
+    try {
+      // 1. 验证读者
+      reader = this.readerRepository.findById(readerId)
+      if (!reader) {
+        throw new ValidationError('读者不存在')
+      }
 
-    if (reader.expiry_date && new Date(reader.expiry_date) < new Date()) {
-      throw new BusinessError('读者证已过期')
-    }
+      if (reader.status !== 'active') {
+        throw new BusinessError('读者证未激活或已挂失')
+      }
 
-    // 2. 检查借阅数量限制
-    const currentBorrowCount = this.readerRepository.getBorrowingCount(readerId)
-    if (currentBorrowCount >= reader.max_borrow_count) {
-      throw new BorrowLimitError(`已达到最大借阅数量（${reader.max_borrow_count}本）`)
-    }
+      if (reader.expiry_date && new Date(reader.expiry_date) < new Date()) {
+        throw new BusinessError('读者证已过期')
+      }
 
-    // 3. 检查是否有逾期未还
-    if (this.readerRepository.hasOverdueBooks(readerId)) {
-      throw new BusinessError('您有图书逾期未还，请先归还逾期图书')
-    }
+      // 2. 检查借阅数量限制
+      const currentBorrowCount = this.readerRepository.getBorrowingCount(readerId)
+      if (currentBorrowCount >= reader.max_borrow_count) {
+        throw new BorrowLimitError(`已达到最大借阅数量（${reader.max_borrow_count}本）`)
+      }
 
-    // 4. 验证图书
-    const book = this.bookRepository.findById(bookId)
-    if (!book) {
-      throw new ValidationError('图书不存在')
-    }
+      // 3. 检查是否有逾期未还
+      if (this.readerRepository.hasOverdueBooks(readerId)) {
+        throw new BusinessError('您有图书逾期未还，请先归还逾期图书')
+      }
 
-    if (book.status !== 'normal') {
-      throw new BusinessError(`图书状态异常：${book.status}`)
-    }
+      // 4. 验证图书
+      book = this.bookRepository.findById(bookId)
+      if (!book) {
+        throw new ValidationError('图书不存在')
+      }
 
-    if (book.available_quantity < 1) {
-      throw new StockUnavailableError('暂无可借图书')
-    }
+      if (book.status !== 'normal') {
+        throw new BusinessError(`图书状态异常：${book.status}`)
+      }
 
-    // 5. 检查是否已借阅该书
-    const existingBorrowing = this.borrowingRepository.findActiveBorrowing(readerId, bookId)
-    if (existingBorrowing) {
-      throw new BusinessError('您已借阅该图书，不能重复借阅')
-    }
+      if (book.available_quantity < 1) {
+        throw new StockUnavailableError('暂无可借图书')
+      }
 
-    // 6. 计算归还日期
-    const borrowDate = new Date()
-    const dueDate = new Date()
-    dueDate.setDate(dueDate.getDate() + reader.max_borrow_days)
+      // 5. 检查是否已借阅该书
+      const existingBorrowing = this.borrowingRepository.findActiveBorrowing(readerId, bookId)
+      if (existingBorrowing) {
+        throw new BusinessError('您已借阅该图书，不能重复借阅')
+      }
 
-    // 7. 使用事务确保数据一致性
-    const transaction = db.transaction(() => {
-      // 7.1 创建借阅记录
-      const record = this.borrowingRepository.create({
-        reader_id: readerId,
-        book_id: bookId,
-        borrow_date: borrowDate.toISOString().split('T')[0],
-        due_date: dueDate.toISOString().split('T')[0],
-        renewal_count: 0,
-        status: 'borrowed',
-        fine_amount: 0
+      // 6. 计算归还日期
+      const borrowDate = new Date()
+      const dueDate = new Date()
+      dueDate.setDate(dueDate.getDate() + reader.max_borrow_days)
+
+      logger.info('开始借书事务', { readerId, bookId, readerName: reader.name, bookTitle: book.title })
+
+      // 7. 使用事务确保数据一致性
+      const transaction = db.transaction(() => {
+        // 7.1 创建借阅记录
+        const record = this.borrowingRepository.create({
+          reader_id: readerId,
+          book_id: bookId,
+          borrow_date: borrowDate.toISOString().split('T')[0],
+          due_date: dueDate.toISOString().split('T')[0],
+          renewal_count: 0,
+          status: 'borrowed',
+          fine_amount: 0
+        })
+
+        // 7.2 减少图书可借数量
+        this.bookRepository.decreaseAvailableQuantity(bookId, 1)
+
+        logger.info('借书成功', {
+          reader: reader.name,
+          book: book.title,
+          dueDate: dueDate.toISOString().split('T')[0],
+          recordId: record.id
+        })
+
+        return record
       })
 
-      // 7.2 减少图书可借数量
-      this.bookRepository.decreaseAvailableQuantity(bookId, 1)
-
-      logger.info('借书成功', {
-        reader: reader.name,
-        book: book.title,
-        dueDate: dueDate.toISOString().split('T')[0]
+      const result = transaction()
+      
+      // 验证事务结果
+      if (!result || !result.id) {
+        throw new Error('借书事务完成但未返回有效记录')
+      }
+      
+      // 验证图书数量是否真的减少了
+      const updatedBook = this.bookRepository.findById(bookId)
+      if (!updatedBook) {
+        throw new Error('借书后无法找到图书信息')
+      }
+      
+      if (updatedBook.available_quantity !== book.available_quantity - 1) {
+        logger.warn('图书数量可能未正确更新', {
+          expected: book.available_quantity - 1,
+          actual: updatedBook.available_quantity,
+          bookId
+        })
+      }
+      
+      logger.info('借书事务完成', {
+        recordId: result.id,
+        readerName: reader.name,
+        bookTitle: book.title,
+        dueDate: dueDate.toISOString().split('T')[0],
+        newAvailableQuantity: updatedBook.available_quantity
       })
-
-      return record
-    })
-
-    return transaction()
+      return result
+    } catch (error) {
+      logger.error('借书失败', {
+        readerId,
+        bookId,
+        readerName: reader?.name || '未知',
+        bookTitle: book?.title || '未知',
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      })
+      throw error
+    }
   }
 
   // 还书
   async returnBook(recordId: number): Promise<BorrowingRecord> {
     logger.info('还书请求', { recordId })
 
-    const record = this.borrowingRepository.findById(recordId)
-    if (!record) {
-      throw new ValidationError('借阅记录不存在')
-    }
+    // 在try块外声明变量，以便在catch块中访问
+    let record: any = null
 
-    if (record.status === 'returned') {
-      throw new BusinessError('该书已归还')
-    }
+    try {
+      record = this.borrowingRepository.findById(recordId)
+      if (!record) {
+        throw new ValidationError('借阅记录不存在')
+      }
 
-    // 计算罚款
-    const fine = this.borrowingRepository.calculateFine(
-      recordId,
-      config.business.overdueFinePerDay
-    )
+      if (record.status === 'returned') {
+        throw new BusinessError('该书已归还')
+      }
 
-    const returnDate = new Date()
+      // 计算罚款
+      const fine = this.borrowingRepository.calculateFine(
+        recordId,
+        config.business.overdueFinePerDay
+      )
 
-    // 使用事务
-    const transaction = db.transaction(() => {
-      // 更新借阅记录
-      const updated = this.borrowingRepository.update(recordId, {
-        return_date: returnDate.toISOString().split('T')[0],
-        status: 'returned',
-        fine_amount: fine
-      })
+      const returnDate = new Date()
 
-      // 增加图书可借数量
-      this.bookRepository.increaseAvailableQuantity(record.book_id, 1)
-
-      logger.info('还书成功', {
-        reader: record.reader_name,
-        book: record.book_title,
+      logger.info('开始还书事务', {
+        recordId,
+        readerId: record.reader_id,
+        bookId: record.book_id,
+        readerName: record.reader_name,
+        bookTitle: record.book_title,
         fine
       })
 
-      return updated
-    })
+      // 使用事务
+      const transaction = db.transaction(() => {
+        // 更新借阅记录
+        const updated = this.borrowingRepository.update(recordId, {
+          return_date: returnDate.toISOString().split('T')[0],
+          status: 'returned',
+          fine_amount: fine
+        })
 
-    return transaction()
+        // 增加图书可借数量
+        this.bookRepository.increaseAvailableQuantity(record.book_id, 1)
+
+        logger.info('还书成功', {
+          reader: record.reader_name,
+          book: record.book_title,
+          fine,
+          recordId: updated.id
+        })
+
+        return updated
+      })
+
+      const result = transaction()
+      
+      // 验证事务结果
+      if (!result || result.status !== 'returned') {
+        throw new Error('还书事务完成但记录状态未正确更新')
+      }
+      
+      // 验证图书数量是否真的增加了
+      const updatedBook = this.bookRepository.findById(record.book_id)
+      if (!updatedBook) {
+        throw new Error('还书后无法找到图书信息')
+      }
+      
+      logger.info('还书事务完成', {
+        recordId: result.id,
+        readerName: record.reader_name,
+        bookTitle: record.book_title,
+        fineAmount: fine,
+        newAvailableQuantity: updatedBook.available_quantity
+      })
+      return result
+    } catch (error) {
+      logger.error('还书失败', {
+        recordId,
+        readerName: record?.reader_name || '未知',
+        bookTitle: record?.book_title || '未知',
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      })
+      throw error
+    }
   }
 
   // 续借

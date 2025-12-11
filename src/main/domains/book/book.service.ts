@@ -57,6 +57,14 @@ export class BookService {
     return book
   }
 
+  getBookByIsbn(isbn: string): BookWithCategory {
+    const book = this.bookRepository.findByIsbn(isbn)
+    if (!book) {
+      throw new NotFoundError('图书')
+    }
+    return book
+  }
+
   createBook(data: Omit<Book, 'id' | 'created_at' | 'updated_at'>): Book {
     logger.info('========== [后端] 开始创建图书 ==========')
     logger.info('[后端] 接收到的数据:', JSON.stringify(data, null, 2))

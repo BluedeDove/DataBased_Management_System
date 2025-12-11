@@ -8,6 +8,7 @@ interface User {
   role: 'admin' | 'librarian' | 'teacher' | 'student'
   email?: string
   phone?: string
+  reader_id?: number
 }
 
 export const useUserStore = defineStore('user', () => {
