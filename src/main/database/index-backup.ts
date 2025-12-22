@@ -3,7 +3,6 @@ import { app } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import * as bcrypt from 'bcryptjs'
-import { DatabaseMigration } from './migration'
 
 // 数据库文件路径
 const userDataPath = app.getPath('userData')
@@ -443,18 +442,10 @@ export function setupDatabase() {
     initDatabase()
     seedDatabase()
     fixAdminPassword() // 添加修复步骤
-    
-    // 执行数据库迁移
-    DatabaseMigration.migrate().then(() => {
-      console.log('📚 数据库系统准备就绪')
-    }).catch(error => {
-      console.error('❌ 数据库迁移失败:', error)
-      throw error
-    })
-    
     // 注意：测试用户数据已移至独立脚本
     // 如需生成测试数据，请运行: npm run generate:testdata
     // seedTestUsers()  // 已移除自动调用
+    console.log('📚 数据库系统准备就绪')
   } catch (error) {
     console.error('❌ 数据库初始化失败:', error)
     throw error

@@ -33,20 +33,7 @@
               <el-input v-model="borrowForm.bookIsbn" placeholder="扫描或输入" style="width: 200px" />
             </el-form-item>
             <el-form-item>
-              <el-button 
-                type="primary" 
-                @click="handleBorrow"
-                :loading="isBorrowing"
-                :disabled="isBorrowing"
-              >
-                <template v-if="isBorrowing">
-                  <el-icon><Loading /></el-icon>
-                  借书中...
-                </template>
-                <template v-else>
-                  确认借书
-                </template>
-              </el-button>
+              <el-button type="primary" @click="handleBorrow">确认借书</el-button>
             </el-form-item>
           </el-form>
         </div>
@@ -100,35 +87,14 @@
             </el-table-column>
             <el-table-column label="操作" width="200">
               <template #default="{ row }">
-                <el-button 
-                  type="success" 
-                  link 
-                  @click="handleReturn(row)"
-                  :loading="returningBooks.has(row.id)"
-                  :disabled="returningBooks.has(row.id)"
-                >
-                  <template v-if="returningBooks.has(row.id)">
-                    <el-icon><Loading /></el-icon>
-                    还书中...
-                  </template>
-                  <template v-else>
-                    还书
-                  </template>
-                </el-button>
+                <el-button type="success" link @click="handleReturn(row)">还书</el-button>
                 <el-button
                   type="primary"
                   link
                   @click="handleRenew(row)"
-                  :disabled="isOverdue(row.due_date) || renewingBooks.has(row.id)"
-                  :loading="renewingBooks.has(row.id)"
+                  :disabled="isOverdue(row.due_date)"
                 >
-                  <template v-if="renewingBooks.has(row.id)">
-                    <el-icon><Loading /></el-icon>
-                    续借中...
-                  </template>
-                  <template v-else>
-                    续借
-                  </template>
+                  续借
                 </el-button>
               </template>
             </el-table-column>
@@ -173,20 +139,14 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, Loading, WarningFilled } from '@element-plus/icons-vue'
+import { Search } from '@element-plus/icons-vue'
 import { useUserStore } from '@/store/user'
-import { DebounceSubmitManager, DebounceConfigs } from '@/utils/debounceSubmit'
 
 const userStore = useUserStore()
 const borrowedBooks = ref<any[]>([])
 const allRecords = ref<any[]>([])
 const returnSearchKeyword = ref('')
 const overdueCount = ref(0)
-
-// 加载状态
-const isBorrowing = ref(false)
-const returningBooks = ref(new Set<number>())
-const renewingBooks = ref(new Set<number>())
 
 // 角色权限相关
 const userRole = computed(() => userStore.user?.role || '')
@@ -224,73 +184,56 @@ const filterRecordsByUser = (records: any[]) => {
   )
 }
 
-// 增强的借书操作（带防重复提交和重试）
 const handleBorrow = async () => {
   if (!borrowForm.readerNo || !borrowForm.bookIsbn) {
     ElMessage.warning('请填写完整信息')
     return
   }
 
-  isBorrowing.value = true
-
   try {
     console.log('========== [前端] 开始借书流程 ==========')
     console.log('[前端] 输入数据:', { readerNo: borrowForm.readerNo, bookIsbn: borrowForm.bookIsbn })
     
-    // 使用防重复提交和重试机制
-    const result = await DebounceSubmitManager.submitWithRetry(
-      `borrow_${borrowForm.readerNo}_${borrowForm.bookIsbn}`,
-      async () => {
-        // 先查找读者
-        console.log('[前端] 查找读者，编号:', borrowForm.readerNo)
-        const readerResult = await window.api.reader.getByNo(borrowForm.readerNo)
-        console.log('[前端] 读者查找结果:', readerResult)
-        
-        if (!readerResult.success) {
-          throw new Error('读者不存在或查找失败: ' + (readerResult.error?.message || '未知错误'))
-        }
+    // 先查找读者
+    console.log('[前端] 查找读者，编号:', borrowForm.readerNo)
+    const readerResult = await window.api.reader.getByNo(borrowForm.readerNo)
+    console.log('[前端] 读者查找结果:', readerResult)
+    
+    if (!readerResult.success) {
+      console.error('[前端] 读者查找失败:', readerResult.error)
+      ElMessage.error('读者不存在或查找失败: ' + (readerResult.error?.message || '未知错误'))
+      return
+    }
 
-        // 查找图书
-        console.log('[前端] 查找图书，ISBN:', borrowForm.bookIsbn)
-        const bookResult = await window.api.book.getByIsbn(borrowForm.bookIsbn)
-        console.log('[前端] 图书查找结果:', bookResult)
+    // 查找图书
+    console.log('[前端] 查找图书，ISBN:', borrowForm.bookIsbn)
+    const bookResult = await window.api.book.getByIsbn(borrowForm.bookIsbn)
+    console.log('[前端] 图书查找结果:', bookResult)
 
-        if (!bookResult.success) {
-          throw new Error('图书不存在或查找失败: ' + (bookResult.error?.message || '未知错误'))
-        }
+    if (!bookResult.success) {
+      console.error('[前端] 图书查找失败:', bookResult.error)
+      ElMessage.error('图书不存在或查找失败: ' + (bookResult.error?.message || '未知错误'))
+      return
+    }
 
-        const reader = readerResult.data
-        const book = bookResult.data
+    const reader = readerResult.data
+    const book = bookResult.data
 
-        console.log('[前端] 找到读者和图书:', {
-          readerId: reader.id,
-          readerName: reader.name,
-          bookId: book.id,
-          bookTitle: book.title,
-          bookAvailableQuantity: book.available_quantity
-        })
+    console.log('[前端] 找到读者和图书:', {
+      readerId: reader.id,
+      readerName: reader.name,
+      bookId: book.id,
+      bookTitle: book.title,
+      bookAvailableQuantity: book.available_quantity
+    })
 
-        // 调用借书API
-        console.log('[前端] 调用借书API...')
-        const borrowResult = await window.api.borrowing.borrow(reader.id, book.id)
-        console.log('[前端] 借书API结果:', borrowResult)
-
-        if (!borrowResult.success) {
-          throw new Error(borrowResult.error?.message || '借书失败')
-        }
-
-        return borrowResult.data
-      },
-      3, // 最大重试3次
-      {
-        ...DebounceConfigs.BORROW,
-        showMessage: true
-      }
-    )
+    console.log('[前端] 调用借书API...')
+    const result = await window.api.borrowing.borrow(reader.id, book.id)
+    console.log('[前端] 借书API结果:', result)
 
     if (result.success) {
       console.log('[前端] 借书成功，记录ID:', result.data?.id)
-      ElMessage.success('借阅成功！')
+      ElMessage.success('借书成功')
       borrowForm.readerNo = ''
       borrowForm.bookIsbn = ''
       // 刷新借阅列表
@@ -299,79 +242,16 @@ const handleBorrow = async () => {
       console.log('[前端] 借阅列表刷新完成')
     } else {
       console.error('[前端] 借书失败:', result.error)
-      // 错误消息已在DebounceSubmitManager中处理
+      ElMessage.error(result.error?.message || '借书失败')
     }
   } catch (error) {
     console.error('[前端] 借书操作异常:', error)
     if (error instanceof Error) {
       console.error('[前端] 错误堆栈:', error.stack)
     }
-    // ElMessage.error('操作失败: ' + (error instanceof Error ? error.message : String(error)))
+    ElMessage.error('操作失败: ' + (error instanceof Error ? error.message : String(error)))
   } finally {
-    isBorrowing.value = false
     console.log('========== [前端] 借书流程结束 ==========\n')
-  }
-}
-
-// 增强的还书操作（带防重复提交和重试）
-const handleReturn = async (row: any) => {
-  const bookId = row.id
-  returningBooks.value.add(bookId)
-
-  try {
-    const result = await DebounceSubmitManager.submitWithRetry(
-      `return_${bookId}`,
-      async () => {
-        const returnResult = await window.api.borrowing.return(bookId)
-        if (!returnResult.success) {
-          throw new Error(returnResult.error?.message || '还书失败')
-        }
-        return returnResult.data
-      },
-      2, // 最大重试2次
-      DebounceConfigs.RETURN
-    )
-
-    if (result.success) {
-      ElMessage.success('还书成功！')
-      searchBorrowedBooks()
-    }
-    // 错误消息已在DebounceSubmitManager中处理
-  } catch (error) {
-    console.error('还书操作失败:', error)
-  } finally {
-    returningBooks.value.delete(bookId)
-  }
-}
-
-// 增强的续借操作（带防重复提交和重试）
-const handleRenew = async (row: any) => {
-  const bookId = row.id
-  renewingBooks.value.add(bookId)
-
-  try {
-    const result = await DebounceSubmitManager.submitWithRetry(
-      `renew_${bookId}`,
-      async () => {
-        const renewResult = await window.api.borrowing.renew(bookId)
-        if (!renewResult.success) {
-          throw new Error(renewResult.error?.message || '续借失败')
-        }
-        return renewResult.data
-      },
-      2, // 最大重试2次
-      DebounceConfigs.RENEW
-    )
-
-    if (result.success) {
-      ElMessage.success('续借成功！')
-      searchBorrowedBooks()
-    }
-    // 错误消息已在DebounceSubmitManager中处理
-  } catch (error) {
-    console.error('续借操作失败:', error)
-  } finally {
-    renewingBooks.value.delete(bookId)
   }
 }
 
@@ -397,6 +277,26 @@ const searchBorrowedBooks = async () => {
     if (!canViewAllRecords.value) {
       overdueCount.value = filtered.filter((r: any) => isOverdue(r.due_date)).length
     }
+  }
+}
+
+const handleReturn = async (row: any) => {
+  const result = await window.api.borrowing.return(row.id)
+  if (result.success) {
+    ElMessage.success('还书成功')
+    searchBorrowedBooks()
+  } else {
+    ElMessage.error(result.error?.message || '还书失败')
+  }
+}
+
+const handleRenew = async (row: any) => {
+  const result = await window.api.borrowing.renew(row.id)
+  if (result.success) {
+    ElMessage.success('续借成功')
+    searchBorrowedBooks()
+  } else {
+    ElMessage.error(result.error?.message || '续借失败')
   }
 }
 
