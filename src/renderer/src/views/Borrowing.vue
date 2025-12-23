@@ -12,63 +12,137 @@
       :title="`您有 ${overdueCount} 本图书已逾期，请尽快归还！`"
       :closable="false"
       show-icon
-      style="margin-bottom: 20px"
+      class="alert-banner"
     >
       <template #default>
-        <div style="margin-top: 8px">
+        <div class="alert-content">
           逾期图书可能会影响您的信用记录和借阅权限，请及时处理。
         </div>
       </template>
     </el-alert>
 
-    <el-tabs v-model="activeTab" @tab-change="handleTabChange">
+    <el-tabs v-model="activeTab" @tab-change="handleTabChange" class="custom-tabs">
       <!-- 借书标签页：仅管理员和图书管理员可见 -->
-      <el-tab-pane v-if="canViewAllRecords" label="借书" name="borrow">
-        <div class="borrow-section">
-          <el-form :inline="true" :model="borrowForm" label-width="100px">
-            <el-form-item label="读者编号">
-              <el-input v-model="borrowForm.readerNo" placeholder="扫描或输入" style="width: 200px" />
+      <el-tab-pane v-if="canViewAllRecords" name="borrow">
+        <template #label>
+          <span class="tab-label">
+            <el-icon><Notebook /></el-icon>
+            借书
+          </span>
+        </template>
+        <div class="glass-card borrow-section">
+          <div class="section-header">
+            <div class="icon-box primary">
+              <el-icon><Notebook /></el-icon>
+            </div>
+            <div class="header-text">
+              <h3>图书借阅</h3>
+              <p>扫描或输入读者编号和图书ISBN进行借阅</p>
+            </div>
+          </div>
+          <el-form :inline="true" :model="borrowForm" label-width="100px" class="borrow-form">
+            <el-form-item label="读者">
+              <el-input
+                v-model="borrowForm.readerNo"
+                placeholder="输入编号或姓名搜索"
+                style="width: 240px"
+                size="large"
+                @keyup.enter="searchReader"
+              >
+                <template #prefix><el-icon><User /></el-icon></template>
+                <template #append>
+                  <el-button :icon="Search" @click="searchReader">搜索</el-button>
+                </template>
+              </el-input>
             </el-form-item>
-            <el-form-item label="图书ISBN">
-              <el-input v-model="borrowForm.bookIsbn" placeholder="扫描或输入" style="width: 200px" />
+            <el-form-item label="图书">
+              <el-input
+                v-model="borrowForm.bookIsbn"
+                placeholder="输入ISBN或书名搜索"
+                style="width: 240px"
+                size="large"
+                @keyup.enter="searchBook"
+              >
+                <template #prefix><el-icon><Reading /></el-icon></template>
+                <template #append>
+                  <el-button :icon="Search" @click="searchBook">搜索</el-button>
+                </template>
+              </el-input>
             </el-form-item>
             <el-form-item>
-              <el-button 
-                type="primary" 
+              <el-button
+                type="primary"
                 @click="handleBorrow"
                 :loading="isBorrowing"
                 :disabled="isBorrowing"
+                size="large"
+                class="borrow-btn"
               >
                 <template v-if="isBorrowing">
-                  <el-icon><Loading /></el-icon>
+                  <el-icon class="is-loading"><Loading /></el-icon>
                   借书中...
                 </template>
                 <template v-else>
+                  <el-icon><Check /></el-icon>
                   确认借书
                 </template>
               </el-button>
             </el-form-item>
           </el-form>
+
+          <!-- 已选择的读者和图书信息显示 -->
+          <div v-if="selectedReader || selectedBook" class="selected-info">
+            <div v-if="selectedReader" class="info-item">
+              <span class="label">读者：</span>
+              <span class="value">{{ selectedReader.name }} ({{ selectedReader.reader_no }})</span>
+            </div>
+            <div v-if="selectedBook" class="info-item">
+              <span class="label">图书：</span>
+              <span class="value">{{ selectedBook.title }} ({{ selectedBook.isbn }})</span>
+            </div>
+          </div>
         </div>
       </el-tab-pane>
 
-      <el-tab-pane label="还书" name="return">
-        <div class="return-section">
-          <el-input
-            v-model="returnSearchKeyword"
-            placeholder="搜索读者姓名或编号"
-            style="width: 300px; margin-bottom: 20px"
-            @keyup.enter="searchBorrowedBooks"
-          >
-            <template #append>
-              <el-button :icon="Search" @click="searchBorrowedBooks" />
-            </template>
-          </el-input>
+      <el-tab-pane name="return">
+        <template #label>
+          <span class="tab-label">
+            <el-icon><RefreshRight /></el-icon>
+            还书
+          </span>
+        </template>
+        <div class="glass-card return-section">
+          <div class="search-bar">
+            <el-input
+              v-model="returnSearchKeyword"
+              placeholder="搜索读者编号/姓名、图书ISBN/书名..."
+              style="width: 320px"
+              @keyup.enter="searchBorrowedBooks"
+              size="large"
+              clearable
+            >
+              <template #prefix><el-icon><Search /></el-icon></template>
+              <template #append>
+                <el-button :icon="Search" @click="searchBorrowedBooks">搜索</el-button>
+              </template>
+            </el-input>
+            <el-date-picker
+              v-model="dateRange"
+              type="daterange"
+              range-separator="至"
+              start-placeholder="借书起始日期"
+              end-placeholder="借书结束日期"
+              size="large"
+              @change="searchBorrowedBooks"
+              clearable
+            />
+          </div>
 
           <el-table
             :data="borrowedBooks"
             style="width: 100%"
             :row-class-name="getRowClassName"
+            class="custom-table"
           >
             <el-table-column v-if="canViewAllRecords" prop="reader_name" label="读者" width="120" />
             <el-table-column prop="book_title" label="图书" />
@@ -136,44 +210,96 @@
         </div>
       </el-tab-pane>
 
-      <el-tab-pane label="借阅记录" name="history">
-        <el-table :data="allRecords" style="width: 100%">
-          <el-table-column type="index" label="#" width="60" />
-          <el-table-column prop="reader_name" label="读者" width="120" />
-          <el-table-column prop="book_title" label="图书" />
-          <el-table-column prop="borrow_date" label="借书日期" width="110" />
-          <el-table-column prop="return_date" label="还书日期" width="110" />
-          <el-table-column label="状态" width="100">
-            <template #default="{ row }">
-              <el-tag v-if="row.status === 'borrowed'" type="warning">借阅中</el-tag>
-              <el-tag v-else-if="row.status === 'returned'" type="success">已归还</el-tag>
-              <el-tag v-else-if="row.status === 'overdue'" type="danger">逾期</el-tag>
-              <el-tag v-else type="info">丢失</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="120">
-            <template #default="{ row }">
-              <el-button
-                type="danger"
-                link
-                size="small"
-                :disabled="row.status !== 'returned'"
-                @click="handleDeleteRecord(row)"
-              >
-                删除
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+      <el-tab-pane name="history">
+        <template #label>
+          <span class="tab-label">
+            <el-icon><Document /></el-icon>
+            借阅记录
+          </span>
+        </template>
+        <div class="glass-card history-section">
+          <el-table :data="allRecords" style="width: 100%" class="custom-table">
+            <el-table-column type="index" label="#" width="60" />
+            <el-table-column prop="reader_name" label="读者" width="120" />
+            <el-table-column prop="book_title" label="图书" />
+            <el-table-column prop="borrow_date" label="借书日期" width="110" />
+            <el-table-column prop="return_date" label="还书日期" width="110" />
+            <el-table-column label="状态" width="100">
+              <template #default="{ row }">
+                <el-tag v-if="row.status === 'borrowed'" type="warning">借阅中</el-tag>
+                <el-tag v-else-if="row.status === 'returned'" type="success">已归还</el-tag>
+                <el-tag v-else-if="row.status === 'overdue'" type="danger">逾期</el-tag>
+                <el-tag v-else type="info">丢失</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="120">
+              <template #default="{ row }">
+                <el-button
+                  type="danger"
+                  link
+                  size="small"
+                  :disabled="row.status !== 'returned'"
+                  @click="handleDeleteRecord(row)"
+                >
+                  删除
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
       </el-tab-pane>
     </el-tabs>
+
+    <!-- 读者选择对话框 -->
+    <el-dialog
+      v-model="readerSelectDialogVisible"
+      title="选择读者"
+      width="600px"
+      destroy-on-close
+    >
+      <el-table :data="searchReaderResults" style="width: 100%" max-height="400px">
+        <el-table-column prop="reader_no" label="编号" width="120" />
+        <el-table-column prop="name" label="姓名" width="120" />
+        <el-table-column prop="category_name" label="类型" width="100" />
+        <el-table-column prop="phone" label="电话" />
+        <el-table-column label="操作" width="80">
+          <template #default="{ row }">
+            <el-button type="primary" link @click="handleSelectReader(row)">选择</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-dialog>
+
+    <!-- 图书选择对话框 -->
+    <el-dialog
+      v-model="bookSelectDialogVisible"
+      title="选择图书"
+      width="800px"
+      destroy-on-close
+    >
+      <el-table :data="searchBookResults" style="width: 100%" max-height="400px">
+        <el-table-column prop="isbn" label="ISBN" width="140" />
+        <el-table-column prop="title" label="书名" />
+        <el-table-column prop="author" label="作者" width="120" />
+        <el-table-column label="库存" width="100">
+          <template #default="{ row }">
+            {{ row.available_quantity }} / {{ row.total_quantity }}
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="80">
+          <template #default="{ row }">
+            <el-button type="primary" link @click="handleSelectBook(row)">选择</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, Loading, WarningFilled } from '@element-plus/icons-vue'
+import { Search, Loading, WarningFilled, Notebook, User, Reading, Check, RefreshRight, Document } from '@element-plus/icons-vue'
 import { useUserStore } from '@/store/user'
 import { DebounceSubmitManager, DebounceConfigs } from '@/utils/debounceSubmit'
 
@@ -181,6 +307,7 @@ const userStore = useUserStore()
 const borrowedBooks = ref<any[]>([])
 const allRecords = ref<any[]>([])
 const returnSearchKeyword = ref('')
+const dateRange = ref<[Date, Date] | null>(null)
 const overdueCount = ref(0)
 
 // 加载状态
@@ -211,6 +338,14 @@ const borrowForm = reactive({
   bookIsbn: ''
 })
 
+// 搜索结果选择对话框
+const readerSelectDialogVisible = ref(false)
+const bookSelectDialogVisible = ref(false)
+const searchReaderResults = ref<any[]>([])
+const searchBookResults = ref<any[]>([])
+const selectedReader = ref<any>(null)
+const selectedBook = ref<any>(null)
+
 // 过滤记录：教师和学生只能看到自己的记录
 const filterRecordsByUser = (records: any[]) => {
   if (canViewAllRecords.value) {
@@ -224,10 +359,71 @@ const filterRecordsByUser = (records: any[]) => {
   )
 }
 
+// 搜索读者
+const searchReader = async () => {
+  if (!borrowForm.readerNo) {
+    ElMessage.warning('请输入读者编号或姓名')
+    return
+  }
+
+  const result = await window.api.reader.search(borrowForm.readerNo)
+  if (result.success && result.data.length > 0) {
+    if (result.data.length === 1) {
+      selectedReader.value = result.data[0]
+      ElMessage.success(`找到读者：${result.data[0].name}`)
+    } else {
+      searchReaderResults.value = result.data
+      readerSelectDialogVisible.value = true
+    }
+  } else {
+    ElMessage.warning('未找到匹配的读者')
+  }
+}
+
+// 选择读者
+const handleSelectReader = (reader: any) => {
+  selectedReader.value = reader
+  readerSelectDialogVisible.value = false
+  ElMessage.success(`已选择读者：${reader.name}`)
+}
+
+// 搜索图书
+const searchBook = async () => {
+  if (!borrowForm.bookIsbn) {
+    ElMessage.warning('请输入图书ISBN或书名')
+    return
+  }
+
+  const result = await window.api.book.getAll({ keyword: borrowForm.bookIsbn })
+  if (result.success && result.data.length > 0) {
+    if (result.data.length === 1) {
+      selectedBook.value = result.data[0]
+      ElMessage.success(`找到图书：${result.data[0].title}`)
+    } else {
+      searchBookResults.value = result.data
+      bookSelectDialogVisible.value = true
+    }
+  } else {
+    ElMessage.warning('未找到匹配的图书')
+  }
+}
+
+// 选择图书
+const handleSelectBook = (book: any) => {
+  selectedBook.value = book
+  bookSelectDialogVisible.value = false
+  ElMessage.success(`已选择图书：${book.title}`)
+}
+
 // 增强的借书操作（带防重复提交和重试）
 const handleBorrow = async () => {
-  if (!borrowForm.readerNo || !borrowForm.bookIsbn) {
-    ElMessage.warning('请填写完整信息')
+  if (!selectedReader.value) {
+    ElMessage.warning('请先选择读者（输入编号或姓名后点击搜索图标）')
+    return
+  }
+
+  if (!selectedBook.value) {
+    ElMessage.warning('请先选择图书（输入ISBN或书名后点击搜索图标）')
     return
   }
 
@@ -235,44 +431,21 @@ const handleBorrow = async () => {
 
   try {
     console.log('========== [前端] 开始借书流程 ==========')
-    console.log('[前端] 输入数据:', { readerNo: borrowForm.readerNo, bookIsbn: borrowForm.bookIsbn })
-    
+    console.log('[前端] 读者和图书:', {
+      readerId: selectedReader.value.id,
+      readerName: selectedReader.value.name,
+      bookId: selectedBook.value.id,
+      bookTitle: selectedBook.value.title,
+      bookAvailableQuantity: selectedBook.value.available_quantity
+    })
+
     // 使用防重复提交和重试机制
     const result = await DebounceSubmitManager.submitWithRetry(
-      `borrow_${borrowForm.readerNo}_${borrowForm.bookIsbn}`,
+      `borrow_${selectedReader.value.id}_${selectedBook.value.id}`,
       async () => {
-        // 先查找读者
-        console.log('[前端] 查找读者，编号:', borrowForm.readerNo)
-        const readerResult = await window.api.reader.getByNo(borrowForm.readerNo)
-        console.log('[前端] 读者查找结果:', readerResult)
-        
-        if (!readerResult.success) {
-          throw new Error('读者不存在或查找失败: ' + (readerResult.error?.message || '未知错误'))
-        }
-
-        // 查找图书
-        console.log('[前端] 查找图书，ISBN:', borrowForm.bookIsbn)
-        const bookResult = await window.api.book.getByIsbn(borrowForm.bookIsbn)
-        console.log('[前端] 图书查找结果:', bookResult)
-
-        if (!bookResult.success) {
-          throw new Error('图书不存在或查找失败: ' + (bookResult.error?.message || '未知错误'))
-        }
-
-        const reader = readerResult.data
-        const book = bookResult.data
-
-        console.log('[前端] 找到读者和图书:', {
-          readerId: reader.id,
-          readerName: reader.name,
-          bookId: book.id,
-          bookTitle: book.title,
-          bookAvailableQuantity: book.available_quantity
-        })
-
         // 调用借书API
         console.log('[前端] 调用借书API...')
-        const borrowResult = await window.api.borrowing.borrow(reader.id, book.id)
+        const borrowResult = await window.api.borrowing.borrow(selectedReader.value.id, selectedBook.value.id)
         console.log('[前端] 借书API结果:', borrowResult)
 
         if (!borrowResult.success) {
@@ -293,6 +466,8 @@ const handleBorrow = async () => {
       ElMessage.success('借阅成功！')
       borrowForm.readerNo = ''
       borrowForm.bookIsbn = ''
+      selectedReader.value = null
+      selectedBook.value = null
       // 刷新借阅列表
       console.log('[前端] 刷新借阅列表...')
       await searchBorrowedBooks()
@@ -306,7 +481,6 @@ const handleBorrow = async () => {
     if (error instanceof Error) {
       console.error('[前端] 错误堆栈:', error.stack)
     }
-    // ElMessage.error('操作失败: ' + (error instanceof Error ? error.message : String(error)))
   } finally {
     isBorrowing.value = false
     console.log('========== [前端] 借书流程结束 ==========\n')
@@ -376,26 +550,30 @@ const handleRenew = async (row: any) => {
 }
 
 const searchBorrowedBooks = async () => {
-  const result = await window.api.borrowing.getAll({ status: 'borrowed' })
+  // 构建搜索参数
+  const searchParams: any = {
+    status: 'borrowed'
+  }
+
+  // 添加关键词搜索
+  if (returnSearchKeyword.value) {
+    searchParams.keyword = returnSearchKeyword.value
+  }
+
+  // 添加日期范围搜索
+  if (dateRange.value && dateRange.value.length === 2) {
+    searchParams.borrow_date_from = dateRange.value[0].toISOString().split('T')[0]
+    searchParams.borrow_date_to = dateRange.value[1].toISOString().split('T')[0]
+  }
+
+  const result = await window.api.borrowing.getAll(searchParams)
   if (result.success) {
-    let filtered = result.data
-
     // 根据角色过滤记录
-    filtered = filterRecordsByUser(filtered)
-
-    // 根据搜索关键词过滤
-    if (returnSearchKeyword.value) {
-      filtered = filtered.filter((r: any) =>
-        r.reader_name.includes(returnSearchKeyword.value) ||
-        r.reader_no.includes(returnSearchKeyword.value)
-      )
-    }
-
-    borrowedBooks.value = filtered
+    borrowedBooks.value = filterRecordsByUser(result.data)
 
     // 计算逾期数量（仅教师/学生）
     if (!canViewAllRecords.value) {
-      overdueCount.value = filtered.filter((r: any) => isOverdue(r.due_date)).length
+      overdueCount.value = borrowedBooks.value.filter((r: any) => isOverdue(r.due_date)).length
     }
   }
 }
@@ -413,7 +591,21 @@ const getRowClassName = ({ row }: { row: any }) => {
 }
 
 const loadAllRecords = async () => {
-  const result = await window.api.borrowing.getAll()
+  // 构建搜索参数
+  const searchParams: any = {}
+
+  // 添加关键词搜索
+  if (returnSearchKeyword.value) {
+    searchParams.keyword = returnSearchKeyword.value
+  }
+
+  // 添加日期范围搜索
+  if (dateRange.value && dateRange.value.length === 2) {
+    searchParams.borrow_date_from = dateRange.value[0].toISOString().split('T')[0]
+    searchParams.borrow_date_to = dateRange.value[1].toISOString().split('T')[0]
+  }
+
+  const result = await window.api.borrowing.getAll(searchParams)
   if (result.success) {
     // 根据角色过滤记录
     allRecords.value = filterRecordsByUser(result.data)
@@ -497,19 +689,144 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.borrow-section,
-.return-section {
-  padding: 20px;
-  background: white;
+/* 警告横幅 */
+.alert-banner {
+  margin-bottom: 20px;
+  border-radius: 12px;
+}
+
+.alert-content {
+  margin-top: 8px;
+  font-size: 14px;
+  color: #7f1d1d;
+}
+
+/* 标签页样式 */
+.custom-tabs {
+  background: transparent;
+}
+
+.tab-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+
+/* 借书区域 */
+.borrow-section {
+  padding: 32px;
+  animation: fadeInUp 0.4s ease-out;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 32px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.header-text h3 {
+  margin: 0 0 6px 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.header-text p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.borrow-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.borrow-btn {
+  min-width: 140px;
+  height: 40px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.selected-info {
+  margin-top: 20px;
+  padding: 16px;
+  background: rgba(99, 102, 241, 0.05);
   border-radius: 8px;
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.info-item {
+  display: flex;
+  gap: 8px;
+}
+
+.info-item .label {
+  font-weight: 600;
+  color: #6366f1;
+}
+
+.info-item .value {
+  color: #1f2937;
+}
+
+/* 还书区域 */
+.return-section {
+  padding: 24px;
+  animation: fadeInUp 0.4s ease-out;
+}
+
+.search-bar {
+  margin-bottom: 20px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+/* 历史记录区域 */
+.history-section {
+  padding: 24px;
+  animation: fadeInUp 0.4s ease-out;
 }
 
 /* 逾期行高亮样式 */
 :deep(.overdue-row) {
-  background-color: #fef0f0 !important;
+  background: linear-gradient(90deg, rgba(239, 68, 68, 0.05), rgba(239, 68, 68, 0.02)) !important;
 }
 
 :deep(.overdue-row:hover) {
-  background-color: #fde2e2 !important;
+  background: linear-gradient(90deg, rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.05)) !important;
+}
+
+/* 表格操作按钮 */
+:deep(.el-button--text) {
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+:deep(.el-button--text:hover) {
+  background: rgba(99, 102, 241, 0.1);
+}
+
+/* 状态标签增强 */
+:deep(.el-tag) {
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+/* 加载动画 */
+:deep(.is-loading) {
+  animation: rotate 1s linear infinite;
 }
 </style>

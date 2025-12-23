@@ -5,110 +5,176 @@
       <p class="page-description">管理系统参数和配置</p>
     </div>
 
-    <div class="card">
-      <el-tabs>
-        <el-tab-pane label="基本信息">
-          <el-descriptions title="系统信息" :column="2" border>
-            <el-descriptions-item label="系统名称">智能图书管理系统</el-descriptions-item>
-            <el-descriptions-item label="版本">1.0.0</el-descriptions-item>
-            <el-descriptions-item label="当前用户">{{ userStore.user?.name }}</el-descriptions-item>
-            <el-descriptions-item label="角色">
-              {{ getRoleLabel(userStore.user?.role) }}
-            </el-descriptions-item>
-          </el-descriptions>
-        </el-tab-pane>
-
-        <el-tab-pane label="读者种类">
-          <el-button type="primary" :icon="Plus" @click="showCategoryDialog = true">
-            新增种类
-          </el-button>
-          <el-table :data="readerCategories" style="margin-top: 16px">
-            <el-table-column prop="code" label="编码" width="100" />
-            <el-table-column prop="name" label="名称" width="120" />
-            <el-table-column prop="max_borrow_count" label="最大借阅数" width="110" />
-            <el-table-column prop="max_borrow_days" label="借阅期限(天)" width="120" />
-            <el-table-column prop="validity_days" label="有效期(天)" width="110" />
-            <el-table-column prop="notes" label="备注" />
-          </el-table>
-        </el-tab-pane>
-
-        <el-tab-pane v-if="isAdmin" label="AI配置">
-          <el-form :model="aiConfigForm" label-width="150px" style="max-width: 600px">
-            <el-form-item label="API URL">
-              <el-input v-model="aiConfigForm.apiUrl" placeholder="https://api.openai.com/v1" />
-            </el-form-item>
-            <el-form-item label="API Key">
-              <el-input
-                v-model="aiConfigForm.apiKey"
-                type="password"
-                placeholder="请输入OpenAI API密钥"
-                show-password
-              />
-            </el-form-item>
-            <el-form-item label="Embedding模型">
-              <el-input
-                v-model="aiConfigForm.embeddingModel"
-                placeholder="text-embedding-3-small"
-              />
-            </el-form-item>
-            <el-form-item label="Chat模型">
-              <el-input v-model="aiConfigForm.chatModel" placeholder="gpt-4-turbo-preview" />
-            </el-form-item>
-            <el-form-item>
-              <el-button type="primary" @click="handleTestConnection" :loading="testingConnection">
-                测试连接
-              </el-button>
-              <el-button type="success" @click="handleSaveAIConfig" :loading="savingConfig">
-                保存配置
-              </el-button>
-            </el-form-item>
-          </el-form>
-        </el-tab-pane>
-
-        <el-tab-pane v-if="isAdmin" label="向量管理">
-          <el-descriptions title="向量数据库状态" :column="2" border>
-            <el-descriptions-item label="已向量化图书">
-              {{ vectorStats.totalVectors }}
-            </el-descriptions-item>
-            <el-descriptions-item label="覆盖率">
-              {{ vectorStats.coverageRate.toFixed(1) }}%
-            </el-descriptions-item>
-          </el-descriptions>
-
-          <div style="margin-top: 20px">
-            <el-button
-              type="primary"
-              :loading="vectorLoading"
-              @click="handleBatchCreateVectors"
-            >
-              <el-icon><Upload /></el-icon>
-              批量生成向量
-            </el-button>
-            <el-text type="info" style="margin-left: 12px">
-              将为所有未向量化的图书生成向量（需要API密钥）
-            </el-text>
+    <div class="glass-card settings-card">
+      <el-tabs v-model="activeTab" class="custom-tabs">
+        <el-tab-pane name="basic">
+          <template #label>
+            <span class="tab-label">
+              <el-icon><InfoFilled /></el-icon>
+              基本信息
+            </span>
+          </template>
+          <div class="settings-content">
+            <el-descriptions title="系统信息" :column="2" border class="custom-descriptions">
+              <el-descriptions-item label="系统名称">智能图书管理系统</el-descriptions-item>
+              <el-descriptions-item label="版本">1.0.0</el-descriptions-item>
+              <el-descriptions-item label="当前用户">{{ userStore.user?.name }}</el-descriptions-item>
+              <el-descriptions-item label="角色">
+                {{ getRoleLabel(userStore.user?.role) }}
+              </el-descriptions-item>
+            </el-descriptions>
           </div>
         </el-tab-pane>
 
-        <el-tab-pane label="关于">
-          <div style="text-align: center; padding: 40px">
-            <el-icon :size="80" color="#409eff"><Reading /></el-icon>
-            <h2 style="margin: 20px 0">智能图书管理系统</h2>
-            <p style="color: #909399; line-height: 2">
+        <el-tab-pane name="categories">
+          <template #label>
+            <span class="tab-label">
+              <el-icon><User /></el-icon>
+              读者种类
+            </span>
+          </template>
+          <div class="settings-content">
+            <el-button type="primary" :icon="Plus" @click="showCategoryDialog = true" size="large" class="add-btn">
+              新增种类
+            </el-button>
+            <el-table :data="readerCategories" class="custom-table" style="margin-top: 20px">
+              <el-table-column prop="code" label="编码" width="100" />
+              <el-table-column prop="name" label="名称" width="120" />
+              <el-table-column prop="max_borrow_count" label="最大借阅数" width="110" />
+              <el-table-column prop="max_borrow_days" label="借阅期限(天)" width="120" />
+              <el-table-column prop="validity_days" label="有效期(天)" width="110" />
+              <el-table-column prop="notes" label="备注" />
+            </el-table>
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane v-if="isAdmin" name="ai">
+          <template #label>
+            <span class="tab-label">
+              <el-icon><MagicStick /></el-icon>
+              AI配置
+            </span>
+          </template>
+          <div class="settings-content">
+            <div class="ai-config-header">
+              <div class="icon-box pink">
+                <el-icon><MagicStick /></el-icon>
+              </div>
+              <div class="header-text">
+                <h3>AI服务配置</h3>
+                <p>配置OpenAI API以启用智能推荐和语义搜索功能</p>
+              </div>
+            </div>
+            <el-form :model="aiConfigForm" label-width="140px" class="ai-form">
+              <el-form-item label="API URL">
+                <el-input v-model="aiConfigForm.apiUrl" placeholder="https://api.openai.com/v1" size="large">
+                  <template #prefix><el-icon><Link /></el-icon></template>
+                </el-input>
+              </el-form-item>
+              <el-form-item label="API Key">
+                <el-input
+                  v-model="aiConfigForm.apiKey"
+                  type="password"
+                  placeholder="请输入OpenAI API密钥"
+                  show-password
+                  size="large"
+                >
+                  <template #prefix><el-icon><Lock /></el-icon></template>
+                </el-input>
+              </el-form-item>
+              <el-form-item label="Embedding模型">
+                <el-input
+                  v-model="aiConfigForm.embeddingModel"
+                  placeholder="text-embedding-3-small"
+                  size="large"
+                >
+                  <template #prefix><el-icon><Document /></el-icon></template>
+                </el-input>
+              </el-form-item>
+              <el-form-item label="Chat模型">
+                <el-input v-model="aiConfigForm.chatModel" placeholder="gpt-4-turbo-preview" size="large">
+                  <template #prefix><el-icon><ChatDotRound /></el-icon></template>
+                </el-input>
+              </el-form-item>
+              <el-form-item>
+                <el-button type="primary" @click="handleTestConnection" :loading="testingConnection" size="large" class="test-btn">
+                  <el-icon><Connection /></el-icon>
+                  测试连接
+                </el-button>
+                <el-button type="success" @click="handleSaveAIConfig" :loading="savingConfig" size="large" class="save-btn">
+                  <el-icon><Check /></el-icon>
+                  保存配置
+                </el-button>
+              </el-form-item>
+            </el-form>
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane v-if="isAdmin" name="vector">
+          <template #label>
+            <span class="tab-label">
+              <el-icon><Operation /></el-icon>
+              向量管理
+            </span>
+          </template>
+          <div class="settings-content">
+            <el-descriptions title="向量数据库状态" :column="2" border class="custom-descriptions">
+              <el-descriptions-item label="已向量化图书">
+                {{ vectorStats.totalVectors }}
+              </el-descriptions-item>
+              <el-descriptions-item label="覆盖率">
+                {{ vectorStats.coverageRate.toFixed(1) }}%
+              </el-descriptions-item>
+            </el-descriptions>
+
+            <div class="vector-actions">
+              <el-button
+                type="primary"
+                :loading="vectorLoading"
+                @click="handleBatchCreateVectors"
+                size="large"
+                class="vector-btn"
+              >
+                <el-icon><Upload /></el-icon>
+                批量生成向量
+              </el-button>
+              <el-text type="info" class="hint-text">
+                将为所有未向量化的图书生成向量（需要API密钥）
+              </el-text>
+            </div>
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane name="about">
+          <template #label>
+            <span class="tab-label">
+              <el-icon><InfoFilled /></el-icon>
+              关于
+            </span>
+          </template>
+          <div class="settings-content about-section">
+            <div class="about-logo">
+              <div class="logo-circle">
+                <el-icon :size="48"><Reading /></el-icon>
+              </div>
+            </div>
+            <h2 class="about-title">智能图书管理系统</h2>
+            <p class="about-desc">
               基于 Electron + Vue 3 + TypeScript 开发<br />
               采用领域驱动设计和分层架构<br />
               提供完整的图书馆管理解决方案
             </p>
-            <div style="margin-top: 40px">
-              <el-tag>v1.0.0</el-tag>
-              <el-tag type="success" style="margin-left: 10px">企业级</el-tag>
+            <div class="about-tags">
+              <el-tag size="large" type="primary">v1.0.0</el-tag>
+              <el-tag size="large" type="success">企业级</el-tag>
+              <el-tag size="large" type="info">开源</el-tag>
             </div>
           </div>
         </el-tab-pane>
       </el-tabs>
     </div>
 
-    <el-dialog v-model="showCategoryDialog" title="新增读者种类" width="500px">
+    <el-dialog v-model="showCategoryDialog" title="新增读者种类" width="500px" class="category-dialog">
       <el-form :model="categoryForm" label-width="120px">
         <el-form-item label="编码">
           <el-input v-model="categoryForm.code" />
@@ -141,6 +207,9 @@
 import { ref, reactive, onMounted, computed } from 'vue'
 import { useUserStore } from '@/store/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Plus, Upload, Reading, MagicStick, InfoFilled, User, Link, Lock, Document, ChatDotRound, Connection, Check, Operation } from '@element-plus/icons-vue'
+
+const activeTab = ref('basic')
 
 const userStore = useUserStore()
 const showCategoryDialog = ref(false)
@@ -252,7 +321,7 @@ const handleTestConnection = async () => {
       apiKey: testParams.apiKey ? `${testParams.apiKey.substring(0, 10)}...` : '(空)'
     })
 
-    const result = await window.api.config.testAIConnection(testParams)
+    const result = await window.api.config.testAIConnection()
 
     console.log('[前端] API调用返回结果:', result)
 
@@ -425,3 +494,164 @@ onMounted(() => {
   loadVectorStats()
 })
 </script>
+
+<style scoped>
+/* 设置卡片 */
+.settings-card {
+padding: 0;
+overflow: hidden;
+min-height: 600px;
+}
+
+/* 标签页样式 */
+.custom-tabs {
+height: 100%;
+}
+
+:deep(.custom-tabs .el-tabs__content) {
+height: calc(100% - 50px);
+}
+
+:deep(.custom-tabs .el-tab-pane) {
+height: 100%;
+}
+
+.tab-label {
+display: flex;
+align-items: center;
+gap: 6px;
+font-weight: 500;
+}
+
+/* 设置内容区域 */
+.settings-content {
+padding: 24px;
+height: 100%;
+overflow-y: auto;
+}
+
+/* AI配置头部 */
+.ai-config-header {
+display: flex;
+align-items: center;
+gap: 16px;
+margin-bottom: 24px;
+padding-bottom: 20px;
+border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.ai-config-header .header-text h3 {
+margin: 0 0 4px 0;
+font-size: 18px;
+font-weight: 600;
+color: var(--text-main);
+}
+
+.ai-config-header .header-text p {
+margin: 0;
+font-size: 13px;
+color: var(--text-secondary);
+}
+
+/* AI表单 */
+.ai-form {
+max-width: 600px;
+}
+
+.test-btn,
+.save-btn {
+min-width: 120px;
+font-weight: 600;
+}
+
+/* 向量操作 */
+.vector-actions {
+margin-top: 24px;
+padding: 20px;
+background: rgba(99, 102, 241, 0.05);
+border-radius: 12px;
+border: 1px solid rgba(99, 102, 241, 0.1);
+}
+
+.vector-btn {
+margin-bottom: 12px;
+}
+
+.hint-text {
+font-size: 13px;
+color: var(--text-secondary);
+}
+
+/* 关于页面 */
+.about-section {
+text-align: center;
+padding: 40px 20px;
+}
+
+.about-logo {
+margin-bottom: 24px;
+}
+
+.logo-circle {
+width: 100px;
+height: 100px;
+background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+border-radius: 50%;
+display: flex;
+align-items: center;
+justify-content: center;
+margin: 0 auto;
+color: white;
+box-shadow: 0 8px 24px rgba(99, 102, 241, 0.3);
+}
+
+.about-title {
+font-size: 24px;
+font-weight: 700;
+margin: 0 0 16px 0;
+color: var(--text-main);
+}
+
+.about-desc {
+color: var(--text-secondary);
+line-height: 1.8;
+margin: 0 0 32px 0;
+font-size: 15px;
+}
+
+.about-tags {
+display: flex;
+justify-content: center;
+gap: 12px;
+flex-wrap: wrap;
+}
+
+/* 描述列表 */
+:deep(.custom-descriptions .el-descriptions__label) {
+background: linear-gradient(135deg, rgba(99, 102, 241, 0.05), rgba(99, 102, 241, 0.02));
+font-weight: 600;
+}
+
+/* 表格样式 */
+:deep(.custom-table) {
+border-radius: 8px;
+overflow: hidden;
+}
+
+:deep(.custom-table .el-table__body tr:hover) {
+background: rgba(99, 102, 241, 0.04) !important;
+}
+
+/* 新增按钮 */
+.add-btn {
+background: linear-gradient(135deg, var(--primary-color), var(--primary-hover)) !important;
+border: none !important;
+font-weight: 600;
+padding: 0 24px;
+}
+
+/* 对话框 */
+:deep(.category-dialog .el-dialog__body) {
+padding: 24px 32px;
+}
+</style>

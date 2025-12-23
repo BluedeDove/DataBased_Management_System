@@ -327,6 +327,9 @@ export class BorrowingService {
     reader_id?: number
     book_id?: number
     status?: string
+    keyword?: string
+    borrow_date_from?: string
+    borrow_date_to?: string
   }): BorrowingRecordWithDetails[] {
     return this.borrowingRepository.findAll(filters)
   }

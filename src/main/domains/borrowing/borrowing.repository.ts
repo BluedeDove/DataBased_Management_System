@@ -29,6 +29,9 @@ export class BorrowingRepository {
     reader_id?: number
     book_id?: number
     status?: string
+    keyword?: string
+    borrow_date_from?: string
+    borrow_date_to?: string
   }): BorrowingRecordWithDetails[] {
     let sql = `
       SELECT
@@ -58,6 +61,24 @@ export class BorrowingRepository {
     if (filters?.status) {
       sql += ' AND br.status = ?'
       params.push(filters.status)
+    }
+
+    // 关键词模糊搜索：支持读者姓名、读者编号、图书标题、图书ISBN、图书作者
+    if (filters?.keyword) {
+      sql += ' AND (r.name LIKE ? OR r.reader_no LIKE ? OR b.title LIKE ? OR b.isbn LIKE ? OR b.author LIKE ?)'
+      const pattern = `%${filters.keyword}%`
+      params.push(pattern, pattern, pattern, pattern, pattern)
+    }
+
+    // 借书日期范围筛选
+    if (filters?.borrow_date_from) {
+      sql += ' AND br.borrow_date >= ?'
+      params.push(filters.borrow_date_from)
+    }
+
+    if (filters?.borrow_date_to) {
+      sql += ' AND br.borrow_date <= ?'
+      params.push(filters.borrow_date_to)
     }
 
     sql += ' ORDER BY br.borrow_date DESC'
