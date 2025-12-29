@@ -1,7 +1,10 @@
 <template>
   <div class="page-container">
     <div class="page-header">
-      <h1 class="page-title">{{ pageTitle }}</h1>
+      <div class="title-container">
+        <h1 class="page-title">{{ pageTitle }}</h1>
+        <div class="gdut-bar"></div>
+      </div>
       <p class="page-description">{{ pageDescription }}</p>
     </div>
 
@@ -689,6 +692,19 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.title-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.gdut-bar {
+  width: 3px;
+  height: 24px;
+  background: linear-gradient(180deg, var(--gdut-red), var(--gdut-blue));
+  border-radius: 2px;
+}
+
 /* 警告横幅 */
 .alert-banner {
   margin-bottom: 20px;

@@ -1,13 +1,14 @@
 <template>
   <div class="page-container">
     <div class="action-bar">
-      <div>
+      <div class="title-group">
         <h2 class="page-title">图书库</h2>
+        <div class="gdut-decoration"></div>
         <span class="sub-text">管理全馆 {{ total }} 本藏书</span>
       </div>
       <div class="actions">
         <el-button type="primary" size="large" icon="Plus" class="glow-btn" @click="handleAdd" v-if="canManage">新增图书</el-button>
-        <el-button icon="Download" size="large">导出数据</el-button>
+        <el-button icon="Download" size="large" @click="handleExportClick">导出数据</el-button>
       </div>
     </div>
 
@@ -93,13 +94,79 @@
       </template>
     </el-dialog>
 
+    <!-- 新增图书对话框 -->
+    <el-dialog v-model="addVisible" title="新增图书" width="500px" destroy-on-close>
+      <el-form :model="addForm" label-width="80px">
+        <el-form-item label="书名" required>
+          <el-input v-model="addForm.title" placeholder="请输入书名" />
+        </el-form-item>
+        <el-form-item label="作者" required>
+          <el-input v-model="addForm.author" placeholder="请输入作者" />
+        </el-form-item>
+        <el-form-item label="出版社" required>
+          <el-input v-model="addForm.publisher" placeholder="请输入出版社" />
+        </el-form-item>
+        <el-form-item label="ISBN" required>
+          <el-input v-model="addForm.isbn" placeholder="留空自动生成">
+            <template #append>
+              <el-button @click="addForm.isbn = 'AUTO'">自动生成</el-button>
+            </template>
+          </el-input>
+        </el-form-item>
+        <el-form-item label="图书类别" required>
+          <el-select v-model="addForm.category_id" placeholder="请选择图书类别" style="width: 100%">
+            <el-option
+              v-for="cat in categories"
+              :key="cat.id"
+              :label="cat.name"
+              :value="cat.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="定价">
+          <el-input-number v-model="addForm.price" :precision="2" :step="0.1" :min="0" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="总库存" required>
+          <el-input-number v-model="addForm.total_quantity" :min="1" style="width: 100%" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="addVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleAddSubmit" :loading="addLoading">添加</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 导出数据对话框 -->
+    <el-dialog v-model="exportVisible" title="导出图书数据" width="400px" destroy-on-close>
+      <el-form label-position="top">
+        <el-form-item label="选择导出格式">
+          <el-radio-group v-model="exportFormat">
+            <el-radio value="csv">CSV 格式</el-radio>
+            <el-radio value="json">JSON 格式</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-alert
+          title="提示"
+          type="info"
+          :closable="false"
+          style="margin-top: 16px"
+        >
+          文件将保存到您的下载文件夹中
+        </el-alert>
+      </el-form>
+      <template #footer>
+        <el-button @click="exportVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleExport" :loading="exportLoading">导出</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 图书表格 -->
     <div class="glass-card table-wrapper">
       <el-table :data="bookList" style="width: 100%" size="large" v-loading="loading">
         <el-table-column label="图书信息" min-width="280">
           <template #default="{ row }">
             <div class="book-info-cell">
-              <div class="book-cover-mock">{{ row.book_title.charAt(0) }}</div>
+              <img src="/images/gdut-logo.jpg" alt="广工校徽" class="book-cover-icon" />
               <div>
                 <div class="title" v-html="highlightText(row.book_title)"></div>
                 <div class="isbn">ISBN: <span v-html="highlightText(row.isbn)"></span></div>
@@ -187,9 +254,29 @@ const advancedForm = reactive({
 const editVisible = ref(false)
 const currentBook = ref<any>({})
 
+// 新增图书
+const addVisible = ref(false)
+const addForm = reactive({
+  title: '',
+  author: '',
+  publisher: '',
+  isbn: 'AUTO', // 默认自动生成
+  category_id: null as number | null,
+  price: null as number | null,
+  total_quantity: 1
+})
+const categories = ref<any[]>([])
+const addLoading = ref(false)
+
+// 导出数据
+const exportVisible = ref(false)
+const exportFormat = ref('csv')
+const exportLoading = ref(false)
+
 // 初始加载
 onMounted(() => {
   fetchData()
+  fetchCategories()
 })
 
 const handleReset = () => {
@@ -292,7 +379,96 @@ const highlightText = (text: string) => {
   return text
 }
 
-const handleAdd = () => { ElMessage.info('功能开发中') }
+const handleAdd = () => {
+  addVisible.value = true
+}
+
+// 获取图书类别
+const fetchCategories = async () => {
+  try {
+    const result = await window.api.bookCategory.getAll()
+    if (result.success) {
+      categories.value = result.data
+    }
+  } catch (error) {
+    console.error('获取图书类别失败:', error)
+  }
+}
+
+// 新增图书提交
+const handleAddSubmit = async () => {
+  // 表单验证
+  if (!addForm.title || !addForm.author || !addForm.publisher || !addForm.category_id || !addForm.total_quantity) {
+    ElMessage.error('请填写所有必填字段')
+    return
+  }
+
+  addLoading.value = true
+  try {
+    const result = await window.api.book.create({
+      title: addForm.title,
+      author: addForm.author,
+      publisher: addForm.publisher,
+      isbn: addForm.isbn,
+      category_id: addForm.category_id,
+      price: addForm.price,
+      total_quantity: addForm.total_quantity,
+      available_quantity: addForm.total_quantity, // 初始可借数量等于总库存
+      status: 'normal',
+      registration_date: new Date().toISOString().split('T')[0]
+    })
+
+    if (result.success) {
+      ElMessage.success('图书添加成功')
+      addVisible.value = false
+      // 重置表单
+      Object.assign(addForm, {
+        title: '',
+        author: '',
+        publisher: '',
+        isbn: 'AUTO',
+        category_id: null,
+        price: null,
+        total_quantity: 1
+      })
+      fetchData()
+    } else {
+      ElMessage.error(result.error?.message || '添加失败')
+    }
+  } catch (error) {
+    ElMessage.error('操作失败')
+  } finally {
+    addLoading.value = false
+  }
+}
+
+// 导出数据
+const handleExportClick = () => {
+  exportVisible.value = true
+}
+
+const handleExport = async () => {
+  exportLoading.value = true
+  try {
+    let result
+    if (exportFormat.value === 'csv') {
+      result = await window.api.export.booksToCSV()
+    } else {
+      result = await window.api.export.booksToJSON()
+    }
+
+    if (result.success) {
+      ElMessage.success(`导出成功！文件已保存到: ${result.data}`)
+      exportVisible.value = false
+    } else {
+      ElMessage.error(result.error?.message || '导出失败')
+    }
+  } catch (error) {
+    ElMessage.error('导出失败')
+  } finally {
+    exportLoading.value = false
+  }
+}
 
 const handleEdit = (book: any) => {
   currentBook.value = { ...book, title: book.book_title } // 适配字段
@@ -418,10 +594,22 @@ const handleUserBorrow = async (book: any) => {
   margin-bottom: 24px;
 }
 
+.title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gdut-decoration {
+  width: 40px;
+  height: 3px;
+  background: linear-gradient(90deg, var(--gdut-red), var(--gdut-blue));
+  border-radius: 2px;
+}
+
 .sub-text {
   font-size: 14px;
   color: #64748b;
-  margin-left: 12px;
 }
 
 .search-card {
@@ -450,17 +638,13 @@ const handleUserBorrow = async (book: any) => {
   gap: 16px;
 }
 
-.book-cover-mock {
+.book-cover-icon {
   width: 48px;
   height: 64px;
-  background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
   border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #4f46e5;
-  font-weight: 700;
-  font-size: 20px;
+  object-fit: contain;
+  padding: 8px;
+  background: linear-gradient(135deg, rgba(230, 0, 18, 0.05), rgba(0, 86, 179, 0.05));
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 

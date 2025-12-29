@@ -1,7 +1,10 @@
 <template>
   <div class="page-container">
     <div class="page-header">
-      <h2 class="page-title">{{ dashboardTitle }}</h2>
+      <div class="header-content">
+        <h2 class="page-title">{{ dashboardTitle }}</h2>
+        <div class="gdut-accent"></div>
+      </div>
       <p class="text-secondary">欢迎回来，每一天都是阅读的好日子。</p>
     </div>
 
@@ -165,6 +168,19 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.header-content {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.gdut-accent {
+  width: 4px;
+  height: 32px;
+  background: linear-gradient(180deg, var(--gdut-red), var(--gdut-blue));
+  border-radius: 2px;
+}
+
 .text-secondary {
   color: #64748b;
   font-size: 14px;

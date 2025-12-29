@@ -2,10 +2,11 @@
   <el-container class="layout-container">
     <el-aside width="240px" class="glass-sidebar">
       <div class="logo-area">
-        <el-icon :size="24" color="#6366f1">
-          <Reading />
-        </el-icon>
-        <span class="app-name">智能图书馆</span>
+        <img src="/images/gdut-logo.jpg" alt="广工校徽" class="gdut-logo" />
+        <div class="brand-text">
+          <span class="app-name">智能图书馆</span>
+          <span class="gdut-badge">广工</span>
+        </div>
       </div>
 
       <el-menu :default-active="route.path" router class="custom-menu" background-color="transparent"
@@ -116,11 +117,36 @@ const logout = async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  font-size: 18px;
+  gap: 12px;
+  padding: 0 16px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.gdut-logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  object-fit: contain;
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.app-name {
+  font-size: 16px;
   font-weight: 700;
   color: #333;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  line-height: 1.2;
+}
+
+.gdut-badge {
+  font-size: 10px;
+  color: var(--gdut-red);
+  font-weight: 600;
+  letter-spacing: 1px;
 }
 
 .custom-menu {

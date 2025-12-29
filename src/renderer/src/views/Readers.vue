@@ -1,7 +1,10 @@
 <template>
   <div class="page-container">
     <div class="page-header">
-      <h1 class="page-title">读者管理</h1>
+      <div class="header-group">
+        <h1 class="page-title">读者管理</h1>
+        <div class="gdut-dot"></div>
+      </div>
       <p class="page-description">管理读者信息和读者证</p>
     </div>
 
@@ -280,6 +283,19 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.header-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.gdut-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--gdut-red);
+  border-radius: 50%;
+}
+
 /* 工具栏样式 */
 .glass-toolbar {
   background: rgba(255, 255, 255, 0.8);

@@ -118,6 +118,8 @@ export interface ElectronAPI {
 
   // 数据导出
   export: {
+    booksToCSV: () => Promise<any>
+    booksToJSON: () => Promise<any>
     toCSV: (options: { filename: string; data: any[]; headers?: string[] }) => Promise<any>
     toJSON: (options: { filename: string; data: any[] }) => Promise<any>
     report: (options: any) => Promise<any>
@@ -305,6 +307,8 @@ const api: ElectronAPI = {
   },
 
   export: {
+    booksToCSV: () => ipcRenderer.invoke('export:books:csv'),
+    booksToJSON: () => ipcRenderer.invoke('export:books:json'),
     toCSV: (options) => ipcRenderer.invoke('export:csv', options),
     toJSON: (options) => ipcRenderer.invoke('export:json', options),
     report: (options) => ipcRenderer.invoke('export:report', options)

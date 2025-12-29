@@ -11,13 +11,10 @@
     <div class="login-box glass-card">
       <div class="login-left">
         <div class="brand">
-          <div class="logo-icon">
-            <el-icon>
-              <Reading />
-            </el-icon>
-          </div>
+          <img src="/images/gdut-logo.jpg" alt="广工校徽" class="gdut-logo-large" />
           <h1>LMS</h1>
           <p>智能图书管理系统</p>
+          <div class="gdut-tagline">广东工业大学</div>
         </div>
       </div>
 
@@ -159,18 +156,22 @@ const handleLogin = async () => {
   z-index: 2;
 }
 
-.logo-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-  background: rgba(255, 255, 255, 0.2);
+.gdut-logo-large {
   width: 80px;
   height: 80px;
   border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto 20px;
-  backdrop-filter: blur(4px);
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  margin-bottom: 20px;
+  object-fit: contain;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.gdut-tagline {
+  margin-top: 16px;
+  font-size: 14px;
+  opacity: 0.9;
+  font-weight: 500;
+  letter-spacing: 2px;
 }
 
 .login-right {

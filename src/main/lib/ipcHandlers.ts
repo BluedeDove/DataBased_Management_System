@@ -742,24 +742,49 @@ export function registerIpcHandlers() {
   })
 
   // ============ 数据导出相关 ============
+  // 导出图书数据为 CSV
+  ipcMain.handle('export:books:csv', async () => {
+    try {
+      const books = bookService.getAllBooksForExport()
+      const filePath = await exportService.exportToCSV(books)
+      return { success: true, data: filePath } as SuccessResponse
+    } catch (error) {
+      return errorHandler.handle(error)
+    }
+  })
+
+  // 导出图书数据为 JSON
+  ipcMain.handle('export:books:json', async () => {
+    try {
+      const books = bookService.getAllBooksForExport()
+      const filePath = await exportService.exportToJSON(books)
+      return { success: true, data: filePath } as SuccessResponse
+    } catch (error) {
+      return errorHandler.handle(error)
+    }
+  })
+
+  // 通用 CSV 导出（保留原有接口用于其他模块）
   ipcMain.handle('export:csv', async (_, options) => {
     try {
-      const filePath = await exportService.exportToCSV(options)
+      const filePath = await exportService.exportToCSV(options.data || [], options.filename)
       return { success: true, data: filePath } as SuccessResponse
     } catch (error) {
       return errorHandler.handle(error)
     }
   })
 
+  // 通用 JSON 导出（保留原有接口用于其他模块）
   ipcMain.handle('export:json', async (_, options) => {
     try {
-      const filePath = await exportService.exportToJSON(options)
+      const filePath = await exportService.exportToJSON(options.data || [], options.filename)
       return { success: true, data: filePath } as SuccessResponse
     } catch (error) {
       return errorHandler.handle(error)
     }
   })
 
+  // 导出报告（保留原有接口）
   ipcMain.handle('export:report', async (_, options) => {
     try {
       const filePath = await exportService.exportReport(options)

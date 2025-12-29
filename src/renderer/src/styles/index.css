@@ -20,6 +20,13 @@
   --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.08);
   --card-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
   --card-shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.08);
+
+  /* 广工主题色 */
+  --gdut-red: #E60012;
+  --gdut-red-light: #ff3344;
+  --gdut-red-dark: #cc000f;
+  --gdut-blue: #0056b3;
+  --gdut-blue-light: #3385d6;
 }
 
 body {
@@ -589,4 +596,68 @@ body {
 .empty-state-hint {
   font-size: 14px;
   opacity: 0.7;
+}
+
+/* ==================== 广工元素样式 ==================== */
+
+/* 广工主题渐变 */
+.gdut-gradient {
+  background: linear-gradient(135deg, var(--gdut-red), var(--gdut-blue));
+}
+
+/* 广工装饰边框 */
+.gdut-border {
+  border-left: 3px solid var(--gdut-red);
+}
+
+/* 广工图标容器 */
+.gdut-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(230, 0, 18, 0.1), rgba(0, 86, 179, 0.1));
+  border-radius: 8px;
+  padding: 8px;
+}
+
+/* 广工装饰线条 */
+.gdut-line {
+  width: 40px;
+  height: 3px;
+  background: linear-gradient(90deg, var(--gdut-red), var(--gdut-blue));
+  border-radius: 2px;
+}
+
+/* 广工装饰竖条 */
+.gdut-bar {
+  width: 3px;
+  height: 24px;
+  background: linear-gradient(180deg, var(--gdut-red), var(--gdut-blue));
+  border-radius: 2px;
+}
+
+/* 广工装饰圆点 */
+.gdut-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--gdut-red);
+  border-radius: 50;
+}
+
+/* 广工标签 */
+.gdut-tag {
+  display: inline-block;
+  padding: 4px 12px;
+  background: linear-gradient(135deg, rgba(230, 0, 18, 0.1), rgba(0, 86, 179, 0.1));
+  color: var(--gdut-red);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+
+/* 广工强调文字 */
+.gdut-text {
+  color: var(--gdut-red);
+  font-weight: 600;
 }

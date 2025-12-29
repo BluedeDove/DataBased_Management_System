@@ -16,7 +16,9 @@
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix",
     "test:unit": "vitest",
     "test:e2e": "playwright test",
-    "generate:testdata": "tsx scripts/generateTestData.ts",
+    "db:generate": "tsx scripts/generate-data.ts",
+    "db:clear": "tsx scripts/clear-database.ts",
+    "db:clear:all": "tsx scripts/clear-database.ts --all",
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {

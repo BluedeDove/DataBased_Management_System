@@ -1,7 +1,10 @@
 <template>
   <div class="page-container">
     <div class="page-header">
-      <h1 class="page-title">统计分析</h1>
+      <div class="title-wrapper">
+        <h1 class="page-title">统计分析</h1>
+        <div class="gdut-line"></div>
+      </div>
       <p class="page-description">查看图书馆运营数据和分析报告</p>
     </div>
 
@@ -218,9 +221,22 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.title-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.gdut-line {
+  width: 30px;
+  height: 3px;
+  background: var(--gdut-red);
+  border-radius: 2px;
+}
+
 /* 标签页样式 */
 .custom-tabs {
-background: transparent;
+  background: transparent;
 }
 
 .tab-label {

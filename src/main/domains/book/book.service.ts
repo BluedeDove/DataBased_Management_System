@@ -335,6 +335,18 @@ export class BookService {
     logger.warn('删除图书', { id, title: book.title, isbn: book.isbn })
     console.log('========== [Service] 删除图书结束 ==========\n')
   }
+
+  // 获取所有图书用于导出
+  getAllBooksForExport(): Array<BookWithCategory> {
+    logger.info('获取所有图书用于导出')
+    const stmt = db.prepare(`
+      SELECT b.*, bc.name as category_name, bc.code as category_code
+      FROM books b
+      JOIN book_categories bc ON b.category_id = bc.id
+      ORDER BY b.registration_date DESC
+    `)
+    return stmt.all() as Array<BookWithCategory>
+  }
 }
 
 // 导入 db 用于统计查询
