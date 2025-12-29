@@ -602,6 +602,15 @@ export function registerIpcHandlers() {
     }
   })
 
+  ipcMain.handle('borrowing:getBookCount', async () => {
+    try {
+      const count = borrowingService.getBookCount()
+      return { success: true, data: count } as SuccessResponse
+    } catch (error) {
+      return errorHandler.handle(error)
+    }
+  })
+
   // ============ AI功能相关 ============
   ipcMain.handle('ai:isAvailable', async () => {
     try {

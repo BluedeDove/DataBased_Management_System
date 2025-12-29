@@ -432,4 +432,9 @@ export class BorrowingService {
     logger.info('获取借阅趋势', { days })
     return this.borrowingRepository.getBorrowingTrend(days)
   }
+
+  // 获取图书总数
+  getBookCount(): number {
+    return this.bookRepository.getTotalCount()
+  }
 }

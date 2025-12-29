@@ -405,11 +405,18 @@ export class BookRepository {
     console.log('[Repository] 开始删除图书数据，ID:', id)
     const stmt = db.prepare('DELETE FROM books WHERE id = ?')
     const result = stmt.run(id)
-
+    
     if (result.changes === 0) {
       console.error('[Repository] 图书不存在，ID:', id)
       throw new NotFoundError('图书')
     }
     console.log('[Repository] 删除成功，影响行数:', result.changes)
+  }
+
+  // 获取图书总数
+  getTotalCount(): number {
+    const stmt = db.prepare('SELECT COUNT(*) as count FROM books')
+    const result = stmt.get() as { count: number }
+    return result.count
   }
 }

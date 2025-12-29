@@ -368,7 +368,7 @@ export function seedTestUsers() {
 
 // 初始化默认数据
 export function seedDatabase() {
-  // 检查是否已有数据
+  // 检查是否已有用户
   const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number }
 
   if (userCount.count === 0) {
@@ -380,8 +380,11 @@ export function seedDatabase() {
       INSERT INTO users (username, password, name, role, email)
       VALUES (?, ?, ?, ?, ?)
     `).run('admin', hashedPassword, '系统管理员', 'admin', 'admin@library.com')
+  }
 
-    // 创建默认读者种类
+  // 检查并创建默认读者种类
+  const readerCategoryCount = db.prepare('SELECT COUNT(*) as count FROM reader_categories').get() as { count: number }
+  if (readerCategoryCount.count === 0) {
     const readerCategories = [
       { code: 'STUDENT', name: '学生', maxBorrow: 5, maxDays: 30, validity: 365 },
       { code: 'TEACHER', name: '教师', maxBorrow: 10, maxDays: 60, validity: 1095 },
@@ -396,8 +399,11 @@ export function seedDatabase() {
     for (const cat of readerCategories) {
       insertCategory.run(cat.code, cat.name, cat.maxBorrow, cat.maxDays, cat.validity)
     }
+  }
 
-    // 创建默认图书类别
+  // 检查并创建默认图书类别
+  const bookCategoryCount = db.prepare('SELECT COUNT(*) as count FROM book_categories').get() as { count: number }
+  if (bookCategoryCount.count === 0) {
     const bookCategories = [
       { code: 'TP', name: '计算机科学', keywords: '编程,算法,软件,硬件' },
       { code: 'I', name: '文学', keywords: '小说,诗歌,散文,戏剧' },
@@ -414,7 +420,9 @@ export function seedDatabase() {
     for (const cat of bookCategories) {
       insertBookCat.run(cat.code, cat.name, cat.keywords)
     }
+  }
 
+  if (userCount.count === 0 || readerCategoryCount.count === 0 || bookCategoryCount.count === 0) {
     console.log('✅ 默认数据初始化完成')
   }
 }
