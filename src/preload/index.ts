@@ -88,6 +88,7 @@ export interface ElectronAPI {
     getActiveReaders: (limit?: number) => Promise<any>
     delete: (id: number) => Promise<any>
     getTrend: (days?: number) => Promise<any>
+    getBookCount: () => Promise<any>
   }
 
   // AI功能
@@ -215,7 +216,8 @@ const api: ElectronAPI = {
     getPopular: (limit) => ipcRenderer.invoke('borrowing:getPopular', limit),
     getActiveReaders: (limit) => ipcRenderer.invoke('borrowing:getActiveReaders', limit),
     delete: (id) => ipcRenderer.invoke('borrowing:delete', id),
-    getTrend: (days) => ipcRenderer.invoke('borrowing:getTrend', days)
+    getTrend: (days) => ipcRenderer.invoke('borrowing:getTrend', days),
+    getBookCount: () => ipcRenderer.invoke('borrowing:getBookCount')
   },
 
   ai: {

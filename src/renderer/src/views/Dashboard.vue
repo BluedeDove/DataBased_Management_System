@@ -125,11 +125,18 @@ const initChart = (data: any[]) => {
 
 const fetchData = async () => {
   try {
-    // 1. 获取统计数据
+    // 1. 获取图书总数
+    const bookCountResult = await window.api.borrowing.getBookCount()
+    if (bookCountResult.success) {
+      statCards.value[0].value = bookCountResult.data.toString()
+    } else {
+      statCards.value[0].value = '0'
+    }
+
+    // 2. 获取借阅统计数据
     const statsResult = await window.api.borrowing.getStatistics()
     if (statsResult.success) {
       const stats = statsResult.data
-      statCards.value[0].value = '200'
       statCards.value[1].value = stats.total_borrowed.toString()
       statCards.value[2].value = stats.currently_borrowed.toString()
       statCards.value[3].value = stats.overdue_count.toString()
