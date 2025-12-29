@@ -47,8 +47,28 @@
                 />
               </el-select>
             </el-form-item>
-            <el-form-item label="正则表达式">
-              <el-input v-model="advancedForm.pattern" placeholder="例如: ^Java.*Script$" />
+            <el-form-item label="搜索模式">
+              <el-select v-model="advancedForm.searchMode" style="width: 100%">
+                <el-option label="包含匹配" value="contains" />
+                <el-option label="精确匹配" value="exact" />
+                <el-option label="前缀匹配" value="startsWith" />
+                <el-option label="后缀匹配" value="endsWith" />
+                <el-option label="正则表达式" value="regex" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="搜索内容">
+              <el-input
+                v-model="advancedForm.pattern"
+                :placeholder="getSearchPlaceholder()"
+                clearable
+                @input="validateRegexPattern"
+              />
+              <div v-if="regexError" style="color: #f56c6c; font-size: 12px; margin-top: 4px;">
+                {{ regexError }}
+              </div>
+              <div v-if="advancedForm.searchMode === 'regex'" style="color: #909399; font-size: 12px; margin-top: 4px;">
+                提示：正则表达式模式支持完整的正则语法，如 ^Java$、Py.*n 等
+              </div>
             </el-form-item>
             <el-form-item label="匹配字段">
               <el-checkbox-group v-model="advancedForm.fields">
@@ -257,13 +277,47 @@ const borrowing = ref<Set<number>>(new Set()) // 正在借阅的图书ID集合
 // 高级搜索
 const advancedSearchVisible = ref(false)
 const searchType = ref('regex') // regex, sql, vector
+const regexError = ref('')
 const advancedForm = reactive({
   category_id: null as number | null,
   pattern: '',
+  searchMode: 'contains' as 'contains' | 'exact' | 'startsWith' | 'endsWith' | 'regex',
   fields: ['title', 'author'],
   sql: '',
   vectorQuery: ''
 })
+
+// 获取搜索占位符文本
+const getSearchPlaceholder = () => {
+  switch (advancedForm.searchMode) {
+    case 'contains':
+      return '输入要包含的文本，如：Python'
+    case 'exact':
+      return '输入要精确匹配的文本，如：Python'
+    case 'startsWith':
+      return '输入开头文本，如：Java'
+    case 'endsWith':
+      return '输入结尾文本，如：编程'
+    case 'regex':
+      return '输入正则表达式，如：^Java.*Script$'
+    default:
+      return '输入搜索内容'
+  }
+}
+
+// 验证正则表达式
+const validateRegexPattern = () => {
+  if (advancedForm.searchMode === 'regex' && advancedForm.pattern) {
+    try {
+      new RegExp(advancedForm.pattern)
+      regexError.value = ''
+    } catch (e: any) {
+      regexError.value = `无效的正则表达式: ${e.message}`
+    }
+  } else {
+    regexError.value = ''
+  }
+}
 
 // 编辑图书
 const editVisible = ref(false)
@@ -299,8 +353,10 @@ const handleReset = () => {
   category.value = null
   advancedForm.category_id = null
   advancedForm.pattern = ''
+  advancedForm.searchMode = 'contains'
   advancedForm.sql = ''
   advancedForm.vectorQuery = ''
+  regexError.value = ''
   advancedSearchVisible.value = false
   fetchData()
 }
@@ -333,15 +389,27 @@ const fetchData = async () => {
 
 const handleAdvancedSearch = async () => {
   loading.value = true
-  advancedSearchVisible.value = false
   try {
     let result
     if (searchType.value === 'regex') {
+      // 验证正则表达式
+      if (advancedForm.searchMode === 'regex' && advancedForm.pattern) {
+        try {
+          new RegExp(advancedForm.pattern)
+          regexError.value = ''
+        } catch (e: any) {
+          regexError.value = `无效的正则表达式: ${e.message}`
+          ElMessage.error(`无效的正则表达式: ${e.message}`)
+          loading.value = false
+          return
+        }
+      }
+      
       // 确保fields是字符串数组，避免IPC序列化问题
       const fields = Array.isArray(advancedForm.fields)
         ? [...advancedForm.fields] // 创建数组副本
         : ['title', 'author']
-      result = await window.api.book.regexSearch(advancedForm.pattern, fields, advancedForm.category_id)
+      result = await window.api.book.regexSearch(advancedForm.pattern, fields, advancedForm.category_id, advancedForm.searchMode)
     } else if (searchType.value === 'sql') {
       result = await window.api.search.executeSql(advancedForm.sql)
     } else if (searchType.value === 'vector') {
@@ -360,12 +428,20 @@ const handleAdvancedSearch = async () => {
       }))
       total.value = data.length
       ElMessage.success(`搜索到 ${data.length} 条结果`)
+      // 搜索成功后才关闭对话框
+      advancedSearchVisible.value = false
     } else {
       ElMessage.error(result?.error?.message || '搜索失败')
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error(error)
-    ElMessage.error('高级搜索出错')
+    // 检查是否是正则表达式错误
+    if (error.message && error.message.includes('无效的正则表达式')) {
+      regexError.value = error.message
+      ElMessage.error(error.message)
+    } else {
+      ElMessage.error('搜索失败: ' + (error.message || '未知错误'))
+    }
   } finally {
     loading.value = false
   }
@@ -374,12 +450,32 @@ const handleAdvancedSearch = async () => {
 // 高亮显示
 const highlightText = (text: string) => {
   if (!text) return ''
+  
   // 优先匹配正则
   if (searchType.value === 'regex' && advancedForm.pattern) {
     try {
-      // 简单处理：如果是简单字符串，转义；如果是正则，尝试直接用
-      // 这里只处理普通keyword搜索高亮和Regex高亮
-      const regex = new RegExp(`(${advancedForm.pattern})`, 'gi')
+      let pattern = advancedForm.pattern
+      
+      // 根据搜索模式构建正则表达式
+      switch (advancedForm.searchMode) {
+        case 'exact':
+          pattern = `^${escapeRegex(pattern)}$`
+          break
+        case 'startsWith':
+          pattern = `^${escapeRegex(pattern)}`
+          break
+        case 'endsWith':
+          pattern = `${escapeRegex(pattern)}$`
+          break
+        case 'contains':
+          pattern = escapeRegex(pattern)
+          break
+        case 'regex':
+          // 原始正则表达式，不转义
+          break
+      }
+      
+      const regex = new RegExp(`(${pattern})`, 'gi')
       return text.replace(regex, '<span style="background-color: #fef08a; color: #854d0e">$1</span>')
     } catch (e) {
       return text
@@ -389,7 +485,7 @@ const highlightText = (text: string) => {
   // 普通搜索高亮
   if (searchQuery.value) {
     try {
-      const regex = new RegExp(`(${searchQuery.value})`, 'gi')
+      const regex = new RegExp(`(${escapeRegex(searchQuery.value)})`, 'gi')
       return text.replace(regex, '<span style="background-color: #fef08a; color: #854d0e">$1</span>')
     } catch (e) {
       return text
@@ -397,6 +493,11 @@ const highlightText = (text: string) => {
   }
   
   return text
+}
+
+// 转义正则表达式中的特殊字符
+const escapeRegex = (pattern: string): string => {
+  return pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 const handleAdd = () => {

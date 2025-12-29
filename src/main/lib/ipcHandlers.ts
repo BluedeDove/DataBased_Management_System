@@ -180,9 +180,9 @@ export function registerIpcHandlers() {
     }
   })
 
-  ipcMain.handle('reader:regexSearch', async (_, pattern, fields) => {
+  ipcMain.handle('reader:regexSearch', async (_, pattern, fields, searchMode = 'contains') => {
     try {
-      const readers = regexSearchService.searchReaders(pattern, fields)
+      const readers = regexSearchService.searchReaders(pattern, fields, searchMode)
       return { success: true, data: readers } as SuccessResponse
     } catch (error) {
       return errorHandler.handle(error)
@@ -411,9 +411,9 @@ export function registerIpcHandlers() {
     }
   })
 
-  ipcMain.handle('book:regexSearch', async (_, pattern, fields, categoryId) => {
+  ipcMain.handle('book:regexSearch', async (_, pattern, fields, categoryId, searchMode = 'contains') => {
     try {
-      const books = regexSearchService.searchBooks(pattern, fields, categoryId)
+      const books = regexSearchService.searchBooks(pattern, fields, categoryId, searchMode)
       return { success: true, data: books } as SuccessResponse
     } catch (error) {
       return errorHandler.handle(error)
