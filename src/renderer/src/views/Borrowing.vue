@@ -430,6 +430,12 @@ const handleBorrow = async () => {
     return
   }
 
+  // 检查图书库存
+  if (selectedBook.value.available_quantity <= 0) {
+    ElMessage.error('该图书暂时无可借库存，请选择其他图书')
+    return
+  }
+
   isBorrowing.value = true
 
   try {
@@ -450,7 +456,7 @@ const handleBorrow = async () => {
         console.log('[前端] 调用借书API...')
         const borrowResult = await window.api.borrowing.borrow(selectedReader.value.id, selectedBook.value.id)
         console.log('[前端] 借书API结果:', borrowResult)
-
+        
         if (!borrowResult.success) {
           throw new Error(borrowResult.error?.message || '借书失败')
         }
@@ -483,8 +489,25 @@ const handleBorrow = async () => {
     console.error('[前端] 借书操作异常:', error)
     if (error instanceof Error) {
       console.error('[前端] 错误堆栈:', error.stack)
+      
+      // 根据错误类型提供更友好的提示
+      const errorMsg = error.message || '借阅失败'
+      if (errorMsg.includes('暂无可借图书')) {
+        ElMessage.error('该图书暂时无可借库存，请稍后再试')
+      } else if (errorMsg.includes('已达到最大借阅数量')) {
+        ElMessage.error(`该读者已达到最大借阅数量（${selectedReader.value.max_borrow_count}本），请先归还部分图书`)
+      } else if (errorMsg.includes('逾期未还')) {
+        ElMessage.error('该读者有图书逾期未还，请先归还逾期图书')
+      } else if (errorMsg.includes('读者证未激活') || errorMsg.includes('读者证已过期')) {
+        ElMessage.error('读者证未激活或已过期，请联系管理员')
+      } else {
+        ElMessage.error(`借阅失败：${errorMsg}`)
+      }
+    } else {
+      ElMessage.error('借阅操作失败，请重试')
     }
   } finally {
+    // 确保无论成功或失败都重置状态
     isBorrowing.value = false
     console.log('========== [前端] 借书流程结束 ==========\n')
   }

@@ -18,7 +18,9 @@ export interface Reader {
   reader_no: string
   name: string
   category_id: number
+  user_id?: number
   gender?: 'male' | 'female' | 'other'
+  id_card?: string
   organization?: string
   address?: string
   phone?: string
@@ -151,15 +153,17 @@ export class ReaderRepository {
   create(reader: Omit<Reader, 'id' | 'created_at' | 'updated_at'>): Reader {
     const stmt = db.prepare(`
       INSERT INTO readers (
-        reader_no, name, category_id, gender, organization, address,
+        reader_no, name, category_id, user_id, gender, id_card, organization, address,
         phone, email, registration_date, expiry_date, status, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     const result = stmt.run(
       reader.reader_no,
       reader.name,
       reader.category_id,
+      reader.user_id,
       reader.gender,
+      reader.id_card,
       reader.organization,
       reader.address,
       reader.phone,
@@ -202,11 +206,11 @@ export class ReaderRepository {
       SELECT r.*, rc.name as category_name, rc.max_borrow_count, rc.max_borrow_days
       FROM readers r
       JOIN reader_categories rc ON r.category_id = rc.id
-      WHERE r.name LIKE ? OR r.reader_no LIKE ? OR r.phone LIKE ?
+      WHERE r.name LIKE ? OR r.reader_no LIKE ? OR r.phone LIKE ? OR r.id_card LIKE ?
       ORDER BY r.created_at DESC
     `)
     const pattern = `%${keyword}%`
-    return stmt.all(pattern, pattern, pattern) as ReaderWithCategory[]
+    return stmt.all(pattern, pattern, pattern, pattern) as ReaderWithCategory[]
   }
 
   // 获取读者当前借阅数量

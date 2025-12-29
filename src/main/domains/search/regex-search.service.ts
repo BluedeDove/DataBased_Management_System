@@ -7,18 +7,24 @@ export class RegexSearchService {
   private bookRepository = new BookRepository()
   private readerRepository = new ReaderRepository()
 
-  searchBooks(pattern: string, fields: string[] = ['title', 'author', 'description']): BookWithCategory[] {
+  searchBooks(pattern: string, fields: string[] = ['title', 'author', 'description'], categoryId?: number): BookWithCategory[] {
     try {
       // Validate regex pattern
       const regex = new RegExp(pattern, 'i')
 
-      logger.info('正则搜索图书', { pattern, fields })
+      logger.info('正则搜索图书', { pattern, fields, categoryId })
 
       // Get all books
       const books = this.bookRepository.findAll()
 
-      // Filter using regex
+      // Filter using regex and category
       const results = books.filter(book => {
+        // First filter by category if specified
+        if (categoryId !== null && categoryId !== undefined && book.category_id !== categoryId) {
+          return false
+        }
+        
+        // Then filter by regex
         return fields.some(field => {
           const value = book[field as keyof BookWithCategory]
           if (typeof value === 'string') {

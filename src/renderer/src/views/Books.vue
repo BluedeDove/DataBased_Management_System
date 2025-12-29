@@ -18,9 +18,13 @@
         <el-input v-model="searchQuery" placeholder="搜索书名、ISBN或作者..." prefix-icon="Search" size="large"
           class="main-search" clearable @clear="fetchData" @keyup.enter="fetchData" />
         <el-select v-model="category" placeholder="图书类别" size="large" style="width: 160px" clearable @change="fetchData">
-          <el-option label="全部" value="" />
-          <el-option label="科技" value="tech" />
-          <el-option label="文学" value="lit" />
+          <el-option label="全部" :value="null" />
+          <el-option
+            v-for="cat in categories"
+            :key="cat.id"
+            :label="cat.name"
+            :value="cat.id"
+          />
         </el-select>
         <el-button type="primary" size="large" @click="fetchData">查询</el-button>
         <el-button :icon="Filter" size="large" @click="advancedSearchVisible = true">高级搜索</el-button>
@@ -33,6 +37,16 @@
       <el-tabs v-model="searchType">
         <el-tab-pane label="正则匹配" name="regex">
           <el-form label-position="top">
+            <el-form-item label="图书类别">
+              <el-select v-model="advancedForm.category_id" placeholder="选择类别" clearable style="width: 100%">
+                <el-option
+                  v-for="cat in categories"
+                  :key="cat.id"
+                  :label="cat.name"
+                  :value="cat.id"
+                />
+              </el-select>
+            </el-form-item>
             <el-form-item label="正则表达式">
               <el-input v-model="advancedForm.pattern" placeholder="例如: ^Java.*Script$" />
             </el-form-item>
@@ -236,7 +250,7 @@ const canManage = computed(() => ['admin', 'librarian'].includes(userStore.user?
 const bookList = ref([])
 const total = ref(0)
 const searchQuery = ref('')
-const category = ref('')
+const category = ref<number | null>(null)
 const loading = ref(false)
 const borrowing = ref<Set<number>>(new Set()) // 正在借阅的图书ID集合
 
@@ -244,6 +258,7 @@ const borrowing = ref<Set<number>>(new Set()) // 正在借阅的图书ID集合
 const advancedSearchVisible = ref(false)
 const searchType = ref('regex') // regex, sql, vector
 const advancedForm = reactive({
+  category_id: null as number | null,
   pattern: '',
   fields: ['title', 'author'],
   sql: '',
@@ -281,7 +296,8 @@ onMounted(() => {
 
 const handleReset = () => {
   searchQuery.value = ''
-  category.value = ''
+  category.value = null
+  advancedForm.category_id = null
   advancedForm.pattern = ''
   advancedForm.sql = ''
   advancedForm.vectorQuery = ''
@@ -321,7 +337,11 @@ const handleAdvancedSearch = async () => {
   try {
     let result
     if (searchType.value === 'regex') {
-      result = await window.api.book.regexSearch(advancedForm.pattern, advancedForm.fields)
+      // 确保fields是字符串数组，避免IPC序列化问题
+      const fields = Array.isArray(advancedForm.fields)
+        ? [...advancedForm.fields] // 创建数组副本
+        : ['title', 'author']
+      result = await window.api.book.regexSearch(advancedForm.pattern, fields, advancedForm.category_id)
     } else if (searchType.value === 'sql') {
       result = await window.api.search.executeSql(advancedForm.sql)
     } else if (searchType.value === 'vector') {
@@ -573,13 +593,35 @@ const handleUserBorrow = async (book: any) => {
       console.log('[图书页面] 图书列表刷新完成')
     } else {
       console.error('[图书页面] 借阅失败:', result.error)
-      ElMessage.error(result.error?.message || '借阅失败')
+      
+      // 根据错误类型提供更友好的提示
+      const errorMsg = result.error?.message || '借阅失败'
+      if (errorMsg.includes('暂无可借图书')) {
+        ElMessage.error('该图书暂时无可借库存，请稍后再试')
+      } else if (errorMsg.includes('已达到最大借阅数量')) {
+        ElMessage.error('您已达到最大借阅数量，请先归还部分图书')
+      } else if (errorMsg.includes('逾期未还')) {
+        ElMessage.error('您有图书逾期未还，请先归还逾期图书')
+      } else {
+        ElMessage.error(errorMsg)
+      }
     }
   } catch (error) {
     console.error('[图书页面] 借阅操作异常:', error)
-    ElMessage.error('借阅操作失败: ' + (error instanceof Error ? error.message : String(error)))
+    
+    // 根据错误类型提供更友好的提示
+    const errorMsg = error instanceof Error ? error.message : String(error)
+    if (errorMsg.includes('暂无可借图书')) {
+      ElMessage.error('该图书暂时无可借库存，请稍后再试')
+    } else if (errorMsg.includes('已达到最大借阅数量')) {
+      ElMessage.error('您已达到最大借阅数量，请先归还部分图书')
+    } else if (errorMsg.includes('逾期未还')) {
+      ElMessage.error('您有图书逾期未还，请先归还逾期图书')
+    } else {
+      ElMessage.error('借阅操作失败: ' + errorMsg)
+    }
   } finally {
-    // 移除借阅标记
+    // 确保无论成功或失败都移除借阅标记
     borrowing.value.delete(book.id)
     console.log('========== [图书页面] 用户借阅结束 ==========\n')
   }

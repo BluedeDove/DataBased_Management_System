@@ -57,7 +57,7 @@
             @click="loadChatHistory(item)"
           >
             <el-icon><Clock /></el-icon>
-            <span class="history-text">{{ item.preview }}</span>
+            <span class="history-text">{{ item.title }}</span>
           </div>
           <div v-if="chatHistoryList.length === 0" class="empty-history">
             暂无历史对话
@@ -182,6 +182,7 @@ import {
 import { ElMessage } from 'element-plus'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
+import { useUserStore } from '@/store/user'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -197,13 +198,15 @@ interface RecommendedBook {
   bookId?: number
 }
 
-interface ChatHistoryItem {
-  preview: string
+interface Conversation {
+  id: number
+  title: string
   messages: Message[]
-  timestamp: number
+  created_at: string
 }
 
 const router = useRouter()
+const userStore = useUserStore()
 const inputMessage = ref('')
 const loading = ref(false)
 const messagesRef = ref<HTMLElement | null>(null)
@@ -214,7 +217,8 @@ const isAIOnline = ref(false)
 const vectorCoverage = ref(0)
 const totalVectors = ref(0)
 const recommendedBooks = ref<RecommendedBook[]>([])
-const chatHistoryList = ref<ChatHistoryItem[]>([])
+const chatHistoryList = ref<Conversation[]>([])
+const currentConversationId = ref<number | null>(null)
 const showRecommendPanel = ref(true)
 const windowWidth = ref(window.innerWidth)
 
@@ -230,28 +234,53 @@ const triggerTool = (tool: string) => {
   }
 }
 
-const startNewChat = () => {
-  if (chatHistory.value.length > 1) {
-    // 保存当前对话到历史
+const startNewChat = async () => {
+  // 如果有当前对话且有内容，先保存到数据库
+  if (currentConversationId.value && chatHistory.value.length > 1) {
     const lastUserMsg = chatHistory.value.findLast(m => m.role === 'user')
     if (lastUserMsg) {
-      chatHistoryList.value.unshift({
-        preview: lastUserMsg.content.substring(0, 20) + (lastUserMsg.content.length > 20 ? '...' : ''),
-        messages: [...chatHistory.value],
-        timestamp: Date.now()
-      })
+      const title = lastUserMsg.content.substring(0, 50) + (lastUserMsg.content.length > 50 ? '...' : '')
+      try {
+        await window.api.ai.updateConversation(
+          currentConversationId.value,
+          title,
+          chatHistory.value
+        )
+      } catch (error) {
+        console.error('保存对话历史失败:', error)
+      }
     }
   }
+
+  // 创建新对话
   chatHistory.value = [
     { role: 'assistant', content: '你好！我是图书馆智能助手。你可以问我关于馆藏图书的问题，或者让我为你推荐书籍。' }
   ]
+  currentConversationId.value = null
   recommendedBooks.value = []
+  
+  // 重新加载对话历史列表
+  await loadConversations()
 }
 
-const loadChatHistory = (item: ChatHistoryItem) => {
+const loadChatHistory = (item: Conversation) => {
   chatHistory.value = [...item.messages]
+  currentConversationId.value = item.id
   recommendedBooks.value = []
   scrollToBottom()
+}
+
+const loadConversations = async () => {
+  if (!userStore.user?.id) return
+
+  try {
+    const result = await window.api.ai.getConversations(userStore.user.id, 20)
+    if (result.success) {
+      chatHistoryList.value = result.data
+    }
+  } catch (error) {
+    console.error('加载对话历史失败:', error)
+  }
 }
 
 const scrollToBottom = () => {
@@ -329,6 +358,24 @@ const sendMessage = async () => {
   loading.value = true
   scrollToBottom()
 
+  // 如果是新对话，创建对话记录
+  if (!currentConversationId.value && userStore.user?.id) {
+    try {
+      const result = await window.api.ai.saveConversation(
+        userStore.user.id,
+        text.substring(0, 50) + (text.length > 50 ? '...' : ''),
+        [{ role: 'user', content: text }]
+      )
+      if (result.success) {
+        currentConversationId.value = result.data.id
+        // 重新加载对话历史列表
+        await loadConversations()
+      }
+    } catch (error) {
+      console.error('保存对话失败:', error)
+    }
+  }
+
   // Add placeholder for AI response
   const aiMsgIndex = chatHistory.value.push({ role: 'assistant', content: '', loading: true }) - 1
   scrollToBottom()
@@ -391,6 +438,7 @@ const sendMessage = async () => {
 
 onMounted(() => {
   checkAIStatus()
+  loadConversations()
   window.addEventListener('resize', handleResize)
   handleResize()
 })

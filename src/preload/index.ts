@@ -115,6 +115,11 @@ export interface ElectronAPI {
       onComplete: () => void
     ) => () => void
     getStatistics: () => Promise<any>
+    saveConversation: (userId: number, title: string, messages: any[]) => Promise<any>
+    getConversations: (userId: number, limit?: number) => Promise<any>
+    getConversation: (conversationId: number) => Promise<any>
+    updateConversation: (conversationId: number, title: string, messages: any[]) => Promise<any>
+    deleteConversation: (conversationId: number) => Promise<any>
   }
 
   // 数据导出
@@ -195,7 +200,7 @@ const api: ElectronAPI = {
     markAsLost: (id) => ipcRenderer.invoke('book:markAsLost', id),
     markAsDamaged: (id, notes) => ipcRenderer.invoke('book:markAsDamaged', id, notes),
     advancedSearch: (criteria) => ipcRenderer.invoke('book:advancedSearch', criteria),
-    regexSearch: (pattern, fields) => ipcRenderer.invoke('book:regexSearch', pattern, fields),
+    regexSearch: (pattern, fields, categoryId) => ipcRenderer.invoke('book:regexSearch', pattern, fields, categoryId),
     getBorrowingStatus: (id) => ipcRenderer.invoke('book:getBorrowingStatus', id),
     getPopular: (limit) => ipcRenderer.invoke('book:getPopular', limit),
     getNew: (limit) => ipcRenderer.invoke('book:getNew', limit),
@@ -305,7 +310,12 @@ const api: ElectronAPI = {
 
       return cleanup
     },
-    getStatistics: () => ipcRenderer.invoke('ai:getStatistics')
+    getStatistics: () => ipcRenderer.invoke('ai:getStatistics'),
+    saveConversation: (userId, title, messages) => ipcRenderer.invoke('ai:saveConversation', userId, title, messages),
+    getConversations: (userId, limit) => ipcRenderer.invoke('ai:getConversations', userId, limit),
+    getConversation: (conversationId) => ipcRenderer.invoke('ai:getConversation', conversationId),
+    updateConversation: (conversationId, title, messages) => ipcRenderer.invoke('ai:updateConversation', conversationId, title, messages),
+    deleteConversation: (conversationId) => ipcRenderer.invoke('ai:deleteConversation', conversationId)
   },
 
   export: {

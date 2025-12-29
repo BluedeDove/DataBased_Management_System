@@ -35,6 +35,7 @@
         <el-table-column prop="reader_no" label="读者编号" width="120" />
         <el-table-column prop="name" label="姓名" width="120" />
         <el-table-column prop="category_name" label="类别" width="100" />
+        <el-table-column prop="id_card" label="学号/工号" width="130" />
         <el-table-column prop="phone" label="电话" width="130" />
         <el-table-column prop="organization" label="单位" />
         <el-table-column label="状态" width="100">
@@ -71,6 +72,9 @@
               :value="cat.id"
             />
           </el-select>
+        </el-form-item>
+        <el-form-item label="学号/工号" prop="id_card">
+          <el-input v-model="form.id_card" placeholder="请输入学号或工号" />
         </el-form-item>
         <el-form-item label="性别">
           <el-radio-group v-model="form.gender">
@@ -118,6 +122,7 @@ const form = reactive({
   name: '',
   category_id: undefined,
   gender: 'male',
+  id_card: '',
   organization: '',
   phone: '',
   email: '',
@@ -163,6 +168,7 @@ const handleAdd = () => {
     name: '',
     category_id: undefined,
     gender: 'male',
+    id_card: '',
     organization: '',
     phone: '',
     email: '',

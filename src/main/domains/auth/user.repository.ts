@@ -7,6 +7,7 @@ export interface User {
   password: string
   name: string
   role: 'admin' | 'librarian' | 'teacher' | 'student'
+  reader_id?: number
   email?: string
   phone?: string
   created_at: string
@@ -26,10 +27,10 @@ export class UserRepository {
 
   create(user: Omit<User, 'id' | 'created_at' | 'updated_at'>): User {
     const stmt = db.prepare(`
-      INSERT INTO users (username, password, name, role, email, phone)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO users (username, password, name, role, reader_id, email, phone)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `)
-    const result = stmt.run(user.username, user.password, user.name, user.role, user.email, user.phone)
+    const result = stmt.run(user.username, user.password, user.name, user.role, user.reader_id, user.email, user.phone)
 
     const created = this.findById(result.lastInsertRowid as number)
     if (!created) {
@@ -45,6 +46,10 @@ export class UserRepository {
     if (updates.name !== undefined) {
       fields.push('name = ?')
       values.push(updates.name)
+    }
+    if (updates.reader_id !== undefined) {
+      fields.push('reader_id = ?')
+      values.push(updates.reader_id)
     }
     if (updates.email !== undefined) {
       fields.push('email = ?')

@@ -411,9 +411,9 @@ export function registerIpcHandlers() {
     }
   })
 
-  ipcMain.handle('book:regexSearch', async (_, pattern, fields) => {
+  ipcMain.handle('book:regexSearch', async (_, pattern, fields, categoryId) => {
     try {
-      const books = regexSearchService.searchBooks(pattern, fields)
+      const books = regexSearchService.searchBooks(pattern, fields, categoryId)
       return { success: true, data: books } as SuccessResponse
     } catch (error) {
       return errorHandler.handle(error)
@@ -745,6 +745,52 @@ export function registerIpcHandlers() {
     try {
       const stats = aiService.getVectorStatistics()
       return { success: true, data: stats } as SuccessResponse
+    } catch (error) {
+      return errorHandler.handle(error)
+    }
+  })
+
+  // AI对话历史相关
+  ipcMain.handle('ai:saveConversation', async (_, userId, title, messages) => {
+    try {
+      const conversation = aiService.saveConversation(userId, title, messages)
+      return { success: true, data: conversation } as SuccessResponse
+    } catch (error) {
+      return errorHandler.handle(error)
+    }
+  })
+
+  ipcMain.handle('ai:getConversations', async (_, userId, limit) => {
+    try {
+      const conversations = aiService.getUserConversations(userId, limit)
+      return { success: true, data: conversations } as SuccessResponse
+    } catch (error) {
+      return errorHandler.handle(error)
+    }
+  })
+
+  ipcMain.handle('ai:getConversation', async (_, conversationId) => {
+    try {
+      const conversation = aiService.getConversation(conversationId)
+      return { success: true, data: conversation } as SuccessResponse
+    } catch (error) {
+      return errorHandler.handle(error)
+    }
+  })
+
+  ipcMain.handle('ai:updateConversation', async (_, conversationId, title, messages) => {
+    try {
+      const conversation = aiService.updateConversation(conversationId, title, messages)
+      return { success: true, data: conversation } as SuccessResponse
+    } catch (error) {
+      return errorHandler.handle(error)
+    }
+  })
+
+  ipcMain.handle('ai:deleteConversation', async (_, conversationId) => {
+    try {
+      aiService.deleteConversation(conversationId)
+      return { success: true } as SuccessResponse
     } catch (error) {
       return errorHandler.handle(error)
     }

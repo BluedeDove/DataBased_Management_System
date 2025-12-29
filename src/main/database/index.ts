@@ -330,6 +330,19 @@ export function initDatabase() {
       ('ai.openai.chatModel', 'gpt-4-turbo-preview', 'string', 'ai', 'Chat Model')
   `)
 
+  // 9. AI对话历史表
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ai_conversations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      messages TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `)
+
   // 创建索引以提高查询性能
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_readers_category ON readers(category_id);
@@ -342,6 +355,8 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_borrowing_book ON borrowing_records(book_id);
     CREATE INDEX IF NOT EXISTS idx_borrowing_status ON borrowing_records(status);
     CREATE INDEX IF NOT EXISTS idx_borrowing_dates ON borrowing_records(borrow_date, due_date);
+    CREATE INDEX IF NOT EXISTS idx_ai_conversations_user ON ai_conversations(user_id);
+    CREATE INDEX IF NOT EXISTS idx_ai_conversations_created ON ai_conversations(created_at DESC);
   `)
 
   console.log('✅ 数据库表结构初始化完成')

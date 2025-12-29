@@ -2,6 +2,7 @@ import { EmbeddingService } from './embedding.service'
 import { VectorRepository } from './vector.repository'
 import { BookRepository } from '../book/book.repository'
 import { ConfigService } from '../config/config.service'
+import { ConversationRepository, ConversationWithMessages } from './conversation.repository'
 import { logger } from '../../lib/logger'
 import { BusinessError } from '../../lib/errorHandler'
 import axios from 'axios'
@@ -25,6 +26,7 @@ export class AIService {
   private vectorRepository = new VectorRepository()
   private bookRepository = new BookRepository()
   private configService = new ConfigService()
+  private conversationRepository = new ConversationRepository()
 
   constructor() {
     // 初始化向量表
@@ -454,5 +456,32 @@ export class AIService {
       totalVectors: vectorCount,
       coverageRate: totalBooks > 0 ? (vectorCount / totalBooks) * 100 : 0
     }
+  }
+
+  // ============ AI对话历史相关 ============
+
+  // 保存对话
+  saveConversation(userId: number, title: string, messages: ChatMessage[]): ConversationWithMessages {
+    return this.conversationRepository.create(userId, title, messages)
+  }
+
+  // 获取用户对话列表
+  getUserConversations(userId: number, limit: number = 20): ConversationWithMessages[] {
+    return this.conversationRepository.findByUserId(userId, limit)
+  }
+
+  // 获取对话详情
+  getConversation(conversationId: number): ConversationWithMessages | undefined {
+    return this.conversationRepository.findById(conversationId)
+  }
+
+  // 更新对话
+  updateConversation(conversationId: number, title: string, messages: ChatMessage[]): ConversationWithMessages | undefined {
+    return this.conversationRepository.update(conversationId, title, messages)
+  }
+
+  // 删除对话
+  deleteConversation(conversationId: number): void {
+    this.conversationRepository.delete(conversationId)
   }
 }
