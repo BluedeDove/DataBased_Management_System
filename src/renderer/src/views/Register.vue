@@ -74,7 +74,7 @@
         <el-form-item label="学号/工号" prop="id_card">
           <el-input
             v-model="form.id_card"
-            placeholder="请输入学号或工号"
+            placeholder="请输入学号或工号（可选，留空自动生成）"
             size="large"
             :prefix-icon="Postcard"
           />
@@ -95,6 +95,15 @@
             placeholder="请输入邮箱（可选）"
             size="large"
             :prefix-icon="Message"
+          />
+        </el-form-item>
+
+        <el-form-item label="家庭地址">
+          <el-input
+            v-model="form.address"
+            placeholder="请输入家庭地址（可选）"
+            size="large"
+            :prefix-icon="Location"
           />
         </el-form-item>
 
@@ -125,7 +134,7 @@
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { User, Lock, UserFilled, Postcard, Iphone, Message } from '@element-plus/icons-vue'
+import { User, Lock, UserFilled, Postcard, Iphone, Message, Location } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 
 const router = useRouter()
@@ -141,7 +150,8 @@ const form = reactive({
   identity: '' as 'teacher' | 'student' | '',
   id_card: '',
   phone: '',
-  email: ''
+  email: '',
+  address: ''
 })
 
 // 验证确认密码
@@ -189,9 +199,10 @@ const rules: FormRules = {
     { required: true, validator: validateConfirmPassword, trigger: 'blur' }
   ],
   identity: [{ required: true, message: '请选择身份类型', trigger: 'change' }],
-  id_card: [{ required: true, message: '请输入学号或工号', trigger: 'blur' }],
+  id_card: [{ message: '请输入学号或工号', trigger: 'blur' }],
   phone: [{ required: true, validator: validatePhone, trigger: 'blur' }],
-  email: [{ validator: validateEmail, trigger: 'blur' }]
+  email: [{ validator: validateEmail, trigger: 'blur' }],
+  address: []
 }
 
 const handleRegister = async () => {
@@ -207,10 +218,11 @@ const handleRegister = async () => {
       password: form.password,
       name: form.name,
       identity: form.identity as 'teacher' | 'student',
-      id_card: form.id_card,
+      id_card: form.id_card || undefined,
       phone: form.phone,
-      email: form.email || undefined
-    })
+      email: form.email || undefined,
+      address: form.address || undefined
+    } as any)
 
     if (response.success) {
       ElMessage.success('注册成功！请使用您的账号登录')

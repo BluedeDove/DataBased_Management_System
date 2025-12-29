@@ -43,21 +43,66 @@
             <el-icon><ChatDotRound /></el-icon>
             <span>新对话</span>
           </button>
+          <button class="action-btn" @click="regenerateLastMessage" :disabled="loading">
+            <el-icon><RefreshRight /></el-icon>
+            <span>重新生成</span>
+          </button>
+          <button class="action-btn" @click="exportConversation">
+            <el-icon><Download /></el-icon>
+            <span>导出对话</span>
+          </button>
         </div>
       </div>
 
       <!-- 历史对话 -->
       <div class="history-section">
         <div class="section-title">历史对话</div>
+        <el-input
+          v-model="searchQuery"
+          placeholder="搜索对话..."
+          prefix-icon="Search"
+          clearable
+          size="small"
+          class="history-search"
+        />
         <div class="history-list">
           <div
-            v-for="(item, index) in chatHistoryList"
-            :key="index"
+            v-for="item in filteredChatHistoryList"
+            :key="item.id"
             class="history-item"
             @click="loadChatHistory(item)"
           >
             <el-icon><Clock /></el-icon>
-            <span class="history-text">{{ item.title }}</span>
+            <span v-if="editingConversationId !== item.id" class="history-text" @dblclick="startRename(item)">{{ item.title }}</span>
+            <el-input
+              v-else
+              v-model="editingTitleText"
+              size="small"
+              @blur="saveTitle(item)"
+              @keyup.enter="saveTitle(item)"
+              @keyup.esc="cancelRename"
+              class="rename-input"
+              ref="renameInputRef"
+              @click.stop
+            />
+            <el-button
+              v-if="editingConversationId !== item.id"
+              text
+              size="small"
+              @click="startRename(item)"
+              class="rename-btn"
+            >
+              <el-icon><Edit /></el-icon>
+            </el-button>
+            <el-button
+              text
+              size="small"
+              type="danger"
+              @click="deleteConversation(item, $event)"
+              class="delete-btn"
+            >
+              <el-icon><Delete /></el-icon>
+            </el-button>
           </div>
           <div v-if="chatHistoryList.length === 0" class="empty-history">
             暂无历史对话
@@ -79,7 +124,7 @@
 
       <!-- 消息列表 -->
       <div class="chat-messages" ref="messagesRef">
-        <div v-for="(msg, index) in chatHistory" :key="index"
+        <div v-for="(msg, index) in chatHistory" :key="msg.id || index"
              class="message-row" :class="msg.role">
           <div class="avatar">
             <el-icon v-if="msg.role === 'assistant'"><Service /></el-icon>
@@ -90,6 +135,66 @@
               <span></span><span></span><span></span>
             </div>
             <div v-else v-html="formatContent(msg.content)"></div>
+            <!-- 消息时间戳 -->
+            <div v-if="msg.timestamp && !msg.loading" class="message-timestamp">
+              {{ formatTime(msg.timestamp) }}
+            </div>
+            <!-- 消息操作按钮 -->
+            <div class="message-actions">
+              <!-- 复制按钮 -->
+              <el-tooltip content="复制" placement="top">
+                <el-button text size="small" @click="copyMessage(msg.content)">
+                  <el-icon><DocumentCopy /></el-icon>
+                </el-button>
+              </el-tooltip>
+              <!-- 编辑按钮（仅用户消息） -->
+              <el-tooltip v-if="msg.role === 'user' && !loading" content="编辑" placement="top">
+                <el-button text size="small" @click="editMessage(index)">
+                  <el-icon><Edit /></el-icon>
+                </el-button>
+              </el-tooltip>
+              <!-- 删除按钮 -->
+              <el-tooltip content="删除" placement="top">
+                <el-button text size="small" type="danger" @click="deleteMessage(index)">
+                  <el-icon><Delete /></el-icon>
+                </el-button>
+              </el-tooltip>
+              <!-- 点赞/点踩按钮（仅AI消息） -->
+              <template v-if="msg.role === 'assistant'">
+                <el-tooltip content="点赞" placement="top">
+                  <el-button
+                    text
+                    size="small"
+                    :type="msg.feedback === 'like' ? 'primary' : 'default'"
+                    @click="feedbackMessage(msg.id, 'like')"
+                  >
+                    <el-icon><Service /></el-icon>
+                  </el-button>
+                </el-tooltip>
+                <el-tooltip content="点踩" placement="top">
+                  <el-button
+                    text
+                    size="small"
+                    :type="msg.feedback === 'dislike' ? 'danger' : 'default'"
+                    @click="feedbackMessage(msg.id, 'dislike')"
+                  >
+                    <el-icon><Close /></el-icon>
+                  </el-button>
+                </el-tooltip>
+              </template>
+              <!-- 重新发送按钮（仅用户消息） -->
+              <el-tooltip v-if="msg.role === 'user' && !loading" content="重新发送" placement="top">
+                <el-button
+                  text
+                  size="small"
+                  type="info"
+                  @click="resendMessage(index)"
+                  class="resend-btn"
+                >
+                  <el-icon><RefreshRight /></el-icon>
+                </el-button>
+              </el-tooltip>
+            </div>
           </div>
         </div>
       </div>
@@ -111,10 +216,16 @@
             @keydown.enter.prevent="sendMessage"
             :disabled="loading"
           />
-          <el-button type="primary" :loading="loading" @click="sendMessage" class="send-btn">
-            <el-icon><Promotion /></el-icon>
-            发送
-          </el-button>
+          <div class="button-group">
+            <el-button v-if="loading" type="danger" @click="stopGeneration" class="stop-btn">
+              <el-icon><VideoPause /></el-icon>
+              停止
+            </el-button>
+            <el-button v-else type="primary" :loading="loading" @click="sendMessage" class="send-btn">
+              <el-icon><Promotion /></el-icon>
+              发送
+            </el-button>
+          </div>
         </div>
       </div>
     </div>
@@ -173,21 +284,25 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   MagicStick, User, Service, Reading, Search, ChatDotRound,
-  Clock, Promotion, Document, Close
+  Clock, Promotion, Document, Close, RefreshRight, Delete,
+  VideoPause, DocumentCopy, Edit, Download
 } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { useUserStore } from '@/store/user'
 
 interface Message {
+  id?: string
   role: 'user' | 'assistant'
   content: string
   loading?: boolean
+  timestamp?: number
+  feedback?: 'like' | 'dislike' | null
 }
 
 interface RecommendedBook {
@@ -210,8 +325,9 @@ const userStore = useUserStore()
 const inputMessage = ref('')
 const loading = ref(false)
 const messagesRef = ref<HTMLElement | null>(null)
+const streamCleanup = ref<(() => void) | null>(null)
 const chatHistory = ref<Message[]>([
-  { role: 'assistant', content: '你好！我是图书馆智能助手。你可以问我关于馆藏图书的问题，或者让我为你推荐书籍。' }
+  { id: 'init', role: 'assistant', content: '你好！我是图书馆智能助手。你可以问我关于馆藏图书的问题，或者让我为你推荐书籍。', timestamp: Date.now() }
 ])
 const isAIOnline = ref(false)
 const vectorCoverage = ref(0)
@@ -221,9 +337,57 @@ const chatHistoryList = ref<Conversation[]>([])
 const currentConversationId = ref<number | null>(null)
 const showRecommendPanel = ref(true)
 const windowWidth = ref(window.innerWidth)
+const searchQuery = ref('')
+const editingConversationId = ref<number | null>(null)
+const editingTitleText = ref('')
+const renameInputRef = ref<HTMLInputElement | null>(null)
+
+// 过滤后的对话列表
+const filteredChatHistoryList = computed(() => {
+  if (!searchQuery.value) return chatHistoryList.value
+  return chatHistoryList.value.filter(item =>
+    item.title.toLowerCase().includes(searchQuery.value.toLowerCase())
+  )
+})
 
 const setInput = (text: string) => {
   inputMessage.value = text
+}
+
+// 复制文本到剪贴板
+const copyMessage = async (content: string) => {
+  try {
+    await navigator.clipboard.writeText(content)
+    ElMessage.success('复制成功')
+  } catch (error) {
+    ElMessage.error('复制失败')
+  }
+}
+
+// 停止生成
+const stopGeneration = () => {
+  if (streamCleanup.value) {
+    streamCleanup.value()
+    streamCleanup.value = null
+    loading.value = false
+    ElMessage.info('已停止生成')
+  }
+}
+
+// 格式化时间戳
+const formatTime = (timestamp: number | undefined) => {
+  if (!timestamp) return ''
+  const date = new Date(timestamp)
+  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+}
+
+// 消息反馈
+const feedbackMessage = (msgId: string | undefined, type: 'like' | 'dislike') => {
+  const msg = chatHistory.value.find(m => m.id === msgId)
+  if (msg) {
+    msg.feedback = msg.feedback === type ? null : type
+    ElMessage.success(type === 'like' ? '已点赞' : '已点踩')
+  }
 }
 
 const triggerTool = (tool: string) => {
@@ -234,27 +398,62 @@ const triggerTool = (tool: string) => {
   }
 }
 
-const startNewChat = async () => {
-  // 如果有当前对话且有内容，先保存到数据库
-  if (currentConversationId.value && chatHistory.value.length > 1) {
-    const lastUserMsg = chatHistory.value.findLast(m => m.role === 'user')
-    if (lastUserMsg) {
-      const title = lastUserMsg.content.substring(0, 50) + (lastUserMsg.content.length > 50 ? '...' : '')
-      try {
-        await window.api.ai.updateConversation(
-          currentConversationId.value,
-          title,
-          chatHistory.value
-        )
-      } catch (error) {
-        console.error('保存对话历史失败:', error)
+// 保存当前对话到数据库
+const saveCurrentConversation = async () => {
+  if (!userStore.user?.id) {
+    console.warn('用户未登录，无法保存对话')
+    return
+  }
+  
+  // 管理员用户跳过对话保存（管理员不需要保存AI对话历史）
+  if (userStore.user.role === 'admin') {
+    console.log('管理员用户，跳过对话保存')
+    return
+  }
+  
+  // 如果正在加载中，不保存（避免保存未完成的AI回答）
+  if (loading.value) {
+    console.log('AI正在生成中，跳过对话保存')
+    return
+  }
+  
+  if (currentConversationId.value && chatHistory.value.length > 0) {
+    try {
+      // 过滤掉loading状态的消息
+      const messagesToSave = chatHistory.value.filter(m => !m.loading)
+      
+      // 如果没有有效的消息，不保存
+      if (messagesToSave.length === 0) {
+        console.log('没有有效的消息，跳过对话保存')
+        return
       }
+      
+      const lastUserMsg = messagesToSave.findLast(m => m.role === 'user')
+      const title = lastUserMsg
+        ? lastUserMsg.content.substring(0, 50) + (lastUserMsg.content.length > 50 ? '...' : '')
+        : '新对话'
+      
+      await window.api.ai.updateConversation(
+        currentConversationId.value,
+        title,
+        messagesToSave
+      )
+      // 重新加载对话历史列表以更新标题
+      await loadConversations()
+    } catch (error) {
+      console.error('保存对话历史失败:', error)
+      ElMessage.error('保存对话失败')
     }
   }
+}
+
+const startNewChat = async () => {
+  // 如果有当前对话且有内容，先保存到数据库
+  await saveCurrentConversation()
 
   // 创建新对话
   chatHistory.value = [
-    { role: 'assistant', content: '你好！我是图书馆智能助手。你可以问我关于馆藏图书的问题，或者让我为你推荐书籍。' }
+    { id: 'init', role: 'assistant', content: '你好！我是图书馆智能助手。你可以问我关于馆藏图书的问题，或者让我为你推荐书籍。' }
   ]
   currentConversationId.value = null
   recommendedBooks.value = []
@@ -264,14 +463,91 @@ const startNewChat = async () => {
 }
 
 const loadChatHistory = (item: Conversation) => {
+  // 如果正在加载中，先停止
+  if (loading.value) {
+    console.log('AI正在生成中，先停止')
+    stopGeneration()
+  }
+  
   chatHistory.value = [...item.messages]
   currentConversationId.value = item.id
   recommendedBooks.value = []
   scrollToBottom()
 }
 
+// 重新生成对话（重新发送最后一条用户消息）
+const regenerateLastMessage = async () => {
+  const lastUserMsgIndex = chatHistory.value.findLastIndex(m => m.role === 'user')
+  if (lastUserMsgIndex === -1) {
+    ElMessage.warning('没有可重新生成的消息')
+    return
+  }
+  
+  const lastUserMsg = chatHistory.value[lastUserMsgIndex]
+  if (!lastUserMsg) {
+    ElMessage.warning('没有可重新生成的消息')
+    return
+  }
+  
+  // 删除该消息及其后的所有消息
+  chatHistory.value = chatHistory.value.slice(0, lastUserMsgIndex)
+  
+  // 保存删除后的消息
+  await saveCurrentConversation()
+  
+  // 重新发送该消息
+  inputMessage.value = lastUserMsg.content
+  await sendMessage()
+}
+
+// 删除历史对话
+const deleteConversation = async (item: Conversation, event: Event) => {
+  // 阻止冒泡，避免触发加载对话
+  event.stopPropagation()
+  
+  // 确认操作
+  const confirmed = await ElMessageBox.confirm(
+    `确定要删除对话"${item.title}"吗？`,
+    '确认删除',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    }
+  ).catch(() => false)
+  
+  if (!confirmed) return
+  
+  try {
+    await window.api.ai.deleteConversation(item.id)
+    ElMessage.success('删除成功')
+    
+    // 如果删除的是当前对话，重置对话
+    if (currentConversationId.value === item.id) {
+      chatHistory.value = [
+        { id: 'init', role: 'assistant', content: '你好！我是图书馆智能助手。你可以问我关于馆藏图书的问题，或者让我为你推荐书籍。' }
+      ]
+      currentConversationId.value = null
+      recommendedBooks.value = []
+    }
+    
+    // 重新加载对话历史列表
+    await loadConversations()
+  } catch (error) {
+    console.error('删除对话失败:', error)
+    ElMessage.error('删除失败')
+  }
+}
+
 const loadConversations = async () => {
   if (!userStore.user?.id) return
+  
+  // 管理员用户不加载对话历史
+  if (userStore.user.role === 'admin') {
+    console.log('管理员用户，跳过加载对话历史')
+    chatHistoryList.value = []
+    return
+  }
 
   try {
     const result = await window.api.ai.getConversations(userStore.user.id, 20)
@@ -348,36 +624,178 @@ const handleResize = () => {
   }
 }
 
+// 重新发送消息
+const resendMessage = async (messageIndex: number) => {
+  // 确认操作
+  const confirmed = await ElMessageBox.confirm(
+    '确定要重新发送这条消息吗？后续的消息将被删除。',
+    '确认重新发送',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    }
+  ).catch(() => false)
+  
+  if (!confirmed) return
+  
+  const messageToResend = chatHistory.value[messageIndex]
+  if (!messageToResend || messageToResend.role !== 'user') {
+    ElMessage.warning('只能重新发送用户消息')
+    return
+  }
+  
+  // 删除该消息及其后的所有消息
+  chatHistory.value = chatHistory.value.slice(0, messageIndex)
+  
+  // 保存删除后的消息
+  await saveCurrentConversation()
+  
+  // 重新发送该消息
+  inputMessage.value = messageToResend.content
+  await sendMessage()
+}
+
+// 编辑消息
+const editMessage = (index: number) => {
+  const msg = chatHistory.value[index]
+  if (msg && msg.role === 'user') {
+    inputMessage.value = msg.content
+    // 删除该消息及后续消息
+    chatHistory.value = chatHistory.value.slice(0, index)
+    scrollToBottom()
+  }
+}
+
+// 删除消息
+const deleteMessage = async (index: number) => {
+  const confirmed = await ElMessageBox.confirm(
+    '确定要删除这条消息吗？',
+    '确认删除',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    }
+  ).catch(() => false)
+  
+  if (!confirmed) return
+  
+  // 删除该消息
+  chatHistory.value.splice(index, 1)
+  await saveCurrentConversation()
+}
+
+// 导出对话
+const exportConversation = () => {
+  let content = `# ${currentConversationId.value ? chatHistoryList.value.find(c => c.id === currentConversationId.value)?.title || '对话' : '新对话'}\n\n`
+  
+  chatHistory.value.forEach(msg => {
+    const role = msg.role === 'user' ? '用户' : 'AI'
+    const time = msg.timestamp ? new Date(msg.timestamp).toLocaleString('zh-CN') : ''
+    content += `## ${role} ${time}\n\n${msg.content}\n\n`
+  })
+  
+  const blob = new Blob([content], { type: 'text/markdown' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `对话_${Date.now()}.md`
+  a.click()
+  URL.revokeObjectURL(url)
+  
+  ElMessage.success('导出成功')
+}
+
+// 开始重命名对话
+const startRename = (item: Conversation) => {
+  editingConversationId.value = item.id
+  editingTitleText.value = item.title
+  nextTick(() => {
+    if (renameInputRef.value) {
+      renameInputRef.value.focus()
+      renameInputRef.value.select()
+    }
+  })
+}
+
+// 保存对话标题
+const saveTitle = async (item: Conversation) => {
+  if (!editingTitleText.value.trim()) {
+    cancelRename()
+    return
+  }
+  
+  try {
+    await window.api.ai.updateConversation(item.id, editingTitleText.value, chatHistory.value)
+    ElMessage.success('重命名成功')
+    await loadConversations()
+  } catch (error) {
+    console.error('重命名失败:', error)
+    ElMessage.error('重命名失败')
+  }
+  
+  cancelRename()
+}
+
+// 取消重命名
+const cancelRename = () => {
+  editingConversationId.value = null
+  editingTitleText.value = ''
+}
+
 const sendMessage = async () => {
   const text = inputMessage.value.trim()
   if (!text || loading.value) return
-
+  
   // Add user message
-  chatHistory.value.push({ role: 'user', content: text })
+  chatHistory.value.push({
+    id: Date.now().toString(),
+    role: 'user',
+    content: text,
+    timestamp: Date.now()
+  })
   inputMessage.value = ''
   loading.value = true
   scrollToBottom()
-
+  
   // 如果是新对话，创建对话记录
-  if (!currentConversationId.value && userStore.user?.id) {
-    try {
-      const result = await window.api.ai.saveConversation(
-        userStore.user.id,
-        text.substring(0, 50) + (text.length > 50 ? '...' : ''),
-        [{ role: 'user', content: text }]
-      )
-      if (result.success) {
-        currentConversationId.value = result.data.id
-        // 重新加载对话历史列表
-        await loadConversations()
+  if (!currentConversationId.value) {
+    if (!userStore.user?.id) {
+      console.warn('用户未登录，无法保存对话')
+      ElMessage.warning('请先登录以保存对话历史')
+    } else {
+      try {
+        // 保存完整的对话历史（包括初始的assistant消息和用户消息）
+        // 使用深拷贝确保数据可序列化
+        const messagesToSave = JSON.parse(JSON.stringify(chatHistory.value))
+        const result = await window.api.ai.saveConversation(
+          userStore.user.id,
+          text.substring(0, 50) + (text.length > 50 ? '...' : ''),
+          messagesToSave
+        )
+        if (result.success) {
+          currentConversationId.value = result.data.id
+          // 重新加载对话历史列表
+          await loadConversations()
+        } else {
+          console.error('保存对话失败: result.success = false')
+        }
+      } catch (error) {
+        console.error('保存对话失败:', error)
+        ElMessage.error('保存对话失败')
       }
-    } catch (error) {
-      console.error('保存对话失败:', error)
     }
   }
 
   // Add placeholder for AI response
-  const aiMsgIndex = chatHistory.value.push({ role: 'assistant', content: '', loading: true }) - 1
+  const aiMsgIndex = chatHistory.value.push({
+    id: Date.now().toString() + '-ai',
+    role: 'assistant',
+    content: '',
+    loading: true,
+    timestamp: Date.now()
+  }) - 1
   scrollToBottom()
 
   try {
@@ -401,12 +819,16 @@ const sendMessage = async () => {
             console.error(error)
             reject(new Error(error))
           },
-          () => {
+          async () => {
             // 解析推荐图书
             recommendedBooks.value = parseRecommendedBooks(fullContent)
+            // 保存完整对话到数据库
+            await saveCurrentConversation()
             resolve()
           }
         )
+        // 保存 cleanup 函数
+        streamCleanup.value = cleanup
       })
     } else {
       // 普通闲聊
@@ -423,15 +845,24 @@ const sendMessage = async () => {
             scrollToBottom()
           },
           (error) => reject(new Error(error)),
-          () => resolve()
+          async () => {
+            // 保存完整对话到数据库
+            await saveCurrentConversation()
+            resolve()
+          }
         )
+        // 保存 cleanup 函数
+        streamCleanup.value = cleanup
       })
     }
   } catch (error: any) {
     chatHistory.value[aiMsgIndex].content = `抱歉，遇到了一些问题：${error.message || '网络请求超时'}`
     chatHistory.value[aiMsgIndex].loading = false
+    // 即使出错也保存对话
+    await saveCurrentConversation()
   } finally {
     loading.value = false
+    streamCleanup.value = null
     scrollToBottom()
   }
 }
@@ -445,6 +876,8 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
+  // 页面卸载时保存当前对话
+  saveCurrentConversation()
 })
 </script>
 
@@ -635,11 +1068,52 @@ onUnmounted(() => {
   text-overflow: ellipsis;
 }
 
+.delete-btn {
+  opacity: 0;
+  transition: opacity 0.2s;
+  padding: 4px;
+}
+
+.history-item:hover .delete-btn {
+  opacity: 1;
+}
+
+.delete-btn .el-icon {
+  font-size: 14px;
+}
+
+.rename-btn {
+  opacity: 0;
+  transition: opacity 0.2s;
+  padding: 4px;
+}
+
+.history-item:hover .rename-btn {
+  opacity: 1;
+}
+
+.rename-btn .el-icon {
+  font-size: 14px;
+}
+
+.rename-input {
+  flex: 1;
+}
+
+.rename-input :deep(.el-input__inner) {
+  padding: 4px 8px;
+  font-size: 13px;
+}
+
 .empty-history {
   text-align: center;
   padding: 30px 20px;
   color: var(--text-muted);
   font-size: 13px;
+}
+
+.history-search {
+  margin-bottom: 12px;
 }
 
 /* 中间主聊天区域 */
@@ -723,6 +1197,55 @@ onUnmounted(() => {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
   font-size: 15px;
   line-height: 1.6;
+  position: relative;
+}
+
+.message-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.message-actions .el-button {
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 4px;
+}
+
+.message-actions .el-button:hover {
+  color: var(--primary-color);
+}
+
+.message-actions .el-button.el-button--primary {
+  color: var(--primary-color);
+}
+
+.message-actions .el-button.el-button--danger {
+  color: #f56c6c;
+}
+
+.message-actions .el-button.el-button--danger:hover {
+  color: #f89898;
+}
+
+.resend-btn {
+  font-size: 12px;
+  padding: 4px 8px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.bubble:hover .message-actions {
+  opacity: 1;
+}
+
+.user .bubble .resend-btn {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.user .bubble .resend-btn:hover {
+  color: white;
 }
 
 .user .bubble {
@@ -771,6 +1294,11 @@ onUnmounted(() => {
   font-size: 14px;
 }
 
+.button-group {
+  display: flex;
+  gap: 8px;
+}
+
 .send-btn {
   height: 52px;
   padding: 0 24px;
@@ -778,6 +1306,22 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.stop-btn {
+  height: 52px;
+  padding: 0 24px;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.message-timestamp {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  text-align: right;
 }
 
 /* 打字指示器 */

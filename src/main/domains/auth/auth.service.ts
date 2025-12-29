@@ -20,9 +20,10 @@ export interface RegisterData {
   password: string
   name: string
   identity: 'teacher' | 'student'
-  id_card: string
+  id_card?: string
   phone: string
   email?: string
+  address?: string
 }
 
 export class AuthService {
@@ -161,19 +162,19 @@ export class AuthService {
     logger.info('[后端] 用户名:', data.username)
     logger.info('[后端] 姓名:', data.name)
     logger.info('[后端] 身份:', data.identity)
-    logger.info('[后端] 身份证号:', data.id_card ? data.id_card.substring(0, 6) + '****' : '未提供')
+    logger.info('[后端] 学号/工号:', data.id_card ? data.id_card.substring(0, 6) + '****' : '未提供（将自动生成）')
     logger.info('[后端] 手机号:', data.phone)
     logger.info('[后端] 邮箱:', data.email || '未提供')
+    logger.info('[后端] 地址:', data.address || '未提供')
 
     // 1. 验证必填字段
-    if (!data.username || !data.password || !data.name || !data.identity || !data.id_card || !data.phone) {
+    if (!data.username || !data.password || !data.name || !data.identity || !data.phone) {
       logger.error('[后端] 注册失败: 必填字段缺失')
       logger.error('[后端] 缺失的字段:', {
         username: !data.username,
         password: !data.password,
         name: !data.name,
         identity: !data.identity,
-        id_card: !data.id_card,
         phone: !data.phone
       })
       throw new ValidationError('请填写所有必填信息')
@@ -194,14 +195,18 @@ export class AuthService {
     }
     logger.info('[后端] 用户名可用')
 
-    // 4. 检查身份证号是否已存在
-    logger.info('[后端] 检查身份证号是否存在...')
-    const existingIdCard = db.prepare('SELECT id FROM readers WHERE id_card = ?').get(data.id_card)
-    if (existingIdCard) {
-      logger.error('[后端] 注册失败: 身份证号已被注册')
-      throw new ValidationError('身份证号已被注册')
+    // 4. 检查身份证号是否已存在（如果提供了）
+    if (data.id_card) {
+      logger.info('[后端] 检查身份证号是否存在...')
+      const existingIdCard = db.prepare('SELECT id FROM readers WHERE id_card = ?').get(data.id_card)
+      if (existingIdCard) {
+        logger.error('[后端] 注册失败: 身份证号已被注册')
+        throw new ValidationError('身份证号已被注册')
+      }
+      logger.info('[后端] 身份证号可用')
+    } else {
+      logger.info('[后端] 未提供身份证号，将自动生成读者编号')
     }
-    logger.info('[后端] 身份证号可用')
 
     // 5. 根据身份类型查找对应的 reader_category_id
     logger.info('[后端] 查找读者类别...')
@@ -238,17 +243,18 @@ export class AuthService {
       logger.info('[后端] 创建reader记录...')
       const insertReader = db.prepare(`
         INSERT INTO readers (
-          reader_no, name, category_id, id_card, phone, email,
+          reader_no, name, category_id, id_card, phone, email, address,
           registration_date, expiry_date, status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       const readerResult = insertReader.run(
         readerNo,
         data.name,
         category.id,
-        data.id_card,
+        data.id_card || null,
         data.phone,
         data.email || null,
+        data.address || null,
         registrationDate.toISOString().split('T')[0],
         expiryDate.toISOString().split('T')[0],
         'active'
