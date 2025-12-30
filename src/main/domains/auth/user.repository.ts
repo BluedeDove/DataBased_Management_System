@@ -16,12 +16,12 @@ export interface User {
 
 export class UserRepository {
   findByUsername(username: string): User | undefined {
-    const stmt = db.prepare('SELECT * FROM users WHERE username = ?')
+    const stmt = db.prepare('SELECT * FROM users WHERE username = ? AND is_deleted = 0')
     return stmt.get(username) as User | undefined
   }
 
   findById(id: number): User | undefined {
-    const stmt = db.prepare('SELECT * FROM users WHERE id = ?')
+    const stmt = db.prepare('SELECT * FROM users WHERE id = ? AND is_deleted = 0')
     return stmt.get(id) as User | undefined
   }
 
@@ -82,7 +82,7 @@ export class UserRepository {
   }
 
   findAll(): User[] {
-    const stmt = db.prepare('SELECT * FROM users ORDER BY created_at DESC')
+    const stmt = db.prepare('SELECT * FROM users WHERE is_deleted = 0 ORDER BY created_at DESC')
     return stmt.all() as User[]
   }
 

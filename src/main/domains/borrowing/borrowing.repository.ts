@@ -44,7 +44,7 @@ export class BorrowingRepository {
       FROM borrowing_records br
       JOIN readers r ON br.reader_id = r.id
       JOIN books b ON br.book_id = b.id
-      WHERE 1=1
+      WHERE br.is_deleted = 0 AND r.is_deleted = 0 AND b.is_deleted = 0
     `
     const params: any[] = []
 
@@ -99,7 +99,7 @@ export class BorrowingRepository {
       FROM borrowing_records br
       JOIN readers r ON br.reader_id = r.id
       JOIN books b ON br.book_id = b.id
-      WHERE br.id = ?
+      WHERE br.id = ? AND br.is_deleted = 0
     `)
     return stmt.get(id) as BorrowingRecordWithDetails | undefined
   }
@@ -164,7 +164,7 @@ export class BorrowingRepository {
       FROM borrowing_records br
       JOIN readers r ON br.reader_id = r.id
       JOIN books b ON br.book_id = b.id
-      WHERE br.reader_id = ? AND br.book_id = ? AND br.status = 'borrowed'
+      WHERE br.reader_id = ? AND br.book_id = ? AND br.status = 'borrowed' AND br.is_deleted = 0
     `)
     return stmt.get(readerId, bookId) as BorrowingRecordWithDetails | undefined
   }
@@ -182,7 +182,7 @@ export class BorrowingRepository {
       FROM borrowing_records br
       JOIN readers r ON br.reader_id = r.id
       JOIN books b ON br.book_id = b.id
-      WHERE br.status = 'borrowed' AND br.due_date < date('now')
+      WHERE br.status = 'borrowed' AND br.due_date < date('now') AND br.is_deleted = 0
       ORDER BY br.due_date
     `)
     return stmt.all() as BorrowingRecordWithDetails[]
@@ -193,7 +193,7 @@ export class BorrowingRepository {
     const stmt = db.prepare(`
       UPDATE borrowing_records
       SET status = 'overdue'
-      WHERE status = 'borrowed' AND due_date < date('now')
+      WHERE status = 'borrowed' AND due_date < date('now') AND is_deleted = 0
     `)
     const result = stmt.run()
     return result.changes
@@ -231,6 +231,7 @@ export class BorrowingRepository {
         SUM(CASE WHEN status = 'overdue' THEN 1 ELSE 0 END) as overdue_count,
         SUM(fine_amount) as total_fines
       FROM borrowing_records
+      WHERE is_deleted = 0
     `)
     return stmt.get() as any
   }
@@ -262,7 +263,7 @@ export class BorrowingRepository {
         dates.date as date,
         COALESCE(COUNT(br.id), 0) as count
       FROM dates
-      LEFT JOIN borrowing_records br ON date(br.borrow_date) = dates.date
+      LEFT JOIN borrowing_records br ON date(br.borrow_date) = dates.date AND br.is_deleted = 0
       GROUP BY dates.date
       ORDER BY dates.date ASC
     `)

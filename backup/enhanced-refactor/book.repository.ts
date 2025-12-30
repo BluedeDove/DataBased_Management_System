@@ -8,8 +8,6 @@ export interface BookCategory {
   keywords?: string
   parent_id?: number
   notes?: string
-  version: number
-  is_deleted: boolean
   created_at: string
   updated_at: string
 }
@@ -32,8 +30,6 @@ export interface Book {
   status: 'normal' | 'damaged' | 'lost' | 'destroyed'
   registration_date: string
   notes?: string
-  version: number
-  is_deleted: boolean
   created_at: string
   updated_at: string
 }
@@ -41,26 +37,24 @@ export interface Book {
 export interface BookWithCategory extends Book {
   category_name: string
   category_code: string
-  version: number
-  is_deleted: boolean
 }
 
 export class BookRepository {
   // 图书类别相关
   findAllCategories(): BookCategory[] {
-    const stmt = db.prepare('SELECT * FROM book_categories WHERE is_deleted = 0 ORDER BY code')
+    const stmt = db.prepare('SELECT * FROM book_categories ORDER BY code')
     return stmt.all() as BookCategory[]
   }
 
   findCategoryById(id: number): BookCategory | undefined {
-    const stmt = db.prepare('SELECT * FROM book_categories WHERE id = ? AND is_deleted = 0')
+    const stmt = db.prepare('SELECT * FROM book_categories WHERE id = ?')
     return stmt.get(id) as BookCategory | undefined
   }
 
-  createCategory(category: Omit<BookCategory, 'id' | 'created_at' | 'updated_at' | 'version' | 'is_deleted'>): BookCategory {
+  createCategory(category: Omit<BookCategory, 'id' | 'created_at' | 'updated_at'>): BookCategory {
     const stmt = db.prepare(`
-      INSERT INTO book_categories (code, name, keywords, parent_id, notes, version, is_deleted)
-      VALUES (?, ?, ?, ?, ?, 1, 0)
+      INSERT INTO book_categories (code, name, keywords, parent_id, notes)
+      VALUES (?, ?, ?, ?, ?)
     `)
     const result = stmt.run(
       category.code,
@@ -75,17 +69,11 @@ export class BookRepository {
   }
 
   updateCategory(id: number, updates: Partial<BookCategory>): BookCategory {
-    const existing = this.findCategoryById(id)
-    if (!existing) {
-      throw new NotFoundError('图书类别')
-    }
-
     const fields: string[] = []
     const values: any[] = []
 
     Object.keys(updates).forEach((key) => {
-      if (key !== 'id' && key !== 'code' && key !== 'created_at' &&
-          key !== 'updated_at' && key !== 'version' && key !== 'is_deleted') {
+      if (key !== 'id' && key !== 'code' && key !== 'created_at' && key !== 'updated_at') {
         fields.push(`${key} = ?`)
         values.push(updates[key as keyof BookCategory])
       }
@@ -93,16 +81,8 @@ export class BookRepository {
 
     if (fields.length > 0) {
       fields.push('updated_at = CURRENT_TIMESTAMP')
-      fields.push('version = version + 1')  // 自动递增版本号
       values.push(id)
-      values.push(existing.version || 1)     // 乐观锁检查
-
-      const sql = `
-        UPDATE book_categories
-        SET ${fields.join(', ')}
-        WHERE id = ? AND version = ?
-      `
-      db.prepare(sql).run(...values)
+      db.prepare(`UPDATE book_categories SET ${fields.join(', ')} WHERE id = ?`).run(...values)
     }
 
     const updated = this.findCategoryById(id)
@@ -118,13 +98,13 @@ export class BookRepository {
     }
 
     // Check if there are books using this category
-    const booksCount = db.prepare('SELECT COUNT(*) as count FROM books WHERE category_id = ? AND is_deleted = 0').get(id) as { count: number }
+    const booksCount = db.prepare('SELECT COUNT(*) as count FROM books WHERE category_id = ?').get(id) as { count: number }
     if (booksCount.count > 0) {
       throw new Error(`无法删除该类别，还有${booksCount.count}本图书使用此类别`)
     }
 
-    // 软删除类别
-    db.prepare('UPDATE book_categories SET is_deleted = 1, updated_at = CURRENT_TIMESTAMP, version = version + 1 WHERE id = ?').run(id)
+    // Delete the category
+    db.prepare('DELETE FROM book_categories WHERE id = ?').run(id)
   }
 
   // 图书相关
@@ -137,7 +117,7 @@ export class BookRepository {
       SELECT b.*, bc.name as category_name, bc.code as category_code
       FROM books b
       JOIN book_categories bc ON b.category_id = bc.id
-      WHERE b.is_deleted = 0 AND bc.is_deleted = 0
+      WHERE 1=1
     `
     const params: any[] = []
 
@@ -163,22 +143,22 @@ export class BookRepository {
     return stmt.all(...params) as BookWithCategory[]
   }
 
-  findById(id: number, include_deleted: boolean = false): BookWithCategory | undefined {
+  findById(id: number): BookWithCategory | undefined {
     const stmt = db.prepare(`
       SELECT b.*, bc.name as category_name, bc.code as category_code
       FROM books b
       JOIN book_categories bc ON b.category_id = bc.id
-      WHERE b.id = ? ${include_deleted ? '' : 'AND b.is_deleted = 0'}
+      WHERE b.id = ?
     `)
     return stmt.get(id) as BookWithCategory | undefined
   }
 
-  findByIsbn(isbn: string, include_deleted: boolean = false): BookWithCategory | undefined {
+  findByIsbn(isbn: string): BookWithCategory | undefined {
     const stmt = db.prepare(`
       SELECT b.*, bc.name as category_name, bc.code as category_code
       FROM books b
       JOIN book_categories bc ON b.category_id = bc.id
-      WHERE b.isbn = ? ${include_deleted ? '' : 'AND b.is_deleted = 0'}
+      WHERE b.isbn = ?
     `)
     return stmt.get(isbn) as BookWithCategory | undefined
   }
@@ -188,9 +168,8 @@ export class BookRepository {
       INSERT INTO books (
         isbn, title, category_id, author, publisher, publish_date,
         price, pages, keywords, description, cover_url,
-        total_quantity, available_quantity, status, registration_date, notes,
-        version, is_deleted
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)
+        total_quantity, available_quantity, status, registration_date, notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     const result = stmt.run(
@@ -222,18 +201,11 @@ export class BookRepository {
     console.log('[Repository] 图书ID:', id)
     console.log('[Repository] 更新字段:', Object.keys(updates))
 
-    // 获取当前记录（包含版本号）
-    const current = this.findById(id)
-    if (!current) {
-      throw new NotFoundError('图书')
-    }
-
     const fields: string[] = []
     const values: any[] = []
 
     Object.keys(updates).forEach((key) => {
-      if (key !== 'id' && key !== 'isbn' && key !== 'created_at' &&
-          key !== 'updated_at' && key !== 'version' && key !== 'is_deleted') {
+      if (key !== 'id' && key !== 'isbn' && key !== 'created_at' && key !== 'updated_at') {
         fields.push(`${key} = ?`)
         values.push(updates[key as keyof Book])
         console.log(`[Repository] 添加字段: ${key} = ${updates[key as keyof Book]}`)
@@ -245,23 +217,11 @@ export class BookRepository {
 
     if (fields.length > 0) {
       fields.push('updated_at = CURRENT_TIMESTAMP')
-      fields.push('version = version + 1')  // 自动递增版本号
       values.push(id)
-      values.push(current.version || 1)     // 乐观锁检查
-
-      const sql = `
-        UPDATE books
-        SET ${fields.join(', ')}
-        WHERE id = ? AND version = ?
-      `
+      const sql = `UPDATE books SET ${fields.join(', ')} WHERE id = ?`
       console.log('[Repository] 完整SQL语句:', sql)
       console.log('[Repository] 执行UPDATE...')
-      const result = db.prepare(sql).run(...values)
-
-      if (result.changes === 0) {
-        throw new Error(`更新失败：图书已被其他用户修改（版本冲突）`)
-      }
-
+      db.prepare(sql).run(...values)
       console.log('[Repository] UPDATE执行成功')
     } else {
       console.log('[Repository] 警告：没有字段需要更新')
@@ -278,43 +238,31 @@ export class BookRepository {
     return updated
   }
 
-  // 减少可借数量（带乐观锁）
+  // 减少可借数量
   decreaseAvailableQuantity(id: number, amount: number = 1): void {
-    const current = this.findById(id)
-    if (!current) {
-      throw new NotFoundError('图书')
-    }
-
     const stmt = db.prepare(`
       UPDATE books
       SET available_quantity = available_quantity - ?,
-          updated_at = CURRENT_TIMESTAMP,
-          version = version + 1
-      WHERE id = ? AND available_quantity >= ? AND version = ?
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND available_quantity >= ?
     `)
-    const result = stmt.run(amount, id, amount, current.version || 1)
-
+    const result = stmt.run(amount, id, amount)
+    
     if (result.changes === 0) {
       throw new Error(`图书可借数量不足，无法减少 ${amount} 本`)
     }
   }
 
-  // 增加可借数量（带乐观锁）
+  // 增加可借数量
   increaseAvailableQuantity(id: number, amount: number = 1): void {
-    const current = this.findById(id)
-    if (!current) {
-      throw new NotFoundError('图书')
-    }
-
     const stmt = db.prepare(`
       UPDATE books
       SET available_quantity = available_quantity + ?,
-          updated_at = CURRENT_TIMESTAMP,
-          version = version + 1
-      WHERE id = ? AND version = ?
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
     `)
-    const result = stmt.run(amount, id, current.version || 1)
-
+    const result = stmt.run(amount, id)
+    
     if (result.changes === 0) {
       throw new Error(`图书不存在，ID: ${id}`)
     }
@@ -337,7 +285,7 @@ export class BookRepository {
       SELECT b.*, bc.name as category_name, bc.code as category_code
       FROM books b
       JOIN book_categories bc ON b.category_id = bc.id
-      WHERE b.is_deleted = 0 AND bc.is_deleted = 0
+      WHERE 1=1
     `
     const params: any[] = []
 
@@ -402,7 +350,7 @@ export class BookRepository {
       SELECT r.name as reader_name, br.due_date
       FROM borrowing_records br
       JOIN readers r ON br.reader_id = r.id
-      WHERE br.book_id = ? AND br.status = 'borrowed' AND br.is_deleted = 0
+      WHERE br.book_id = ? AND br.status = 'borrowed'
       ORDER BY br.due_date
     `)
 
@@ -431,7 +379,7 @@ export class BookRepository {
     // 查找今年同类别的最大ISBN
     const stmt = db.prepare(`
       SELECT isbn FROM books
-      WHERE isbn LIKE ? AND is_deleted = 0
+      WHERE isbn LIKE ?
       ORDER BY isbn DESC
       LIMIT 1
     `)
@@ -452,35 +400,12 @@ export class BookRepository {
     return `${prefix}${sequenceStr}`
   }
 
-  // 删除图书（软删除）
+  // 删除图书
   delete(id: number): void {
     console.log('[Repository] 开始删除图书数据，ID:', id)
-
-    const current = this.findById(id)
-    if (!current) {
-      throw new NotFoundError('图书')
-    }
-
-    // 检查是否有未归还的借阅记录
-    const activeBorrowingCount = db.prepare(`
-      SELECT COUNT(*) as count FROM borrowing_records
-      WHERE book_id = ? AND status IN ('borrowed', 'overdue') AND is_deleted = 0
-    `).get(id) as { count: number }
-
-    if (activeBorrowingCount.count > 0) {
-      throw new Error(`该图书还有${activeBorrowingCount.count}条未归还的借阅记录，无法删除`)
-    }
-
-    // 软删除
-    const stmt = db.prepare(`
-      UPDATE books
-      SET is_deleted = 1,
-          updated_at = CURRENT_TIMESTAMP,
-          version = version + 1
-      WHERE id = ?
-    `)
+    const stmt = db.prepare('DELETE FROM books WHERE id = ?')
     const result = stmt.run(id)
-
+    
     if (result.changes === 0) {
       console.error('[Repository] 图书不存在，ID:', id)
       throw new NotFoundError('图书')
@@ -488,68 +413,9 @@ export class BookRepository {
     console.log('[Repository] 删除成功，影响行数:', result.changes)
   }
 
-  // 恢复软删除的图书
-  restore(id: number): Book {
-    const stmt = db.prepare(`
-      UPDATE books
-      SET is_deleted = 0,
-          updated_at = CURRENT_TIMESTAMP,
-          version = version + 1
-      WHERE id = ? AND is_deleted = 1
-    `)
-    const result = stmt.run(id)
-
-    if (result.changes === 0) {
-      throw new NotFoundError('图书或图书未被删除')
-    }
-
-    const restored = this.findById(id)
-    if (!restored) throw new NotFoundError('图书')
-    return restored
-  }
-
-  // 获取已删除的图书
-  getDeletedBooks(limit: number = 50, offset: number = 0): BookWithCategory[] {
-    const stmt = db.prepare(`
-      SELECT b.*, bc.name as category_name, bc.code as category_code
-      FROM books b
-      JOIN book_categories bc ON b.category_id = bc.id
-      WHERE b.is_deleted = 1
-      ORDER BY b.updated_at DESC
-      LIMIT ? OFFSET ?
-    `)
-
-    return stmt.all(limit, offset) as BookWithCategory[]
-  }
-
-  // 硬删除（永久删除，仅限管理员）
-  hardDelete(id: number): void {
-    const book = this.findById(id, true) // 需要支持 include_deleted 参数
-    if (!book) {
-      throw new NotFoundError('图书')
-    }
-
-    // 检查是否有未归还的借阅记录
-    const activeBorrowingCount = db.prepare(`
-      SELECT COUNT(*) as count FROM borrowing_records
-      WHERE book_id = ? AND status IN ('borrowed', 'overdue') AND is_deleted = 0
-    `).get(id) as { count: number }
-
-    if (activeBorrowingCount.count > 0) {
-      throw new Error(`该图书还有${activeBorrowingCount.count}条未归还的借阅记录，无法删除`)
-    }
-
-    const stmt = db.prepare('DELETE FROM books WHERE id = ?')
-    const result = stmt.run(id)
-
-    if (result.changes === 0) {
-      throw new NotFoundError('图书')
-    }
-  }
-
   // 获取图书总数
   getTotalCount(): number {
-    const stmt = db.prepare('SELECT COUNT(*) as count FROM books WHERE is_deleted = 0')
+    const stmt = db.prepare('SELECT COUNT(*) as count FROM books')
     const result = stmt.get() as { count: number }
     return result.count
   }

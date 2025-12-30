@@ -61,7 +61,7 @@ export class ReaderService {
     return reader
   }
 
-  createReader(data: Omit<Reader, 'id' | 'created_at' | 'updated_at'>): Reader {
+  createReader(data: Omit<Reader, 'id' | 'created_at' | 'updated_at'>): ReaderWithCategory {
     logger.info('========== [后端] 开始创建读者 ==========')
     logger.info('[后端] 接收到的数据:', JSON.stringify(data, null, 2))
 
@@ -239,19 +239,19 @@ export class ReaderService {
     }
   }
 
-  // 删除读者
+  // 删除读者（软删除）
   deleteReader(id: number): void {
-    console.log('========== [Service] 开始删除读者 ==========')
+    console.log('========== [Service] 开始软删除读者 ==========')
     console.log('[Service] Reader ID:', id)
 
     const reader = this.getReaderById(id)
     console.log('[Service] 读者信息:', { name: reader.name, reader_no: reader.reader_no })
 
-    // 检查是否有未归还的借阅记录
+    // 检查是否有未归还的借阅记录（排除软删除的记录）
     console.log('[Service] 检查借阅记录...')
     const borrowingStmt = db.prepare(`
       SELECT COUNT(*) as count FROM borrowing_records
-      WHERE reader_id = ? AND status IN ('borrowed', 'overdue')
+      WHERE reader_id = ? AND status IN ('borrowed', 'overdue') AND is_deleted = 0
     `)
     const result = borrowingStmt.get(id) as { count: number }
     console.log('[Service] 未归还借阅记录数:', result.count)
@@ -261,10 +261,10 @@ export class ReaderService {
       throw new BusinessError(`该读者还有${result.count}条未归还的借阅记录，无法删除`)
     }
 
-    console.log('[Service] 调用repository.delete删除数据...')
+    console.log('[Service] 调用repository.delete执行软删除...')
     this.readerRepository.delete(id)
-    logger.warn('删除读者', { id, name: reader.name, reader_no: reader.reader_no })
-    console.log('========== [Service] 删除读者结束 ==========\n')
+    logger.warn('软删除读者', { id, name: reader.name, reader_no: reader.reader_no })
+    console.log('========== [Service] 软删除读者结束 ==========\n')
   }
 }
 

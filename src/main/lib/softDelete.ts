@@ -13,6 +13,26 @@ export class SoftDeleteError extends AppError {
 }
 
 /**
+ * 唯一字段配置
+ */
+interface UniqueFieldConfig {
+  tableName: string
+  uniqueFields: string[]
+}
+
+/**
+ * 各表的唯一约束字段配置
+ * 当软删除记录时，这些字段会被添加后缀以释放原值
+ */
+const UNIQUE_FIELD_CONFIGS: UniqueFieldConfig[] = [
+  { tableName: 'users', uniqueFields: ['username'] },
+  { tableName: 'readers', uniqueFields: ['reader_no', 'id_card'] },
+  { tableName: 'books', uniqueFields: ['isbn'] },
+  { tableName: 'reader_categories', uniqueFields: ['code'] },
+  { tableName: 'book_categories', uniqueFields: ['code'] },
+]
+
+/**
  * 软删除工具类
  * 实现基于is_deleted字段的软删除功能
  */
@@ -39,22 +59,60 @@ export class SoftDeleteManager {
         reason
       })
 
+      // 获取记录
+      const record = this.getRecordIncludingDeleted(tableName, id)
+      if (!record) {
+        logger.warn('软删除失败，记录不存在', {
+          table: tableName,
+          id
+        })
+        return false
+      }
+
+      // 查找配置
+      const config = UNIQUE_FIELD_CONFIGS.find(c => c.tableName === tableName)
+
       // 构建更新SQL
       const updates: string[] = ['is_deleted = 1']
-      const values: any[] = [id]
+      const values: any[] = []
+      const originalValues: Record<string, string> = {}
+
+      // 处理唯一约束字段
+      if (config) {
+        const timestamp = Date.now()
+        for (const field of config.uniqueFields) {
+          if (record[field]) {
+            // 保存原始值
+            originalValues[field] = record[field]
+            // 添加后缀
+            updates.push(`${field} = ?`)
+            values.push(`${record[field]}#deleted_${timestamp}`)
+            logger.info(`重命名唯一字段: ${field} -> ${record[field]}#deleted_${timestamp}`)
+          }
+        }
+      }
+
+      // 存储原始值（使用JSON格式存储在 delete_reason 字段）
+      if (Object.keys(originalValues).length > 0) {
+        const deleteData = {
+          reason: reason || '',
+          originalValues
+        }
+        updates.push('delete_reason = ?')
+        values.push(JSON.stringify(deleteData))
+      } else if (reason) {
+        updates.push('delete_reason = ?')
+        values.push(reason)
+      }
 
       if (deletedBy !== undefined) {
         updates.push('deleted_by = ?')
         values.push(deletedBy)
       }
 
-      if (reason) {
-        updates.push('delete_reason = ?')
-        values.push(reason)
-      }
-
       updates.push('deleted_at = CURRENT_TIMESTAMP')
       updates.push('updated_at = CURRENT_TIMESTAMP')
+      values.push(id)
 
       const sql = `
         UPDATE ${tableName}
@@ -92,6 +150,31 @@ export class SoftDeleteManager {
   }
 
   /**
+   * 获取包括已删除记录在内的完整记录
+   * @param tableName 表名
+   * @param id 记录ID
+   * @returns 记录数据或null
+   */
+  private static getRecordIncludingDeleted(
+    tableName: string,
+    id: number
+  ): any | null {
+    try {
+      const stmt = db.prepare(`
+        SELECT * FROM ${tableName} WHERE id = ?
+      `)
+      return stmt.get(id) || null
+    } catch (error) {
+      logger.error('获取记录（包括已删除）失败', {
+        table: tableName,
+        id,
+        error
+      })
+      throw new SoftDeleteError('获取记录失败', error)
+    }
+  }
+
+  /**
    * 恢复软删除的记录
    * @param tableName 表名
    * @param id 记录ID
@@ -110,20 +193,52 @@ export class SoftDeleteManager {
         restoredBy
       })
 
-      const updates: string[] = [
-        'is_deleted = 0',
-        'deleted_by = NULL',
-        'delete_reason = NULL',
-        'deleted_at = NULL',
-        'updated_at = CURRENT_TIMESTAMP'
-      ]
-      const values: any[] = [id]
+      // 获取已删除的记录
+      const record = this.getRecordIncludingDeleted(tableName, id)
+      if (!record || !record.is_deleted) {
+        logger.warn('恢复失败，记录不存在或未软删除', {
+          table: tableName,
+          id
+        })
+        return false
+      }
+
+      // 查找配置
+      const config = UNIQUE_FIELD_CONFIGS.find(c => c.tableName === tableName)
+
+      // 构建更新SQL
+      const updates: string[] = ['is_deleted = 0']
+      const values: any[] = []
+
+      // 恢复唯一约束字段
+      if (config && record.delete_reason) {
+        try {
+          const deleteData = JSON.parse(record.delete_reason)
+          if (deleteData.originalValues) {
+            for (const [field, originalValue] of Object.entries(deleteData.originalValues)) {
+              updates.push(`${field} = ?`)
+              values.push(originalValue)
+              logger.info(`恢复唯一字段: ${field} -> ${originalValue}`)
+            }
+          }
+        } catch (e) {
+          // JSON解析失败，不恢复唯一字段
+          logger.warn('解析delete_reason失败，不恢复唯一字段', { error: e })
+        }
+      }
+
+      updates.push('deleted_by = NULL')
+      updates.push('delete_reason = NULL')
+      updates.push('deleted_at = NULL')
+      updates.push('updated_at = CURRENT_TIMESTAMP')
 
       if (restoredBy !== undefined) {
         updates.push('restored_by = ?')
         updates.push('restored_at = CURRENT_TIMESTAMP')
         values.push(restoredBy)
       }
+
+      values.push(id)
 
       const sql = `
         UPDATE ${tableName}
@@ -276,31 +391,6 @@ export class SoftDeleteManager {
         error
       })
       throw new SoftDeleteError('获取活跃记录失败', error)
-    }
-  }
-
-  /**
-   * 获取包括已删除记录在内的完整记录
-   * @param tableName 表名
-   * @param id 记录ID
-   * @returns 记录数据或null
-   */
-  static async getRecordIncludingDeleted(
-    tableName: string,
-    id: number
-  ): Promise<any | null> {
-    try {
-      const stmt = db.prepare(`
-        SELECT * FROM ${tableName} WHERE id = ?
-      `)
-      return stmt.get(id) || null
-    } catch (error) {
-      logger.error('获取记录（包括已删除）失败', {
-        table: tableName,
-        id,
-        error
-      })
-      throw new SoftDeleteError('获取记录失败', error)
     }
   }
 

@@ -308,7 +308,7 @@ export class BookService {
     return stmt.all() as Array<{ category_name: string; book_count: number; available_count: number }>
   }
 
-  // 删除图书（软删除）
+  // 删除图书
   deleteBook(id: number): void {
     console.log('========== [Service] 开始删除图书 ==========')
     console.log('[Service] Book ID:', id)
@@ -320,7 +320,7 @@ export class BookService {
     console.log('[Service] 检查借阅记录...')
     const borrowingStmt = db.prepare(`
       SELECT COUNT(*) as count FROM borrowing_records
-      WHERE book_id = ? AND status IN ('borrowed', 'overdue') AND is_deleted = 0
+      WHERE book_id = ? AND status IN ('borrowed', 'overdue')
     `)
     const result = borrowingStmt.get(id) as { count: number }
     console.log('[Service] 未归还借阅记录数:', result.count)
@@ -331,28 +331,9 @@ export class BookService {
     }
 
     console.log('[Service] 调用repository.delete删除数据...')
-    this.bookRepository.delete(id)  // 现在是软删除
+    this.bookRepository.delete(id)
     logger.warn('删除图书', { id, title: book.title, isbn: book.isbn })
     console.log('========== [Service] 删除图书结束 ==========\n')
-  }
-
-  // 恢复删除的图书
-  restoreBook(id: number): Book {
-    const book = this.bookRepository.restore(id)
-    logger.info('恢复图书', { id, title: book.title })
-    return book
-  }
-
-  // 获取已删除的图书
-  getDeletedBooks(limit: number = 50, offset: number = 0): BookWithCategory[] {
-    return this.bookRepository.getDeletedBooks(limit, offset)
-  }
-
-  // 硬删除（永久删除）
-  hardDeleteBook(id: number): void {
-    const book = this.getBookById(id)
-    this.bookRepository.hardDelete(id)
-    logger.warn('硬删除图书', { id, title: book.title, isbn: book.isbn })
   }
 
   // 获取所有图书用于导出

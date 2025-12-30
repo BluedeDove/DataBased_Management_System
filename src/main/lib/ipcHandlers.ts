@@ -375,6 +375,36 @@ export function registerIpcHandlers() {
     }
   })
 
+  // 新增：恢复图书
+  ipcMain.handle('book:restore', async (_, id) => {
+    try {
+      const book = bookService.restoreBook(id)
+      return { success: true, data: book } as SuccessResponse
+    } catch (error) {
+      return errorHandler.handle(error)
+    }
+  })
+
+  // 新增：获取已删除的图书
+  ipcMain.handle('book:getDeleted', async (_, limit, offset) => {
+    try {
+      const books = bookService.getDeletedBooks(limit, offset)
+      return { success: true, data: books } as SuccessResponse
+    } catch (error) {
+      return errorHandler.handle(error)
+    }
+  })
+
+  // 新增：硬删除图书
+  ipcMain.handle('book:hardDelete', async (_, id) => {
+    try {
+      bookService.hardDeleteBook(id)
+      return { success: true } as SuccessResponse
+    } catch (error) {
+      return errorHandler.handle(error)
+    }
+  })
+
   ipcMain.handle('book:destroy', async (_, id, reason) => {
     try {
       const book = bookService.destroyBook(id, reason)

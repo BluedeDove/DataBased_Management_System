@@ -264,7 +264,7 @@ const bookData: BookData[] = [
 console.log('🧹 清理现有数据...')
 db.exec('DELETE FROM borrowing_records')
 db.exec('DELETE FROM books WHERE id > 0')
-db.exec('DELETE FROM users WHERE id > 1') // 保留admin账号
+db.exec('DELETE FROM users WHERE id > 1') // 保留admin账号（包括软删除的）
 db.exec('DELETE FROM readers WHERE id > 0')
 console.log('✅ 清理完成\n')
 
@@ -278,8 +278,8 @@ if (bookCategories.length === 0) {
 
 const insertBook = db.prepare(`
   INSERT INTO books (isbn, title, author, publisher, category_id, publish_date, price, pages,
-                     keywords, description, cover_url, total_quantity, available_quantity, status, registration_date)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'normal', date('now'))
+                     keywords, description, cover_url, total_quantity, available_quantity, status, registration_date, is_deleted)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'normal', date('now'), 0)
 `)
 
 const insertBookTransaction = db.transaction((count) => {
@@ -336,8 +336,8 @@ const insertReader = db.prepare(`
 `)
 
 const insertUser = db.prepare(`
-  INSERT INTO users (username, password, name, role, reader_id, email, phone)
-  VALUES (?, ?, ?, ?, ?, ?, ?)
+  INSERT INTO users (username, password, name, role, reader_id, email, phone, is_deleted)
+  VALUES (?, ?, ?, ?, ?, ?, ?, 0)
 `)
 
 const updateReaderUserId = db.prepare(`
@@ -418,8 +418,8 @@ const books = db.prepare('SELECT * FROM books').all()
 
 const insertBorrowing = db.prepare(`
   INSERT INTO borrowing_records (reader_id, book_id, borrow_date, due_date, return_date,
-                                  renewal_count, status, fine_amount)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                  renewal_count, status, fine_amount, is_deleted)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
 `)
 
 const updateBookQuantity = db.prepare(`

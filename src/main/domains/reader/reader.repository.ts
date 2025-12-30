@@ -47,7 +47,7 @@ export class ReaderRepository {
   }
 
   findCategoryById(id: number): ReaderCategory | undefined {
-    const stmt = db.prepare('SELECT * FROM reader_categories WHERE id = ?')
+    const stmt = db.prepare('SELECT * FROM reader_categories WHERE id = ? AND is_deleted = 0')
     return stmt.get(id) as ReaderCategory | undefined
   }
 
@@ -111,7 +111,7 @@ export class ReaderRepository {
       SELECT r.*, rc.name as category_name, rc.max_borrow_count, rc.max_borrow_days
       FROM readers r
       JOIN reader_categories rc ON r.category_id = rc.id
-      WHERE 1=1
+      WHERE r.is_deleted = 0
     `
     const params: any[] = []
 
@@ -135,7 +135,7 @@ export class ReaderRepository {
       SELECT r.*, rc.name as category_name, rc.max_borrow_count, rc.max_borrow_days
       FROM readers r
       JOIN reader_categories rc ON r.category_id = rc.id
-      WHERE r.id = ?
+      WHERE r.id = ? AND r.is_deleted = 0
     `)
     return stmt.get(id) as ReaderWithCategory | undefined
   }
@@ -145,12 +145,12 @@ export class ReaderRepository {
       SELECT r.*, rc.name as category_name, rc.max_borrow_count, rc.max_borrow_days
       FROM readers r
       JOIN reader_categories rc ON r.category_id = rc.id
-      WHERE r.reader_no = ?
+      WHERE r.reader_no = ? AND r.is_deleted = 0
     `)
     return stmt.get(readerNo) as ReaderWithCategory | undefined
   }
 
-  create(reader: Omit<Reader, 'id' | 'created_at' | 'updated_at'>): Reader {
+  create(reader: Omit<Reader, 'id' | 'created_at' | 'updated_at'>): ReaderWithCategory {
     const stmt = db.prepare(`
       INSERT INTO readers (
         reader_no, name, category_id, user_id, gender, id_card, organization, address,
@@ -206,7 +206,7 @@ export class ReaderRepository {
       SELECT r.*, rc.name as category_name, rc.max_borrow_count, rc.max_borrow_days
       FROM readers r
       JOIN reader_categories rc ON r.category_id = rc.id
-      WHERE r.name LIKE ? OR r.reader_no LIKE ? OR r.phone LIKE ? OR r.id_card LIKE ?
+      WHERE r.is_deleted = 0 AND (r.name LIKE ? OR r.reader_no LIKE ? OR r.phone LIKE ? OR r.id_card LIKE ?)
       ORDER BY r.created_at DESC
     `)
     const pattern = `%${keyword}%`
@@ -218,7 +218,7 @@ export class ReaderRepository {
     const stmt = db.prepare(`
       SELECT COUNT(*) as count
       FROM borrowing_records
-      WHERE reader_id = ? AND status = 'borrowed'
+      WHERE reader_id = ? AND status = 'borrowed' AND is_deleted = 0
     `)
     const result = stmt.get(readerId) as { count: number }
     return result.count
@@ -229,23 +229,23 @@ export class ReaderRepository {
     const stmt = db.prepare(`
       SELECT COUNT(*) as count
       FROM borrowing_records
-      WHERE reader_id = ? AND status = 'borrowed' AND due_date < date('now')
+      WHERE reader_id = ? AND status = 'borrowed' AND due_date < date('now') AND is_deleted = 0
     `)
     const result = stmt.get(readerId) as { count: number }
     return result.count > 0
   }
 
-  // 删除读者
+  // 删除读者（软删除）
   delete(id: number): void {
-    console.log('[Repository] 开始删除读者数据，ID:', id)
-    const stmt = db.prepare('DELETE FROM readers WHERE id = ?')
+    console.log('[Repository] 开始软删除读者数据，ID:', id)
+    const stmt = db.prepare('UPDATE readers SET is_deleted = 1 WHERE id = ?')
     const result = stmt.run(id)
 
     if (result.changes === 0) {
-      console.error('[Repository] 读者不存在，ID:', id)
+      console.error('[Repository] 读者不存在或已被删除，ID:', id)
       throw new NotFoundError('读者')
     }
-    console.log('[Repository] 删除成功，影响行数:', result.changes)
+    console.log('[Repository] 软删除成功，影响行数:', result.changes)
   }
 
   // 生成下一个读者编号
@@ -263,7 +263,7 @@ export class ReaderRepository {
     // 查找今天同类别的最大编号
     const stmt = db.prepare(`
       SELECT reader_no FROM readers
-      WHERE reader_no LIKE ?
+      WHERE reader_no LIKE ? AND is_deleted = 0
       ORDER BY reader_no DESC
       LIMIT 1
     `)
