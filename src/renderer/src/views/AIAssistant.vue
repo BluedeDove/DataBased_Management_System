@@ -400,50 +400,75 @@ const triggerTool = (tool: string) => {
 
 // 保存当前对话到数据库
 const saveCurrentConversation = async () => {
+  console.log('[saveCurrentConversation] 开始保存对话')
+  console.log('[saveCurrentConversation] 用户ID:', userStore.user?.id)
+  console.log('[saveCurrentConversation] 用户角色:', userStore.user?.role)
+  console.log('[saveCurrentConversation] 当前对话ID:', currentConversationId.value)
+  console.log('[saveCurrentConversation] 加载状态:', loading.value)
+  console.log('[saveCurrentConversation] 聊天历史长度:', chatHistory.value.length)
+  
   if (!userStore.user?.id) {
-    console.warn('用户未登录，无法保存对话')
+    console.warn('[saveCurrentConversation] 用户未登录，无法保存对话')
     return
   }
   
   // 管理员用户跳过对话保存（管理员不需要保存AI对话历史）
   if (userStore.user.role === 'admin') {
-    console.log('管理员用户，跳过对话保存')
+    console.log('[saveCurrentConversation] 管理员用户，跳过对话保存')
     return
   }
   
   // 如果正在加载中，不保存（避免保存未完成的AI回答）
   if (loading.value) {
-    console.log('AI正在生成中，跳过对话保存')
+    console.log('[saveCurrentConversation] AI正在生成中，跳过对话保存')
     return
   }
   
   if (currentConversationId.value && chatHistory.value.length > 0) {
     try {
+      console.log('[saveCurrentConversation] 准备保存对话...')
       // 过滤掉loading状态的消息
       const messagesToSave = chatHistory.value.filter(m => !m.loading)
+      console.log('[saveCurrentConversation] 过滤后的消息数量:', messagesToSave.length)
       
       // 如果没有有效的消息，不保存
       if (messagesToSave.length === 0) {
-        console.log('没有有效的消息，跳过对话保存')
+        console.log('[saveCurrentConversation] 没有有效的消息，跳过对话保存')
         return
       }
       
-      const lastUserMsg = messagesToSave.findLast(m => m.role === 'user')
+      // 使用深拷贝确保数据可序列化
+      const messagesToSaveSerialized = JSON.parse(JSON.stringify(messagesToSave))
+      console.log('[saveCurrentConversation] 序列化后的消息数量:', messagesToSaveSerialized.length)
+      
+      // 查找最后一条用户消息作为标题
+      const lastUserMsg = messagesToSaveSerialized.findLast ? messagesToSaveSerialized.findLast((m: any) => m.role === 'user') : messagesToSaveSerialized[messagesToSaveSerialized.length - 1]
+      console.log('[saveCurrentConversation] 最后一条用户消息:', lastUserMsg?.content?.substring(0, 30))
+      
       const title = lastUserMsg
         ? lastUserMsg.content.substring(0, 50) + (lastUserMsg.content.length > 50 ? '...' : '')
         : '新对话'
+      console.log('[saveCurrentConversation] 对话标题:', title)
       
-      await window.api.ai.updateConversation(
+      console.log('[saveCurrentConversation] 调用 IPC updateConversation...')
+      const result = await window.api.ai.updateConversation(
         currentConversationId.value,
         title,
-        messagesToSave
+        messagesToSaveSerialized
       )
+      console.log('[saveCurrentConversation] IPC 调用结果:', result)
+      
       // 重新加载对话历史列表以更新标题
+      console.log('[saveCurrentConversation] 重新加载对话历史列表...')
       await loadConversations()
+      console.log('[saveCurrentConversation] 对话保存成功')
     } catch (error) {
-      console.error('保存对话历史失败:', error)
+      console.error('[saveCurrentConversation] 保存对话历史失败:', error)
+      console.error('[saveCurrentConversation] 错误详情:', JSON.stringify(error))
       ElMessage.error('保存对话失败')
     }
+  } else {
+    console.log('[saveCurrentConversation] 没有对话ID或聊天历史为空，跳过保存')
   }
 }
 
@@ -477,27 +502,40 @@ const loadChatHistory = (item: Conversation) => {
 
 // 重新生成对话（重新发送最后一条用户消息）
 const regenerateLastMessage = async () => {
-  const lastUserMsgIndex = chatHistory.value.findLastIndex(m => m.role === 'user')
+  console.log('[regenerateLastMessage] 开始重新生成最后一条消息')
+  console.log('[regenerateLastMessage] 当前聊天历史长度:', chatHistory.value.length)
+  
+  const lastUserMsgIndex = chatHistory.value.findLastIndex ? chatHistory.value.findLastIndex((m: any) => m.role === 'user') : chatHistory.value.map((m: any) => m.role).lastIndexOf('user')
+  console.log('[regenerateLastMessage] 最后一条用户消息索引:', lastUserMsgIndex)
+  
   if (lastUserMsgIndex === -1) {
+    console.warn('[regenerateLastMessage] 没有可重新生成的消息')
     ElMessage.warning('没有可重新生成的消息')
     return
   }
   
   const lastUserMsg = chatHistory.value[lastUserMsgIndex]
   if (!lastUserMsg) {
+    console.warn('[regenerateLastMessage] 没有可重新生成的消息')
     ElMessage.warning('没有可重新生成的消息')
     return
   }
   
+  console.log('[regenerateLastMessage] 最后一条用户消息内容:', lastUserMsg.content?.substring(0, 30))
+  
   // 删除该消息及其后的所有消息
   chatHistory.value = chatHistory.value.slice(0, lastUserMsgIndex)
+  console.log('[regenerateLastMessage] 删除后的聊天历史长度:', chatHistory.value.length)
   
   // 保存删除后的消息
+  console.log('[regenerateLastMessage] 保存删除后的消息...')
   await saveCurrentConversation()
   
   // 重新发送该消息
   inputMessage.value = lastUserMsg.content
+  console.log('[regenerateLastMessage] 准备重新发送消息...')
   await sendMessage()
+  console.log('[regenerateLastMessage] 重新生成完成')
 }
 
 // 删除历史对话
@@ -626,6 +664,9 @@ const handleResize = () => {
 
 // 重新发送消息
 const resendMessage = async (messageIndex: number) => {
+  console.log('[resendMessage] 开始重新发送消息')
+  console.log('[resendMessage] 消息索引:', messageIndex)
+  
   // 确认操作
   const confirmed = await ElMessageBox.confirm(
     '确定要重新发送这条消息吗？后续的消息将被删除。',
@@ -637,23 +678,33 @@ const resendMessage = async (messageIndex: number) => {
     }
   ).catch(() => false)
   
-  if (!confirmed) return
+  if (!confirmed) {
+    console.log('[resendMessage] 用户取消操作')
+    return
+  }
   
   const messageToResend = chatHistory.value[messageIndex]
   if (!messageToResend || messageToResend.role !== 'user') {
+    console.warn('[resendMessage] 只能重新发送用户消息')
     ElMessage.warning('只能重新发送用户消息')
     return
   }
   
+  console.log('[resendMessage] 要重新发送的消息:', messageToResend.content?.substring(0, 30))
+  
   // 删除该消息及其后的所有消息
   chatHistory.value = chatHistory.value.slice(0, messageIndex)
+  console.log('[resendMessage] 删除后的聊天历史长度:', chatHistory.value.length)
   
   // 保存删除后的消息
+  console.log('[resendMessage] 保存删除后的消息...')
   await saveCurrentConversation()
   
   // 重新发送该消息
   inputMessage.value = messageToResend.content
+  console.log('[resendMessage] 准备重新发送消息...')
   await sendMessage()
+  console.log('[resendMessage] 重新发送完成')
 }
 
 // 编辑消息
@@ -727,7 +778,9 @@ const saveTitle = async (item: Conversation) => {
   }
   
   try {
-    await window.api.ai.updateConversation(item.id, editingTitleText.value, chatHistory.value)
+    // 使用深拷贝确保数据可序列化
+    const messagesToSave = JSON.parse(JSON.stringify(chatHistory.value))
+    await window.api.ai.updateConversation(item.id, editingTitleText.value, messagesToSave)
     ElMessage.success('重命名成功')
     await loadConversations()
   } catch (error) {

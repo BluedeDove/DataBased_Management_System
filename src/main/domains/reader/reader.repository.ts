@@ -183,8 +183,16 @@ export class ReaderRepository {
     const fields: string[] = []
     const values: any[] = []
 
+    // 只更新 readers 表中实际存在的字段
+    // 排除: id, reader_no, created_at, updated_at (不可更新)
+    // 排除: category_name, max_borrow_count, max_borrow_days (只在 JOIN 查询中存在)
+    const validFields = [
+      'name', 'category_id', 'user_id', 'gender', 'id_card', 'organization',
+      'address', 'phone', 'email', 'registration_date', 'expiry_date', 'status', 'notes'
+    ]
+
     Object.keys(updates).forEach((key) => {
-      if (key !== 'id' && key !== 'reader_no' && key !== 'created_at' && key !== 'updated_at') {
+      if (validFields.includes(key)) {
         fields.push(`${key} = ?`)
         values.push(updates[key as keyof Reader])
       }

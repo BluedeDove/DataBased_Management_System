@@ -405,6 +405,18 @@ export function initDatabase() {
     )
   `)
 
+  // 12. 图书向量表
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS book_vectors (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      book_id INTEGER NOT NULL UNIQUE,
+      vector TEXT NOT NULL,
+      text TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
+    )
+  `)
+
   // 插入默认权限
   db.exec(`
     INSERT OR IGNORE INTO role_permissions (role, permission) VALUES
@@ -452,6 +464,7 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
     CREATE INDEX IF NOT EXISTS idx_audit_logs_table_name ON audit_logs(table_name);
     CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
+    CREATE INDEX IF NOT EXISTS idx_book_vectors_book_id ON book_vectors(book_id);
   `)
 
   console.log('✅ 数据库表结构初始化完成')
