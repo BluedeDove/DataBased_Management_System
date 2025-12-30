@@ -237,51 +237,64 @@ export class AIService {
     context: string | undefined,
     onChunk: (chunk: string) => void,
     onError: (error: Error) => void,
-    onComplete: () => void
-  ): Promise<void> {
+    onComplete: () => void,
+    abortSignal?: AbortSignal // 新增：取消信号
+  ): Promise<(() => void) | undefined> {
     if (!this.isAvailable()) {
       throw new BusinessError('AI服务未配置，无法使用AI助手功能')
     }
 
+    // 创建AbortController用于取消请求
+    const abortController = new AbortController()
+    const signal = abortController.signal
+
+    // 如果传入了外部abortSignal，当它被触发时也取消当前请求
+    if (abortSignal) {
+      abortSignal.addEventListener('abort', () => {
+        logger.info('[AI] 收到外部取消信号，正在取消请求...')
+        abortController.abort()
+      })
+    }
+
     try {
-      logger.info('========== [后端] 开始AI流式对话 ==========')
-      logger.info('[后端] 消息内容:', message)
-      logger.info('[后端] 历史消息数量:', history.length)
+      logger.info('========== [AI] 开始流式对话 ==========')
+      logger.info('[AI] 用户消息:', message.substring(0, 100))
+      logger.info('[AI] 历史消息数量:', history.length)
 
       // 简单的意图识别：如果包含搜索关键词，自动触发语义搜索（模拟Agent工具调用）
       const searchKeywords = ['找', '书', '推荐', '查询', 'book', 'recommend', 'search', 'find', '关于']
       const shouldSearch = searchKeywords.some(kw => message.toLowerCase().includes(kw))
 
       if (shouldSearch) {
-        logger.info('[后端] 智能体检测到搜索意图，正在调用 Search Tool...')
+        logger.info('[AI] 检测到搜索意图，正在调用搜索工具...')
         try {
           onChunk('> 🤖 **正在调用工具检索图书馆藏...**\n\n')
-          
+
           const searchResults = await this.semanticSearchBooks(message, 5)
-          
+
           if (searchResults.length > 0) {
             onChunk(`> ✅ **检索完成**，找到 ${searchResults.length} 本相关图书，正在生成回答...\n\n---\n\n`)
-            
+
             const searchContext = searchResults
               .map((book, index) => `${index + 1}. 《${book.title}》 - ${book.author} (简介: ${book.description})`)
               .join('\n')
-            
+
             // 追加到 Context
             const toolOutput = `\n\n[工具调用结果 - 检索到的相关图书]:\n${searchContext}\n请基于以上图书信息回答用户问题。`
             context = (context || '') + toolOutput
-            logger.info('[后端] 搜索完成，已注入上下文')
+            logger.info('[AI] 搜索完成，已注入上下文')
           } else {
             onChunk(`> ⚠️ **检索完成**，但未找到高度相关的图书，将基于通用知识回答。\n\n---\n\n`)
           }
         } catch (e: any) {
           onChunk(`> ❌ **工具调用失败**：${e.message}，尝试直接回答...\n\n---\n\n`)
-          logger.warn('[后端] 自动搜索失败，继续普通对话', e)
+          logger.warn('[AI] 自动搜索失败，继续普通对话', e)
         }
       }
 
       // 获取当前配置（优先使用数据库配置）
       const aiConfig = this.getAIConfig()
-      logger.info('[后端] AI配置加载完成，模型:', aiConfig.chatModel)
+      logger.info('[AI] 使用模型:', aiConfig.chatModel)
 
       // 构建系统提示词
       let systemPrompt = `你是一个专业的图书管理员助手。你需要帮助用户管理图书馆、推荐图书、解答问题。
@@ -298,7 +311,7 @@ export class AIService {
         { role: 'user', content: message }
       ]
 
-      logger.info('[后端] 准备调用OpenAI API（流式）...')
+      logger.info('[AI] 准备调用OpenAI API（流式）...')
 
       // 调用OpenAI API (streaming)
       const response = await axios.post(
@@ -316,28 +329,30 @@ export class AIService {
             'Content-Type': 'application/json'
           },
           timeout: 60000,
-          responseType: 'stream' // 设置响应类型为流
+          responseType: 'stream', // 设置响应类型为流
+          signal: abortController.signal // 传递取消信号
         }
       )
 
-      logger.info('[后端] OpenAI API连接成功，开始接收流式数据...')
+      logger.info('[AI] OpenAI API连接成功，开始接收流式数据...')
 
       let chunkCount = 0
+      let isCompleted = false
 
       // 处理流式响应
       response.data.on('data', (chunk: Buffer) => {
+        if (isCompleted) return
+
         const lines = chunk.toString().split('\n').filter(line => line.trim() !== '')
 
         for (const line of lines) {
           if (line.includes('[DONE]')) {
-            logger.info('[后端] 收到完成标志 [DONE]')
             continue
           }
 
           // 移除 "data: " 前缀
           const message = line.replace(/^data: /, '')
           if (message === '[DONE]') {
-            logger.info('[后端] 流式传输完成')
             continue
           }
 
@@ -347,7 +362,8 @@ export class AIService {
 
             if (content) {
               chunkCount++
-              console.log(`[后端] 收到chunk #${chunkCount}:`, content.substring(0, 20) + (content.length > 20 ? '...' : ''))
+              // 移除每个chunk的日志，避免刷屏
+              // console.log(`[AI] 收到chunk #${chunkCount}:`, content.substring(0, 20) + (content.length > 20 ? '...' : ''))
               onChunk(content)
             }
           } catch (error) {
@@ -357,23 +373,44 @@ export class AIService {
       })
 
       response.data.on('end', () => {
-        logger.info(`[后端] 流式传输结束，共收到${chunkCount}个chunk`)
-        logger.info('========== [后端] AI流式对话结束 ==========\n')
+        if (isCompleted) return
+        isCompleted = true
+        logger.info(`[AI] 流式传输完成，共${chunkCount}个chunk`)
+        logger.info('========== [AI] 流式对话结束 ==========\n')
         onComplete()
       })
 
       response.data.on('error', (error: Error) => {
-        logger.error('[后端] 流式传输错误:', error)
-        onError(error)
+        if (isCompleted) return
+        isCompleted = true
+        if (error.name === 'AbortError' || signal.aborted) {
+          logger.info('[AI] 流式传输被用户取消')
+          onError(new Error('生成已停止'))
+        } else {
+          logger.error('[AI] 流式传输错误:', error)
+          onError(error)
+        }
       })
-    } catch (error: any) {
-      logger.error('[后端] AI流式对话失败:', error)
-      logger.error('[后端] 错误详情:', error.message)
-      if (error.response) {
-        logger.error('[后端] API响应错误:', error.response.data)
+
+      // 返回取消函数
+      return () => {
+        if (!isCompleted) {
+          isCompleted = true
+          logger.info('[AI] 调用取消函数，停止流式传输')
+          abortController.abort()
+          response.data.destroy()
+        }
       }
-      logger.info('========== [后端] AI流式对话结束（出错） ==========\n')
-      onError(new Error(`AI助手对话失败: ${error.message}`))
+    } catch (error: any) {
+      if (error.name === 'AbortError' || signal.aborted) {
+        logger.info('[AI] 请求被取消')
+        onError(new Error('生成已停止'))
+      } else {
+        logger.error('[AI] 流式对话失败:', error.message)
+        logger.info('========== [AI] 流式对话结束（出错） ==========\n')
+        onError(new Error(`AI助手对话失败: ${error.message}`))
+      }
+      return undefined
     }
   }
 
@@ -418,21 +455,22 @@ export class AIService {
     limit: number = 5,
     onChunk: (chunk: string) => void,
     onError: (error: Error) => void,
-    onComplete: () => void
-  ): Promise<void> {
+    onComplete: () => void,
+    abortSignal?: AbortSignal // 新增：取消信号
+  ): Promise<(() => void) | undefined> {
     if (!this.isAvailable()) {
       throw new BusinessError('AI服务未配置')
     }
 
     try {
-      logger.info('========== [后端] 开始智能图书推荐（流式） ==========')
-      logger.info('[后端] 用户查询:', userQuery)
-      logger.info('[后端] 推荐数量限制:', limit)
+      logger.info('========== [AI] 开始智能图书推荐（流式） ==========')
+      logger.info('[AI] 用户查询:', userQuery)
+      logger.info('[AI] 推荐数量限制:', limit)
 
       // 1. 语义搜索相关图书
-      logger.info('[后端] 执行语义搜索...')
+      logger.info('[AI] 执行语义搜索...')
       const searchResults = await this.semanticSearchBooks(userQuery, limit)
-      logger.info(`[后端] 找到${searchResults.length}本相关图书`)
+      logger.info(`[AI] 找到${searchResults.length}本相关图书`)
 
       // 2. 构建上下文
       const context = searchResults
@@ -444,21 +482,25 @@ export class AIService {
         )
         .join('\n\n')
 
-      logger.info('[后端] 上下文构建完成，长度:', context.length)
+      logger.info('[AI] 上下文构建完成，长度:', context.length)
 
       // 3. 生成推荐（流式）
       const prompt = `基于用户的需求："${userQuery}"，我为您找到了以下相关图书。请为用户提供详细的推荐说明，包括推荐理由和阅读建议。`
 
-      logger.info('[后端] 准备调用流式聊天生成推荐...')
-      await this.chatStream(prompt, [], context, onChunk, onError, () => {
-        logger.info('[后端] 智能推荐生成完成')
-        logger.info('========== [后端] 智能图书推荐结束 ==========\n')
+      logger.info('[AI] 准备调用流式聊天生成推荐...')
+      const cancelFn = await this.chatStream(prompt, [], context, onChunk, onError, () => {
+        logger.info('[AI] 智能推荐生成完成')
+        logger.info('========== [AI] 智能图书推荐结束 ==========\n')
         onComplete()
-      })
+      }, abortSignal)
+
+      logger.info('========== [AI] 智能图书推荐结束（出错） ==========\n')
+      return cancelFn
     } catch (error: any) {
-      logger.error('[后端] 智能推荐失败:', error)
-      logger.info('========== [后端] 智能图书推荐结束（出错） ==========\n')
+      logger.error('[AI] 智能推荐失败:', error)
+      logger.info('========== [AI] 智能图书推荐结束（出错） ==========\n')
       onError(error)
+      return undefined
     }
   }
 

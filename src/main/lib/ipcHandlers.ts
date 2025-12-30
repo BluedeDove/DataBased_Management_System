@@ -694,6 +694,9 @@ export function registerIpcHandlers() {
     }
   })
 
+  // 存储活跃的流式请求，用于取消
+  const activeStreamRequests = new Map<string, () => void>()
+
   // AI流式对话
   ipcMain.on('ai:chatStream', async (event, { requestId, message, history, context }) => {
     console.log('========== [IPC] ai:chatStream 被调用 ==========')
@@ -704,31 +707,54 @@ export function registerIpcHandlers() {
     try {
       console.log('[IPC] 准备调用 aiService.chatStream...')
 
-      await aiService.chatStream(
+      const cancelFn = await aiService.chatStream(
         message,
         history || [],
         context,
         // onChunk - 发送每个chunk到渲染进程
         (chunk: string) => {
-          console.log(`[IPC] 转发chunk到渲染进程，长度: ${chunk.length}`)
           event.sender.send(`ai:chatStream:chunk:${requestId}`, chunk)
         },
         // onError - 发送错误到渲染进程
         (error: Error) => {
           console.error('[IPC] 流式传输错误:', error.message)
           event.sender.send(`ai:chatStream:error:${requestId}`, error.message)
+          // 从活跃请求中移除
+          activeStreamRequests.delete(requestId)
         },
         // onComplete - 发送完成信号到渲染进程
         () => {
           console.log('[IPC] 流式传输完成，发送完成信号')
           event.sender.send(`ai:chatStream:complete:${requestId}`)
+          // 从活跃请求中移除
+          activeStreamRequests.delete(requestId)
         }
       )
+
+      // 存储取消函数
+      if (cancelFn) {
+        activeStreamRequests.set(requestId, cancelFn)
+      }
     } catch (error: any) {
       console.error('[IPC] ai:chatStream 捕获错误:', error)
       event.sender.send(`ai:chatStream:error:${requestId}`, error.message || '流式对话失败')
+      activeStreamRequests.delete(requestId)
     } finally {
       console.log('========== [IPC] ai:chatStream 结束 ==========\n')
+    }
+  })
+
+  // 取消流式对话
+  ipcMain.on('ai:chatStream:cancel', (event, { requestId }) => {
+    console.log('[IPC] 收到取消请求，Request ID:', requestId)
+    const cancelFn = activeStreamRequests.get(requestId)
+    if (cancelFn) {
+      console.log('[IPC] 执行取消函数')
+      cancelFn()
+      activeStreamRequests.delete(requestId)
+      event.sender.send(`ai:chatStream:cancelled:${requestId}`)
+    } else {
+      console.warn('[IPC] 未找到对应的活跃请求:', requestId)
     }
   })
 
@@ -751,30 +777,53 @@ export function registerIpcHandlers() {
     try {
       console.log('[IPC] 准备调用 aiService.recommendBooksStream...')
 
-      await aiService.recommendBooksStream(
+      const cancelFn = await aiService.recommendBooksStream(
         query,
         limit || 5,
         // onChunk - 发送每个chunk到渲染进程
         (chunk: string) => {
-          console.log(`[IPC] 转发推荐chunk到渲染进程，长度: ${chunk.length}`)
           event.sender.send(`ai:recommendBooksStream:chunk:${requestId}`, chunk)
         },
         // onError - 发送错误到渲染进程
         (error: Error) => {
           console.error('[IPC] 推荐流式传输错误:', error.message)
           event.sender.send(`ai:recommendBooksStream:error:${requestId}`, error.message)
+          // 从活跃请求中移除
+          activeStreamRequests.delete(requestId)
         },
         // onComplete - 发送完成信号到渲染进程
         () => {
           console.log('[IPC] 推荐流式传输完成，发送完成信号')
           event.sender.send(`ai:recommendBooksStream:complete:${requestId}`)
+          // 从活跃请求中移除
+          activeStreamRequests.delete(requestId)
         }
       )
+
+      // 存储取消函数
+      if (cancelFn) {
+        activeStreamRequests.set(requestId, cancelFn)
+      }
     } catch (error: any) {
       console.error('[IPC] ai:recommendBooksStream 捕获错误:', error)
       event.sender.send(`ai:recommendBooksStream:error:${requestId}`, error.message || '流式推荐失败')
+      activeStreamRequests.delete(requestId)
     } finally {
       console.log('========== [IPC] ai:recommendBooksStream 结束 ==========\n')
+    }
+  })
+
+  // 取消流式推荐
+  ipcMain.on('ai:recommendBooksStream:cancel', (event, { requestId }) => {
+    console.log('[IPC] 收到取消推荐请求，Request ID:', requestId)
+    const cancelFn = activeStreamRequests.get(requestId)
+    if (cancelFn) {
+      console.log('[IPC] 执行取消推荐函数')
+      cancelFn()
+      activeStreamRequests.delete(requestId)
+      event.sender.send(`ai:recommendBooksStream:cancelled:${requestId}`)
+    } else {
+      console.warn('[IPC] 未找到对应的活跃推荐请求:', requestId)
     }
   })
 

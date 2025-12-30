@@ -305,6 +305,11 @@ interface Message {
   feedback?: 'like' | 'dislike' | null
 }
 
+interface ChatMessage {
+  role: 'user' | 'assistant' | 'system'
+  content: string
+}
+
 interface RecommendedBook {
   title: string
   author: string
@@ -326,6 +331,7 @@ const inputMessage = ref('')
 const loading = ref(false)
 const messagesRef = ref<HTMLElement | null>(null)
 const streamCleanup = ref<(() => void) | null>(null)
+const currentRequestId = ref<string | null>(null)
 const chatHistory = ref<Message[]>([
   { id: 'init', role: 'assistant', content: '你好！我是图书馆智能助手。你可以问我关于馆藏图书的问题，或者让我为你推荐书籍。', timestamp: Date.now() }
 ])
@@ -366,12 +372,31 @@ const copyMessage = async (content: string) => {
 
 // 停止生成
 const stopGeneration = () => {
+  console.log('[stopGeneration] ========== 停止生成 ==========')
+  console.log('[stopGeneration] 当前请求ID:', currentRequestId.value)
+
+  if (currentRequestId.value) {
+    // 发送取消请求到主进程
+    const isRecommendation = chatHistory.value.some(m => m.content.includes('推荐') || m.content.includes('书'))
+    if (isRecommendation) {
+      console.log('[stopGeneration] 取消流式推荐')
+      window.api.ai.cancelRecommendBooksStream(currentRequestId.value)
+    } else {
+      console.log('[stopGeneration] 取消流式聊天')
+      window.api.ai.cancelChatStream(currentRequestId.value)
+    }
+    currentRequestId.value = null
+  }
+
+  // 清理前端监听器
   if (streamCleanup.value) {
     streamCleanup.value()
     streamCleanup.value = null
-    loading.value = false
-    ElMessage.info('已停止生成')
   }
+
+  loading.value = false
+  ElMessage.info('已停止生成')
+  console.log('[stopGeneration] ========== 停止生成完成 ==========')
 }
 
 // 格式化时间戳
@@ -442,7 +467,7 @@ const saveCurrentConversation = async () => {
       console.log('[saveCurrentConversation] 序列化后的消息数量:', messagesToSaveSerialized.length)
       
       // 查找最后一条用户消息作为标题
-      const lastUserMsg = messagesToSaveSerialized.findLast ? messagesToSaveSerialized.findLast((m: any) => m.role === 'user') : messagesToSaveSerialized[messagesToSaveSerialized.length - 1]
+      const lastUserMsg = messagesToSaveSerialized.slice().reverse().find((m: any) => m.role === 'user')
       console.log('[saveCurrentConversation] 最后一条用户消息:', lastUserMsg?.content?.substring(0, 30))
       
       const title = lastUserMsg
@@ -473,6 +498,10 @@ const saveCurrentConversation = async () => {
 }
 
 const startNewChat = async () => {
+  console.log('[startNewChat] ========== 开始新对话 ==========')
+  console.log('[startNewChat] 当前对话ID:', currentConversationId.value)
+  console.log('[startNewChat] 当前聊天历史长度:', chatHistory.value.length)
+
   // 如果有当前对话且有内容，先保存到数据库
   await saveCurrentConversation()
 
@@ -482,22 +511,45 @@ const startNewChat = async () => {
   ]
   currentConversationId.value = null
   recommendedBooks.value = []
-  
+
+  console.log('[startNewChat] 新对话已创建')
+
   // 重新加载对话历史列表
   await loadConversations()
+  console.log('[startNewChat] 对话历史列表已更新')
+  console.log('[startNewChat] ========== 新对话创建完成 ==========')
 }
 
-const loadChatHistory = (item: Conversation) => {
+const loadChatHistory = async (item: Conversation) => {
+  console.log('[loadChatHistory] ========== 开始加载对话历史 ==========')
+  console.log('[loadChatHistory] 目标对话ID:', item.id)
+  console.log('[loadChatHistory] 目标对话标题:', item.title)
+  console.log('[loadChatHistory] 当前对话ID:', currentConversationId.value)
+  console.log('[loadChatHistory] 当前聊天历史长度:', chatHistory.value.length)
+  console.log('[loadChatHistory] 加载状态:', loading.value)
+
   // 如果正在加载中，先停止
   if (loading.value) {
-    console.log('AI正在生成中，先停止')
+    console.log('[loadChatHistory] AI正在生成中，先停止')
     stopGeneration()
   }
-  
+
+  // 先保存当前对话（如果有内容且不是初始状态）
+  if (currentConversationId.value && chatHistory.value.length > 1) {
+    console.log('[loadChatHistory] 切换对话前，先保存当前对话')
+    await saveCurrentConversation()
+  } else {
+    console.log('[loadChatHistory] 无需保存当前对话（新对话或无内容）')
+  }
+
+  // 加载新对话
   chatHistory.value = [...item.messages]
   currentConversationId.value = item.id
   recommendedBooks.value = []
   scrollToBottom()
+
+  console.log('[loadChatHistory] 对话加载完成')
+  console.log('[loadChatHistory] ========== 加载对话历史结束 ==========')
 }
 
 // 重新生成对话（重新发送最后一条用户消息）
@@ -505,16 +557,18 @@ const regenerateLastMessage = async () => {
   console.log('[regenerateLastMessage] 开始重新生成最后一条消息')
   console.log('[regenerateLastMessage] 当前聊天历史长度:', chatHistory.value.length)
   
-  const lastUserMsgIndex = chatHistory.value.findLastIndex ? chatHistory.value.findLastIndex((m: any) => m.role === 'user') : chatHistory.value.map((m: any) => m.role).lastIndexOf('user')
-  console.log('[regenerateLastMessage] 最后一条用户消息索引:', lastUserMsgIndex)
+  // 使用兼容的方式查找最后一条用户消息索引
+  const lastUserMsgIndex = [...chatHistory.value].reverse().findIndex((m: any) => m.role === 'user')
+  const actualIndex = lastUserMsgIndex >= 0 ? chatHistory.value.length - 1 - lastUserMsgIndex : -1
+  console.log('[regenerateLastMessage] 最后一条用户消息索引:', actualIndex)
   
-  if (lastUserMsgIndex === -1) {
+  if (actualIndex === -1) {
     console.warn('[regenerateLastMessage] 没有可重新生成的消息')
     ElMessage.warning('没有可重新生成的消息')
     return
   }
   
-  const lastUserMsg = chatHistory.value[lastUserMsgIndex]
+  const lastUserMsg = chatHistory.value[actualIndex]
   if (!lastUserMsg) {
     console.warn('[regenerateLastMessage] 没有可重新生成的消息')
     ElMessage.warning('没有可重新生成的消息')
@@ -524,7 +578,7 @@ const regenerateLastMessage = async () => {
   console.log('[regenerateLastMessage] 最后一条用户消息内容:', lastUserMsg.content?.substring(0, 30))
   
   // 删除该消息及其后的所有消息
-  chatHistory.value = chatHistory.value.slice(0, lastUserMsgIndex)
+  chatHistory.value = chatHistory.value.slice(0, actualIndex)
   console.log('[regenerateLastMessage] 删除后的聊天历史长度:', chatHistory.value.length)
   
   // 保存删除后的消息
@@ -608,6 +662,16 @@ const scrollToBottom = () => {
 const formatContent = (content: string) => {
   const html = marked(content)
   return DOMPurify.sanitize(html as string)
+}
+
+// 将前端消息转换为后端格式（用于上下文传递）
+const convertToChatMessages = (messages: Message[]): ChatMessage[] => {
+  const filtered = messages.filter(m => !m.loading && m.id !== 'init')
+  console.log('[convertToChatMessages] 转换历史消息，原始数量:', messages.length, '过滤后:', filtered.length)
+  return filtered.map(m => ({
+    role: m.role,
+    content: m.content
+  }))
 }
 
 const parseRecommendedBooks = (content: string): RecommendedBook[] => {
@@ -800,7 +864,12 @@ const cancelRename = () => {
 const sendMessage = async () => {
   const text = inputMessage.value.trim()
   if (!text || loading.value) return
-  
+
+  console.log('[sendMessage] ========== 开始发送消息 ==========')
+  console.log('[sendMessage] 消息内容:', text)
+  console.log('[sendMessage] 当前对话ID:', currentConversationId.value)
+  console.log('[sendMessage] 当前聊天历史长度:', chatHistory.value.length)
+
   // Add user message
   chatHistory.value.push({
     id: Date.now().toString(),
@@ -811,11 +880,11 @@ const sendMessage = async () => {
   inputMessage.value = ''
   loading.value = true
   scrollToBottom()
-  
+
   // 如果是新对话，创建对话记录
   if (!currentConversationId.value) {
     if (!userStore.user?.id) {
-      console.warn('用户未登录，无法保存对话')
+      console.warn('[sendMessage] 用户未登录，无法保存对话')
       ElMessage.warning('请先登录以保存对话历史')
     } else {
       try {
@@ -829,13 +898,14 @@ const sendMessage = async () => {
         )
         if (result.success) {
           currentConversationId.value = result.data.id
+          console.log('[sendMessage] 新对话已创建，ID:', currentConversationId.value)
           // 重新加载对话历史列表
           await loadConversations()
         } else {
-          console.error('保存对话失败: result.success = false')
+          console.error('[sendMessage] 保存对话失败: result.success = false')
         }
       } catch (error) {
-        console.error('保存对话失败:', error)
+        console.error('[sendMessage] 保存对话失败:', error)
         ElMessage.error('保存对话失败')
       }
     }
@@ -852,11 +922,18 @@ const sendMessage = async () => {
   scrollToBottom()
 
   try {
+    // 转换历史消息（传递给AI的上下文）
+    const historyMessages = convertToChatMessages(chatHistory.value.slice(0, -1))
+    console.log('[sendMessage] 历史消息数量:', historyMessages.length)
+    console.log('[sendMessage] 历史消息内容:', historyMessages.map(m => `${m.role}: ${m.content.substring(0, 30)}...`))
+
     // 简化处理：如果由推荐需求，调用推荐接口；否则调用普通对话
     const isRecommendation = text.includes('推荐') || text.includes('书') || text.includes('找')
+    console.log('[sendMessage] 是否为推荐请求:', isRecommendation)
 
     if (isRecommendation) {
       // 调用流式推荐
+      console.log('[sendMessage] 调用流式推荐接口')
       await new Promise<void>((resolve, reject) => {
         let fullContent = ''
         const cleanup = window.api.ai.recommendBooksStream(
@@ -869,10 +946,11 @@ const sendMessage = async () => {
             scrollToBottom()
           },
           (error) => {
-            console.error(error)
+            console.error('[sendMessage] 推荐错误:', error)
             reject(new Error(error))
           },
           async () => {
+            console.log('[sendMessage] 推荐完成，准备保存对话')
             // 解析推荐图书
             recommendedBooks.value = parseRecommendedBooks(fullContent)
             // 保存完整对话到数据库
@@ -884,12 +962,13 @@ const sendMessage = async () => {
         streamCleanup.value = cleanup
       })
     } else {
-      // 普通闲聊
+      // 普通闲聊 - 传递历史消息以保持上下文
+      console.log('[sendMessage] 调用流式聊天接口')
       await new Promise<void>((resolve, reject) => {
         let fullContent = ''
         const cleanup = window.api.ai.chatStream(
           text,
-          [], // history
+          historyMessages, // 传递历史消息
           undefined, // context
           (chunk) => {
             chatHistory.value[aiMsgIndex].loading = false
@@ -897,8 +976,12 @@ const sendMessage = async () => {
             chatHistory.value[aiMsgIndex].content = fullContent
             scrollToBottom()
           },
-          (error) => reject(new Error(error)),
+          (error) => {
+            console.error('[sendMessage] 聊天错误:', error)
+            reject(new Error(error))
+          },
           async () => {
+            console.log('[sendMessage] 聊天完成，准备保存对话')
             // 保存完整对话到数据库
             await saveCurrentConversation()
             resolve()
@@ -909,6 +992,7 @@ const sendMessage = async () => {
       })
     }
   } catch (error: any) {
+    console.error('[sendMessage] 发送消息失败:', error)
     chatHistory.value[aiMsgIndex].content = `抱歉，遇到了一些问题：${error.message || '网络请求超时'}`
     chatHistory.value[aiMsgIndex].loading = false
     // 即使出错也保存对话
@@ -917,6 +1001,7 @@ const sendMessage = async () => {
     loading.value = false
     streamCleanup.value = null
     scrollToBottom()
+    console.log('[sendMessage] ========== 消息发送完成 ==========')
   }
 }
 

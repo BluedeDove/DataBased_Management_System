@@ -106,6 +106,7 @@ export interface ElectronAPI {
       onError: (error: string) => void,
       onComplete: () => void
     ) => () => void
+    cancelChatStream: (requestId: string) => void
     recommendBooks: (query: string, limit?: number) => Promise<any>
     recommendBooksStream: (
       query: string,
@@ -114,6 +115,7 @@ export interface ElectronAPI {
       onError: (error: string) => void,
       onComplete: () => void
     ) => () => void
+    cancelRecommendBooksStream: (requestId: string) => void
     getStatistics: () => Promise<any>
     saveConversation: (userId: number, title: string, messages: any[]) => Promise<any>
     getConversations: (userId: number, limit?: number) => Promise<any>
@@ -234,11 +236,9 @@ const api: ElectronAPI = {
     chatStream: (message, history, context, onChunk, onError, onComplete) => {
       // 生成唯一的请求ID
       const requestId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-      console.log('[Preload] 创建流式聊天请求，ID:', requestId)
 
       // 注册监听器
       const chunkListener = (_event: any, chunk: string) => {
-        console.log('[Preload] 收到chunk，长度:', chunk.length)
         onChunk(chunk)
       }
       const errorListener = (_event: any, error: string) => {
@@ -246,39 +246,44 @@ const api: ElectronAPI = {
         onError(error)
       }
       const completeListener = () => {
-        console.log('[Preload] 流式传输完成')
         onComplete()
         // 自动清理监听器
+        cleanup()
+      }
+      const cancelledListener = () => {
+        console.log('[Preload] 流式传输被取消')
+        onError('生成已停止')
         cleanup()
       }
 
       ipcRenderer.on(`ai:chatStream:chunk:${requestId}`, chunkListener)
       ipcRenderer.on(`ai:chatStream:error:${requestId}`, errorListener)
       ipcRenderer.on(`ai:chatStream:complete:${requestId}`, completeListener)
+      ipcRenderer.on(`ai:chatStream:cancelled:${requestId}`, cancelledListener)
 
       // 发送请求
-      console.log('[Preload] 发送流式聊天请求到主进程')
       ipcRenderer.send('ai:chatStream', { requestId, message, history, context })
 
       // 返回清理函数
       const cleanup = () => {
-        console.log('[Preload] 清理流式聊天监听器')
         ipcRenderer.removeListener(`ai:chatStream:chunk:${requestId}`, chunkListener)
         ipcRenderer.removeListener(`ai:chatStream:error:${requestId}`, errorListener)
         ipcRenderer.removeListener(`ai:chatStream:complete:${requestId}`, completeListener)
+        ipcRenderer.removeListener(`ai:chatStream:cancelled:${requestId}`, cancelledListener)
       }
 
       return cleanup
+    },
+    cancelChatStream: (requestId) => {
+      ipcRenderer.send('ai:chatStream:cancel', { requestId })
     },
     recommendBooks: (query, limit) => ipcRenderer.invoke('ai:recommendBooks', query, limit),
     recommendBooksStream: (query, limit, onChunk, onError, onComplete) => {
       // 生成唯一的请求ID
       const requestId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-      console.log('[Preload] 创建流式推荐请求，ID:', requestId)
 
       // 注册监听器
       const chunkListener = (_event: any, chunk: string) => {
-        console.log('[Preload] 收到推荐chunk，长度:', chunk.length)
         onChunk(chunk)
       }
       const errorListener = (_event: any, error: string) => {
@@ -286,29 +291,36 @@ const api: ElectronAPI = {
         onError(error)
       }
       const completeListener = () => {
-        console.log('[Preload] 流式推荐完成')
         onComplete()
         // 自动清理监听器
+        cleanup()
+      }
+      const cancelledListener = () => {
+        console.log('[Preload] 流式推荐被取消')
+        onError('生成已停止')
         cleanup()
       }
 
       ipcRenderer.on(`ai:recommendBooksStream:chunk:${requestId}`, chunkListener)
       ipcRenderer.on(`ai:recommendBooksStream:error:${requestId}`, errorListener)
       ipcRenderer.on(`ai:recommendBooksStream:complete:${requestId}`, completeListener)
+      ipcRenderer.on(`ai:recommendBooksStream:cancelled:${requestId}`, cancelledListener)
 
       // 发送请求
-      console.log('[Preload] 发送流式推荐请求到主进程')
       ipcRenderer.send('ai:recommendBooksStream', { requestId, query, limit })
 
       // 返回清理函数
       const cleanup = () => {
-        console.log('[Preload] 清理流式推荐监听器')
         ipcRenderer.removeListener(`ai:recommendBooksStream:chunk:${requestId}`, chunkListener)
         ipcRenderer.removeListener(`ai:recommendBooksStream:error:${requestId}`, errorListener)
         ipcRenderer.removeListener(`ai:recommendBooksStream:complete:${requestId}`, completeListener)
+        ipcRenderer.removeListener(`ai:recommendBooksStream:cancelled:${requestId}`, cancelledListener)
       }
 
       return cleanup
+    },
+    cancelRecommendBooksStream: (requestId) => {
+      ipcRenderer.send('ai:recommendBooksStream:cancel', { requestId })
     },
     getStatistics: () => ipcRenderer.invoke('ai:getStatistics'),
     saveConversation: (userId, title, messages) => ipcRenderer.invoke('ai:saveConversation', userId, title, messages),
