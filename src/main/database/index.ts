@@ -3,7 +3,7 @@ import { app } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import * as bcrypt from 'bcryptjs'
-import { DatabaseMigration } from './migration'
+import { checkDatabaseHealth, printHealthReport, HealthReport } from './health-check'
 
 // 数据库文件路径
 const userDataPath = app.getPath('userData')
@@ -20,15 +20,37 @@ export const db = new Database(dbPath)
 // 启用外键约束
 db.pragma('foreign_keys = ON')
 
-// 初始化数据库表结构
+/**
+ * 修复选项
+ */
+export interface RepairOptions {
+  /** 是否自动修复所有问题 */
+  autoFix?: boolean
+  /** 指定要修复的表，不指定则修复所有表 */
+  tables?: string[]
+}
+
+/**
+ * 修复结果
+ */
+export interface RepairResult {
+  success: boolean
+  repairedIssues: string[]
+  failedIssues: string[]
+  timestamp: Date
+}
+
+/**
+ * 初始化数据库表结构
+ */
 export function initDatabase() {
-  // 检查users表是否需要迁移（从2角色升级到4角色）
-  const tableExists = db.prepare(`
+  // 1. 用户表
+  const usersTableExists = db.prepare(`
     SELECT name FROM sqlite_master
     WHERE type = 'table' AND name = 'users'
   `).get()
 
-  if (tableExists) {
+  if (usersTableExists) {
     // 检查表结构中的CHECK约束
     const tableInfo = db.prepare(`
       SELECT sql FROM sqlite_master
@@ -50,6 +72,8 @@ export function initDatabase() {
           reader_id INTEGER,
           email TEXT,
           phone TEXT,
+          version INTEGER DEFAULT 1,
+          is_deleted BOOLEAN DEFAULT 0,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (reader_id) REFERENCES readers(id) ON DELETE SET NULL
@@ -87,6 +111,8 @@ export function initDatabase() {
           reader_id INTEGER,
           email TEXT,
           phone TEXT,
+          version INTEGER DEFAULT 1,
+          is_deleted BOOLEAN DEFAULT 0,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (reader_id) REFERENCES readers(id) ON DELETE SET NULL
@@ -105,22 +131,24 @@ export function initDatabase() {
       console.log('✅ reader_id 字段添加完成')
     }
   } else {
-    // 表不存在，创建新表（包含 reader_id 字段）
+    // 表不存在，创建新表（包含所有必需字段）
     db.exec(`
       CREATE TABLE users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      username TEXT UNIQUE NOT NULL,
-      password TEXT NOT NULL,
-      name TEXT NOT NULL,
-      role TEXT NOT NULL CHECK(role IN ('admin', 'librarian', 'teacher', 'student')),
-      reader_id INTEGER,
-      email TEXT,
-      phone TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (reader_id) REFERENCES readers(id) ON DELETE SET NULL
-    )
-  `)
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        name TEXT NOT NULL,
+        role TEXT NOT NULL CHECK(role IN ('admin', 'librarian', 'teacher', 'student')),
+        reader_id INTEGER,
+        email TEXT,
+        phone TEXT,
+        version INTEGER DEFAULT 1,
+        is_deleted BOOLEAN DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (reader_id) REFERENCES readers(id) ON DELETE SET NULL
+      )
+    `)
   }
 
   // 2. 读者种类表
@@ -132,6 +160,8 @@ export function initDatabase() {
       max_borrow_count INTEGER NOT NULL DEFAULT 5,
       max_borrow_days INTEGER NOT NULL DEFAULT 30,
       validity_days INTEGER NOT NULL DEFAULT 365,
+      version INTEGER DEFAULT 1,
+      is_deleted BOOLEAN DEFAULT 0,
       notes TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -171,6 +201,8 @@ export function initDatabase() {
           registration_date DATE DEFAULT (date('now')),
           expiry_date DATE,
           status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'suspended', 'expired', 'pending')),
+          version INTEGER DEFAULT 1,
+          is_deleted BOOLEAN DEFAULT 0,
           notes TEXT,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -191,7 +223,7 @@ export function initDatabase() {
       console.log('✅ user_id 字段添加完成')
     }
   } else {
-    // 表不存在，创建新表（包含 user_id 和 id_card 字段）
+    // 表不存在，创建新表（包含所有必需字段）
     db.exec(`
       CREATE TABLE readers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -208,6 +240,8 @@ export function initDatabase() {
         registration_date DATE DEFAULT (date('now')),
         expiry_date DATE,
         status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'suspended', 'expired', 'pending')),
+        version INTEGER DEFAULT 1,
+        is_deleted BOOLEAN DEFAULT 0,
         notes TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -225,6 +259,8 @@ export function initDatabase() {
       name TEXT NOT NULL,
       keywords TEXT,
       parent_id INTEGER,
+      version INTEGER DEFAULT 1,
+      is_deleted BOOLEAN DEFAULT 0,
       notes TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -251,6 +287,8 @@ export function initDatabase() {
       available_quantity INTEGER NOT NULL DEFAULT 1,
       status TEXT NOT NULL DEFAULT 'normal' CHECK(status IN ('normal', 'damaged', 'lost', 'destroyed')),
       registration_date DATE DEFAULT (date('now')),
+      version INTEGER DEFAULT 1,
+      is_deleted BOOLEAN DEFAULT 0,
       notes TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -270,6 +308,8 @@ export function initDatabase() {
       renewal_count INTEGER DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'borrowed' CHECK(status IN ('borrowed', 'returned', 'overdue', 'lost')),
       fine_amount REAL DEFAULT 0,
+      version INTEGER DEFAULT 1,
+      is_deleted BOOLEAN DEFAULT 0,
       notes TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -304,6 +344,19 @@ export function initDatabase() {
     )
   `)
 
+  // 9. AI对话历史表
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ai_conversations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      messages TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `)
+
   // 插入默认权限
   db.exec(`
     INSERT OR IGNORE INTO role_permissions (role, permission) VALUES
@@ -330,19 +383,6 @@ export function initDatabase() {
       ('ai.openai.chatModel', 'gpt-4-turbo-preview', 'string', 'ai', 'Chat Model')
   `)
 
-  // 9. AI对话历史表
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS ai_conversations (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      title TEXT NOT NULL,
-      messages TEXT NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    )
-  `)
-
   // 创建索引以提高查询性能
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_readers_category ON readers(category_id);
@@ -362,7 +402,9 @@ export function initDatabase() {
   console.log('✅ 数据库表结构初始化完成')
 }
 
-// 初始化测试用户
+/**
+ * 初始化测试用户
+ */
 export function seedTestUsers() {
   const testUsers = [
     { username: 'librarian', password: 'lib123', name: '图书管理员', role: 'librarian', email: 'librarian@library.com' },
@@ -381,7 +423,9 @@ export function seedTestUsers() {
   }
 }
 
-// 初始化默认数据
+/**
+ * 初始化默认数据
+ */
 export function seedDatabase() {
   // 检查是否已有用户
   const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number }
@@ -390,7 +434,7 @@ export function seedDatabase() {
     // 创建默认管理员账户
     const salt = bcrypt.genSaltSync(10)
     const hashedPassword = bcrypt.hashSync('admin123', salt)
-    
+
     db.prepare(`
       INSERT INTO users (username, password, name, role, email)
       VALUES (?, ?, ?, ?, ?)
@@ -442,16 +486,18 @@ export function seedDatabase() {
   }
 }
 
-// 修复旧的明文密码
+/**
+ * 修复旧的明文密码
+ */
 function fixAdminPassword() {
   try {
     const adminUser = db.prepare('SELECT id, password FROM users WHERE username = ?').get('admin') as { id: number, password: string } | undefined
-    
+
     if (adminUser && adminUser.password === 'admin123') {
       console.log('🔄 检测到管理员密码为明文，正在进行加密修复...')
       const salt = bcrypt.genSaltSync(10)
       const hashedPassword = bcrypt.hashSync('admin123', salt)
-      
+
       db.prepare('UPDATE users SET password = ? WHERE id = ?').run(hashedPassword, adminUser.id)
       console.log('✅ 管理员密码已加密修复')
     }
@@ -460,24 +506,177 @@ function fixAdminPassword() {
   }
 }
 
-// 在应用启动时初始化数据库
+/**
+ * 修复数据库问题
+ * @param options 修复选项
+ * @returns 修复结果
+ */
+export function repairDatabase(_options?: RepairOptions): RepairResult {
+  const repairedIssues: string[] = []
+  const failedIssues: string[] = []
+
+  try {
+    console.log('🔧 开始修复数据库...')
+
+    // 1. 创建操作日志表
+    try {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS operation_logs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          operation_id TEXT UNIQUE NOT NULL,
+          table_name TEXT NOT NULL,
+          record_id INTEGER NOT NULL,
+          operation_type TEXT NOT NULL CHECK(operation_type IN ('INSERT', 'UPDATE', 'DELETE')),
+          old_data TEXT,
+          new_data TEXT,
+          status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'committed', 'rolled_back', 'failed')),
+          created_by INTEGER,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          committed_at DATETIME,
+          rolled_back_at DATETIME,
+          error_message TEXT,
+          FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+      `)
+      repairedIssues.push('操作日志表已创建')
+    } catch (error) {
+      failedIssues.push(`创建操作日志表失败: ${error}`)
+    }
+
+    // 2. 创建审计日志表
+    try {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS audit_logs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER,
+          action TEXT NOT NULL,
+          table_name TEXT,
+          record_id INTEGER,
+          old_values TEXT,
+          new_values TEXT,
+          ip_address TEXT,
+          user_agent TEXT,
+          session_id TEXT,
+          additional_info TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+        )
+      `)
+      repairedIssues.push('审计日志表已创建')
+    } catch (error) {
+      failedIssues.push(`创建审计日志表失败: ${error}`)
+    }
+
+    // 3. 添加乐观锁版本字段
+    const tablesWithVersion = ['users', 'readers', 'books', 'borrowing_records', 'book_categories', 'reader_categories']
+    for (const table of tablesWithVersion) {
+      try {
+        const tableInfo = db.prepare(`
+          SELECT sql FROM sqlite_master
+          WHERE type = 'table' AND name = ?
+        `).get(table) as { sql: string } | undefined
+
+        if (tableInfo && !tableInfo.sql.includes('version INTEGER')) {
+          db.exec(`ALTER TABLE ${table} ADD COLUMN version INTEGER DEFAULT 1`)
+          repairedIssues.push(`表 ${table} 已添加乐观锁版本字段`)
+        }
+      } catch (error) {
+        failedIssues.push(`为表 ${table} 添加版本字段失败: ${error}`)
+      }
+    }
+
+    // 4. 添加软删除字段
+    const tablesWithSoftDelete = ['users', 'readers', 'books', 'borrowing_records', 'book_categories', 'reader_categories']
+    for (const table of tablesWithSoftDelete) {
+      try {
+        const tableInfo = db.prepare(`
+          SELECT sql FROM sqlite_master
+          WHERE type = 'table' AND name = ?
+        `).get(table) as { sql: string } | undefined
+
+        if (tableInfo && !tableInfo.sql.includes('is_deleted BOOLEAN')) {
+          db.exec(`ALTER TABLE ${table} ADD COLUMN is_deleted BOOLEAN DEFAULT 0`)
+          repairedIssues.push(`表 ${table} 已添加软删除字段`)
+        }
+      } catch (error) {
+        failedIssues.push(`为表 ${table} 添加软删除字段失败: ${error}`)
+      }
+    }
+
+    // 5. 创建索引
+    const indexes = [
+      // 操作日志索引
+      'CREATE INDEX IF NOT EXISTS idx_operation_logs_operation_id ON operation_logs(operation_id)',
+      'CREATE INDEX IF NOT EXISTS idx_operation_logs_status ON operation_logs(status)',
+      'CREATE INDEX IF NOT EXISTS idx_operation_logs_created_at ON operation_logs(created_at)',
+      // 审计日志索引
+      'CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id)',
+      'CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action)',
+      'CREATE INDEX IF NOT EXISTS idx_audit_logs_table_name ON audit_logs(table_name)',
+      'CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at)',
+      // 软删除查询优化索引
+      'CREATE INDEX IF NOT EXISTS idx_books_is_deleted ON books(is_deleted)',
+      'CREATE INDEX IF NOT EXISTS idx_readers_is_deleted ON readers(is_deleted)',
+      'CREATE INDEX IF NOT EXISTS idx_users_is_deleted ON users(is_deleted)',
+      'CREATE INDEX IF NOT EXISTS idx_borrowing_records_is_deleted ON borrowing_records(is_deleted)',
+      // 乐观锁索引
+      'CREATE INDEX IF NOT EXISTS idx_books_version ON books(version)',
+      'CREATE INDEX IF NOT EXISTS idx_borrowing_records_version ON borrowing_records(version)'
+    ]
+
+    for (const indexSql of indexes) {
+      try {
+        db.exec(indexSql)
+      } catch (error) {
+        // 索引创建失败不影响主要功能，仅记录警告
+        console.warn(`创建索引失败: ${indexSql}`, error)
+      }
+    }
+
+    console.log('✅ 数据库修复完成')
+  } catch (error) {
+    console.error('❌ 数据库修复失败:', error)
+    failedIssues.push(`修复过程异常: ${error}`)
+  }
+
+  return {
+    success: failedIssues.length === 0,
+    repairedIssues,
+    failedIssues,
+    timestamp: new Date()
+  }
+}
+
+/**
+ * 检查数据库健康状态
+ * @returns 健康检查报告
+ */
+export function checkHealth(): HealthReport {
+  return checkDatabaseHealth(db)
+}
+
+/**
+ * 在应用启动时初始化数据库
+ */
 export function setupDatabase() {
   try {
     initDatabase()
     seedDatabase()
-    fixAdminPassword() // 添加修复步骤
-    
-    // 执行数据库迁移
-    DatabaseMigration.migrate().then(() => {
-      console.log('📚 数据库系统准备就绪')
-    }).catch(error => {
-      console.error('❌ 数据库迁移失败:', error)
-      throw error
-    })
-    
+    fixAdminPassword()
+
+    // 执行健康检查
+    const healthReport = checkHealth()
+    printHealthReport(healthReport)
+
+    if (!healthReport.isHealthy) {
+      console.log('⚠️  数据库存在健康问题，如需修复请调用 repairDatabase() 函数')
+    }
+
     // 注意：测试用户数据已移至独立脚本
     // 如需生成测试数据，请运行: npm run generate:testdata
     // seedTestUsers()  // 已移除自动调用
+
+    console.log('📚 数据库系统准备就绪')
   } catch (error) {
     console.error('❌ 数据库初始化失败:', error)
     throw error
