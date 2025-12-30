@@ -17,12 +17,18 @@ import path from 'path'
 import { existsSync, unlinkSync } from 'fs'
 import os from 'os'
 
-// 获取数据库路径
-const userDataPath = process.env.APPDATA
-  ? path.join(process.env.APPDATA, 'electron-smart-library')
-  : path.join(os.homedir(), '.electron-smart-library')
+// 获取数据库路径（尝试多个可能的路径）
+const possiblePaths = [
+  path.join(process.env.APPDATA || '', 'electron-smart-library', 'library.db'),
+  path.join(os.homedir(), '.electron-smart-library', 'library.db'),
+  path.join(os.homedir(), 'AppData', 'Roaming', 'electron-smart-library', 'library.db')
+]
 
-const dbPath = path.join(userDataPath, 'library.db')
+let dbPath = possiblePaths.find(p => existsSync(p))
+if (!dbPath) {
+  dbPath = possiblePaths[0]  // 使用默认路径
+}
+const userDataPath = path.dirname(dbPath)
 
 // 解析命令行参数
 const args = process.argv.slice(2)
@@ -50,6 +56,13 @@ if (deleteAll) {
 } else {
   // 仅删除数据，保留表结构
   console.log('\n🧹 清理数据库数据（保留表结构）...')
+  console.log('\n⚠️  警告：此操作将删除所有表的数据，包括：')
+  console.log('   - 用户、读者、图书、借阅记录')
+  console.log('   - 默认的读者种类、图书类别')
+  console.log('   - 角色权限、系统设置')
+  console.log('   - AI对话历史、图书向量')
+  console.log('   - 操作日志、审计日志')
+  console.log('\n💡 清理后需要重新启动应用来初始化默认数据\n')
   
   const db = new Database(dbPath)
   db.pragma('foreign_keys = OFF') // 暂时关闭外键约束以便删除数据

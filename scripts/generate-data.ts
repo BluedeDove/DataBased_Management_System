@@ -1,11 +1,11 @@
 /**
  * 数据库测试数据生成脚本
- * 
+ *
  * 功能：
  * - 仅生成测试数据，不创建表结构（表结构由应用启动时创建）
  * - 使用真实的中国图书数据
  * - 生成合理的读者和借阅记录
- * 
+ *
  * 使用方法：
  *   npm run db:generate
  */
@@ -118,8 +118,8 @@ const bookData: BookData[] = [
   { title: '呼兰河传', author: '萧红', publisher: '人民文学出版社', publishDate: '2001-01', isbn: '9787020034367', categoryCode: 'I' },
   { title: '倾城之恋', author: '张爱玲', publisher: '北京十月文艺出版社', publishDate: '2009-01', isbn: '9787530210816', categoryCode: 'I' },
   { title: '金锁记', author: '张爱玲', publisher: '北京十月文艺出版社', publishDate: '2009-01', isbn: '9787530210816', categoryCode: 'I' },
-  { title: '老人与海', author: '海明威', publisher: '上海译文出版社', publishDate: '2009-01', isbn: '9787532746908', categoryCode: 'I' },
-  { title: '了不起的盖茨比', author: 'F.S.菲茨杰拉德', publisher: '上海译文出版社', publishDate: '2011-01', isbn: '9787532752695', categoryCode: 'I' },
+  { title: '老人与海', author: '海明威', publisher: '上海译文出版社', publishDate: '2009-01', isbn: '97871152746908', categoryCode: 'I' },
+  { title: '了不起的盖茨比', author: 'F.S.菲茨杰拉德', publisher: '上海译文出版社', publishDate: '2011-01', isbn: '97871152752695', categoryCode: 'I' },
   { title: '麦田里的守望者', author: 'J.D.塞林格', publisher: '译林出版社', publishDate: '2010-01', isbn: '9787544712378', categoryCode: 'I' },
   { title: '杀死一只知更鸟', author: '哈珀·李', publisher: '译林出版社', publishDate: '2012-01', isbn: '9787544723458', categoryCode: 'I' },
   { title: '傲慢与偏见', author: '简·奥斯汀', publisher: '人民文学出版社', publishDate: '2008-01', isbn: '9787020068221', categoryCode: 'I' },
@@ -258,50 +258,82 @@ const bookData: BookData[] = [
   { title: '世界电影史', author: '克莉丝汀·汤普森', publisher: '北京大学出版社', publishDate: '2004-01', isbn: '9787301071230', categoryCode: 'J' }
 ]
 
+// ==================== 辅助函数 ====================
+
+// 检查表是否存在
+function tableExists(tableName: string): boolean {
+  const result = db.prepare(`
+    SELECT name FROM sqlite_master
+    WHERE type = 'table' AND name = ?
+  `).get(tableName)
+  return !!result
+}
+
+// 安全地删除表数据（表存在时才执行）
+function safeDelete(tableName: string, condition: string = '') {
+  if (!tableExists(tableName)) {
+    return
+  }
+  try {
+    const sql = condition ? `DELETE FROM ${tableName} WHERE ${condition}` : `DELETE FROM ${tableName}`
+    db.exec(sql)
+  } catch (error) {
+    // 忽略删除错误
+    console.warn(`  ⚠️  删除表 ${tableName} 数据时出现警告: ${error}`)
+  }
+}
+
 // ==================== 生成数据 ====================
 
 // 1. 清理现有数据
 console.log('🧹 清理现有数据...')
-db.exec('DELETE FROM borrowing_records')
-db.exec('DELETE FROM books WHERE id > 0')
-db.exec('DELETE FROM users WHERE id > 1') // 保留admin账号（包括软删除的）
-db.exec('DELETE FROM readers WHERE id > 0')
+safeDelete('borrowing_records')
+safeDelete('books') // 删除所有图书数据
+safeDelete('users', 'id > 1') // 保留admin账号
+safeDelete('readers', 'id > 0')
+safeDelete('ai_conversations', 'user_id > 1') // 清理admin以外的对话
+safeDelete('book_vectors') // 清理向量数据
+safeDelete('operation_logs') // 清理操作日志
+safeDelete('audit_logs') // 清理审计日志
 console.log('✅ 清理完成\n')
 
 // 2. 生成图书数据
 console.log('📚 生成图书数据...')
-const bookCategories = db.prepare('SELECT * FROM book_categories').all()
-if (bookCategories.length === 0) {
-  console.error('❌ 图书类别表为空，请先启动应用初始化数据库')
+if (!tableExists('book_categories')) {
+  console.error('❌ 图书类别表不存在，请先启动应用初始化数据库')
   process.exit(1)
 }
 
+const bookCategories = db.prepare('SELECT * FROM book_categories').all()
+
+// 使用 INSERT OR REPLACE 处理重复的 ISBN
 const insertBook = db.prepare(`
-  INSERT INTO books (isbn, title, author, publisher, category_id, publish_date, price, pages,
-                     keywords, description, cover_url, total_quantity, available_quantity, status, registration_date, is_deleted)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'normal', date('now'), 0)
+  INSERT OR REPLACE INTO books (isbn, title, author, publisher, category_id, publish_date, price, pages,
+                              keywords, description, cover_url, total_quantity, available_quantity,
+                              status, registration_date, is_deleted)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, date('now'), 0)
 `)
 
-const insertBookTransaction = db.transaction((count) => {
+const insertBookTransaction = db.transaction((count: number) => {
   for (let i = 0; i < count; i++) {
     const bookInfo = bookData[i % bookData.length]
-    const category = bookCategories.find(c => c.code === bookInfo.categoryCode) || bookCategories[0]
-    
+    const category = bookCategories.find((c: any) => c.code === bookInfo.categoryCode) || bookCategories[0]
+
     // 随机价格和页数
     const price = (Math.random() * 150 + 30).toFixed(2)
     const pages = Math.floor(Math.random() * 500) + 100
     const quantity = Math.floor(Math.random() * 5) + 1
-    
-    const keywords = `${category.name},${bookInfo.author},热门`
-    const description = `这是一本关于${category.name}的优秀图书，由${bookInfo.author}撰写，${bookInfo.publisher}出版。`
+
+    const keywords = `${(category as any).name},${bookInfo.author},热门`
+    const description = `这是一本关于${(category as any).name}的优秀图书，由${bookInfo.author}撰写，${bookInfo.publisher}出版。`
     const coverUrl = Math.random() < 0.3 ? `https://picsum.photos/seed/${i}/300/400` : null
-    
+
     insertBook.run(
       bookInfo.isbn,
       bookInfo.title,
       bookInfo.author,
       bookInfo.publisher,
-      category.id,
+      (category as any).id,
       bookInfo.publishDate,
       price,
       pages,
@@ -309,7 +341,8 @@ const insertBookTransaction = db.transaction((count) => {
       description,
       coverUrl,
       quantity,
-      quantity
+      quantity,
+      'normal'
     )
   }
 })
@@ -319,11 +352,12 @@ console.log('✅ 生成了 200 本图书\n')
 
 // 3. 生成读者和用户数据
 console.log('👥 生成读者和用户数据...')
-const readerCategories = db.prepare('SELECT * FROM reader_categories').all()
-if (readerCategories.length === 0) {
-  console.error('❌ 读者类别表为空，请先启动应用初始化数据库')
+if (!tableExists('reader_categories')) {
+  console.error('❌ 读者类别表不存在，请先启动应用初始化数据库')
   process.exit(1)
 }
+
+const readerCategories = db.prepare('SELECT * FROM reader_categories').all()
 
 const surnames = ['张', '李', '王', '赵', '钱', '孙', '周', '吴', '郑', '冯', '陈', '褚', '卫', '蒋', '沈', '韩', '杨']
 const names = ['伟', '芳', '娜', '秀英', '敏', '静', '丽', '强', '磊', '军', '洋', '勇', '艳', '杰', '涛', '明', '超', '娟']
@@ -350,14 +384,14 @@ const generateReaderNo = (categoryCode: string, sequence: number) => {
   return `${categoryCode}${dateStr}${sequence.toString().padStart(4, '0')}`
 }
 
-const insertReaderAndUserTransaction = db.transaction((count) => {
+const insertReaderAndUserTransaction = db.transaction((count: number) => {
   let teacherSeq = 1
   let studentSeq = 1
 
   for (let i = 0; i < count; i++) {
     const category = readerCategories[i % readerCategories.length]
-    const isTeacher = category.code === 'TEACHER'
-    const isStudent = category.code === 'STUDENT'
+    const isTeacher = (category as any).code === 'TEACHER'
+    const isStudent = (category as any).code === 'STUDENT'
 
     let role: string
     let readerNoPrefix: string
@@ -365,15 +399,15 @@ const insertReaderAndUserTransaction = db.transaction((count) => {
 
     if (isTeacher) {
       role = 'teacher'
-      readerNoPrefix = 'T'
+      readerNoPrefix = 'TEACHER'
       sequence = teacherSeq++
     } else if (isStudent) {
       role = 'student'
-      readerNoPrefix = 'S'
+      readerNoPrefix = 'STUDENT'
       sequence = studentSeq++
     } else {
       role = 'student'
-      readerNoPrefix = 'S'
+      readerNoPrefix = 'STUDENT'
       sequence = studentSeq++
     }
 
@@ -389,10 +423,10 @@ const insertReaderAndUserTransaction = db.transaction((count) => {
     const phone = `138${String(Math.floor(Math.random() * 100000000)).padStart(8, '0')}`
     const email = `${username}@example.com`
     const address = `北京市海淀区中关村大街${Math.floor(Math.random() * 200) + 1}号`
-    const notes = `${category.name}读者`
+    const notes = `${(category as any).name}读者`
 
     const readerResult = insertReader.run(
-      readerNo, name, category.id, null, gender, idCard, organization,
+      readerNo, name, (category as any).id, null, gender, idCard, organization,
       phone, email, address, notes
     )
     const readerId = readerResult.lastInsertRowid as number
@@ -423,14 +457,18 @@ const insertBorrowing = db.prepare(`
 `)
 
 const updateBookQuantity = db.prepare(`
-  UPDATE books SET available_quantity = available_quantity - 1 WHERE id = ?
+  UPDATE books
+  SET available_quantity = available_quantity - 1,
+      updated_at = CURRENT_TIMESTAMP,
+      version = version + 1
+  WHERE id = ? AND available_quantity >= 1
 `)
 
-const insertBorrowingTransaction = db.transaction((count) => {
-  const usedPairs = new Set()
+const insertBorrowingTransaction = db.transaction((count: number) => {
+  const usedPairs = new Set<string>()
 
   for (let i = 0; i < count; i++) {
-    let reader, book, pairKey
+    let reader: any, book: any, pairKey: string
     let attempts = 0
     do {
       reader = readers[Math.floor(Math.random() * readers.length)]
@@ -443,8 +481,8 @@ const insertBorrowingTransaction = db.transaction((count) => {
     if (usedPairs.has(pairKey)) continue
     usedPairs.add(pairKey)
 
-    const readerCategory = readerCategories.find(c => c.id === reader.category_id)
-    const borrowDays = readerCategory.max_borrow_days
+    const readerCategory = readerCategories.find((c: any) => c.id === reader.category_id)
+    const borrowDays = readerCategory ? (readerCategory as any).max_borrow_days : 30
 
     const daysAgo = Math.floor(Math.random() * 90)
     const borrowDate = new Date()
@@ -456,7 +494,7 @@ const insertBorrowingTransaction = db.transaction((count) => {
     const dueDateStr = dueDate.toISOString().split('T')[0]
 
     const rand = Math.random()
-    let status, returnDate, renewalCount, fineAmount
+    let status: string, returnDate: string | null, renewalCount: number, fineAmount: number
 
     if (rand < 0.4) {
       status = 'returned'
@@ -484,7 +522,7 @@ const insertBorrowingTransaction = db.transaction((count) => {
       status = 'overdue'
       returnDate = null
       renewalCount = Math.floor(Math.random() * 3)
-      const overdueDays = Math.max(0, Math.floor((new Date() - dueDate) / (1000 * 60 * 60 * 24)))
+      const overdueDays = Math.max(0, Math.floor((new Date().getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24)))
       fineAmount = overdueDays * 0.1
       updateBookQuantity.run(book.id)
     }
@@ -503,13 +541,13 @@ console.log('   - 逾期未还: ~30 条\n')
 
 // 5. 统计信息
 console.log('📊 数据统计:')
-const totalUsers = db.prepare('SELECT COUNT(*) as count FROM users').get()
-const totalBooks = db.prepare('SELECT COUNT(*) as count FROM books').get()
-const totalReaders = db.prepare('SELECT COUNT(*) as count FROM readers').get()
-const totalBorrowings = db.prepare('SELECT COUNT(*) as count FROM borrowing_records').get()
-const activeBorrowings = db.prepare("SELECT COUNT(*) as count FROM borrowing_records WHERE status = 'borrowed' OR status = 'overdue'").get()
-const overdueBorrowings = db.prepare("SELECT COUNT(*) as count FROM borrowing_records WHERE status = 'overdue'").get()
-const totalFine = db.prepare('SELECT SUM(fine_amount) as total FROM borrowing_records').get()
+const totalUsers = db.prepare('SELECT COUNT(*) as count FROM users').get() as any
+const totalBooks = db.prepare('SELECT COUNT(*) as count FROM books').get() as any
+const totalReaders = db.prepare('SELECT COUNT(*) as count FROM readers').get() as any
+const totalBorrowings = db.prepare('SELECT COUNT(*) as count FROM borrowing_records').get() as any
+const activeBorrowings = db.prepare("SELECT COUNT(*) as count FROM borrowing_records WHERE status = 'borrowed' OR status = 'overdue'").get() as any
+const overdueBorrowings = db.prepare("SELECT COUNT(*) as count FROM borrowing_records WHERE status = 'overdue'").get() as any
+const totalFine = db.prepare('SELECT SUM(fine_amount) as total FROM borrowing_records').get() as any
 
 console.log(`   用户总数: ${totalUsers.count}`)
 console.log(`   图书总数: ${totalBooks.count}`)

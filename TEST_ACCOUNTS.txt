@@ -18,3 +18,8 @@
 注意: 
 - 所有生成的测试用户 (teacherXXX, studentXXX) 的默认密码均为 123456。
 - 如果需要测试图书管理员 (Librarian) 角色，目前数据库中未生成默认账号，需通过数据库直接添加或由管理员分配(如果有相关功能)。当前建议使用 Admin 账号测试管理功能。
+
+
+api:sk-vfcikntdomxvpuqveotnlgesfaryqtggpybskgyaavxugkec
+url:https://api.siliconflow.cn/v1
+model:Pro/deepseek-ai/DeepSeek-V3.2

@@ -16,13 +16,26 @@ export class EmbeddingService {
   private apiKey!: string
   private baseURL!: string
   private model!: string
-  private configService = new ConfigService()
+  private configService: ConfigService
 
   constructor() {
-    // 优先使用数据库配置，如果不存在则使用环境变量配置
-    this.loadConfig()
+    this.configService = new ConfigService()
+    // 延迟初始化，避免在 app.whenReady() 之前访问数据库
+    this.loadConfigFromEnv()
   }
 
+  /**
+   * 从环境变量加载配置（不访问数据库）
+   */
+  private loadConfigFromEnv() {
+    this.apiKey = config.ai.openai.apiKey
+    this.baseURL = config.ai.openai.baseURL
+    this.model = config.ai.openai.embeddingModel
+  }
+
+  /**
+   * 加载配置（优先使用数据库配置）
+   */
   private loadConfig() {
     try {
       const dbConfig = this.configService.getAISettings()

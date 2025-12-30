@@ -21,6 +21,13 @@ const configService = new ConfigService()
 const regexSearchService = new RegexSearchService()
 const sqlSearchService = new SqlSearchService()
 
+/**
+ * 初始化需要数据库的服务（在 app.whenReady() 之后调用）
+ */
+export function initServices() {
+  aiService.init()
+}
+
 export function registerIpcHandlers() {
   // ============ 认证相关 ============
   ipcMain.handle('auth:login', async (_, credentials) => {

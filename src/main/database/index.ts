@@ -1,24 +1,33 @@
 import Database from 'better-sqlite3'
-import { app } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import * as bcrypt from 'bcryptjs'
 import { checkDatabaseHealth, printHealthReport, HealthReport } from './health-check'
+import { app } from 'electron'
 
-// 数据库文件路径
-const userDataPath = app.getPath('userData')
-const dbPath = path.join(userDataPath, 'library.db')
+// 数据库实例（延迟初始化）
+let _dbInstance: Database.Database | null = null
 
-// 确保目录存在
-if (!fs.existsSync(userDataPath)) {
-  fs.mkdirSync(userDataPath, { recursive: true })
+/**
+ * 获取数据库实例
+ */
+function getDbInstance(): Database.Database {
+  if (!_dbInstance) {
+    throw new Error('数据库未初始化，请先调用 setupDatabase()')
+  }
+  return _dbInstance
 }
 
-// 创建数据库连接
-export const db = new Database(dbPath)
-
-// 启用外键约束
-db.pragma('foreign_keys = ON')
+/**
+ * 数据库实例（延迟初始化 getter）
+ * 使用 getter 来避免在模块顶层初始化
+ */
+export const db = new Proxy({} as Database.Database, {
+  get(target, prop) {
+    const instance = getDbInstance()
+    return Reflect.get(instance, prop)
+  }
+}) as Database.Database
 
 /**
  * 修复选项
@@ -357,6 +366,45 @@ export function initDatabase() {
     )
   `)
 
+  // 10. 操作日志表
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS operation_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      operation_id TEXT UNIQUE NOT NULL,
+      table_name TEXT NOT NULL,
+      record_id INTEGER NOT NULL,
+      operation_type TEXT NOT NULL CHECK(operation_type IN ('INSERT', 'UPDATE', 'DELETE')),
+      old_data TEXT,
+      new_data TEXT,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'committed', 'rolled_back', 'failed')),
+      created_by INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      committed_at DATETIME,
+      rolled_back_at DATETIME,
+      error_message TEXT,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    )
+  `)
+
+  // 11. 审计日志表
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER,
+      action TEXT NOT NULL,
+      table_name TEXT,
+      record_id INTEGER,
+      old_values TEXT,
+      new_values TEXT,
+      ip_address TEXT,
+      user_agent TEXT,
+      session_id TEXT,
+      additional_info TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+    )
+  `)
+
   // 插入默认权限
   db.exec(`
     INSERT OR IGNORE INTO role_permissions (role, permission) VALUES
@@ -397,6 +445,13 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_borrowing_dates ON borrowing_records(borrow_date, due_date);
     CREATE INDEX IF NOT EXISTS idx_ai_conversations_user ON ai_conversations(user_id);
     CREATE INDEX IF NOT EXISTS idx_ai_conversations_created ON ai_conversations(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_operation_logs_operation_id ON operation_logs(operation_id);
+    CREATE INDEX IF NOT EXISTS idx_operation_logs_status ON operation_logs(status);
+    CREATE INDEX IF NOT EXISTS idx_operation_logs_created_at ON operation_logs(created_at);
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_table_name ON audit_logs(table_name);
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
   `)
 
   console.log('✅ 数据库表结构初始化完成')
@@ -660,6 +715,23 @@ export function checkHealth(): HealthReport {
  */
 export function setupDatabase() {
   try {
+    // 初始化数据库连接（延迟到 app.ready 之后）
+    if (_dbInstance === null) {
+      const userDataPath = app.getPath('userData')
+      const dbPath = path.join(userDataPath, 'library.db')
+
+      // 确保目录存在
+      if (!fs.existsSync(userDataPath)) {
+        fs.mkdirSync(userDataPath, { recursive: true })
+      }
+
+      // 创建数据库连接
+      _dbInstance = new Database(dbPath)
+
+      // 启用外键约束
+      _dbInstance.pragma('foreign_keys = ON')
+    }
+
     initDatabase()
     seedDatabase()
     fixAdminPassword()

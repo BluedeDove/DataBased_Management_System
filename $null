@@ -1,0 +1,13 @@
+ls: cannot access '$env:APPDATA\electron-smart-library': No such file or directory
+ls: cannot access ';': No such file or directory
+ls: cannot access 'if': No such file or directory
+ls: cannot access '($?)': No such file or directory
+ls: cannot access '': No such file or directory
+ls: cannot access 'Write-Host': No such file or directory
+ls: cannot access 'Database directory exists': No such file or directory
+ls: cannot access '}': No such file or directory
+ls: cannot access 'else': No such file or directory
+ls: cannot access '': No such file or directory
+ls: cannot access 'Write-Host': No such file or directory
+ls: cannot access 'Database directory does NOT exist': No such file or directory
+ls: cannot access '}': No such file or directory

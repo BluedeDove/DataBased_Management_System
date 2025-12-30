@@ -22,15 +22,30 @@ export interface ChatMessage {
 }
 
 export class AIService {
-  private embeddingService = new EmbeddingService()
-  private vectorRepository = new VectorRepository()
-  private bookRepository = new BookRepository()
-  private configService = new ConfigService()
-  private conversationRepository = new ConversationRepository()
+  private embeddingService: EmbeddingService
+  private vectorRepository: VectorRepository
+  private bookRepository: BookRepository
+  private configService: ConfigService
+  private conversationRepository: ConversationRepository
+  private initialized = false
 
   constructor() {
-    // 初始化向量表
-    this.vectorRepository.initTable()
+    // 延迟初始化，避免在 app.whenReady() 之前访问数据库
+    this.embeddingService = new EmbeddingService()
+    this.vectorRepository = new VectorRepository()
+    this.bookRepository = new BookRepository()
+    this.configService = new ConfigService()
+    this.conversationRepository = new ConversationRepository()
+  }
+
+  /**
+   * 初始化 AI 服务（在 app.whenReady() 之后调用）
+   */
+  init() {
+    if (!this.initialized) {
+      this.vectorRepository.initTable()
+      this.initialized = true
+    }
   }
 
   // 获取当前AI配置（优先使用数据库配置）
