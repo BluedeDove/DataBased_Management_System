@@ -2,14 +2,23 @@
   <div class="register-container">
     <div class="register-bg">
       <!-- 动态背景装饰 -->
-      <div class="bg-decoration"></div>
+      <div class="bg-decoration" />
     </div>
 
     <div class="register-card">
       <div class="register-header">
-        <el-icon class="logo-icon" :size="48"><UserFilled /></el-icon>
-        <h1 class="register-title">账号注册</h1>
-        <p class="register-subtitle">Register New Account</p>
+        <el-icon
+          class="logo-icon"
+          :size="48"
+        >
+          <UserFilled />
+        </el-icon>
+        <h1 class="register-title">
+          账号注册
+        </h1>
+        <p class="register-subtitle">
+          Register New Account
+        </p>
       </div>
 
       <el-form
@@ -19,7 +28,10 @@
         class="register-form"
         label-width="100px"
       >
-        <el-form-item label="姓名" prop="name">
+        <el-form-item
+          label="姓名"
+          prop="name"
+        >
           <el-input
             v-model="form.name"
             placeholder="请输入真实姓名"
@@ -28,7 +40,10 @@
           />
         </el-form-item>
 
-        <el-form-item label="用户名" prop="username">
+        <el-form-item
+          label="用户名"
+          prop="username"
+        >
           <el-input
             v-model="form.username"
             placeholder="请输入用户名（用于登录）"
@@ -37,7 +52,10 @@
           />
         </el-form-item>
 
-        <el-form-item label="密码" prop="password">
+        <el-form-item
+          label="密码"
+          prop="password"
+        >
           <el-input
             v-model="form.password"
             type="password"
@@ -48,7 +66,10 @@
           />
         </el-form-item>
 
-        <el-form-item label="确认密码" prop="confirmPassword">
+        <el-form-item
+          label="确认密码"
+          prop="confirmPassword"
+        >
           <el-input
             v-model="form.confirmPassword"
             type="password"
@@ -59,19 +80,31 @@
           />
         </el-form-item>
 
-        <el-form-item label="身份类型" prop="identity">
+        <el-form-item
+          label="身份类型"
+          prop="identity"
+        >
           <el-select
             v-model="form.identity"
             placeholder="请选择身份类型"
             size="large"
             style="width: 100%"
           >
-            <el-option label="教师" value="teacher" />
-            <el-option label="学生" value="student" />
+            <el-option
+              label="教师"
+              value="teacher"
+            />
+            <el-option
+              label="学生"
+              value="student"
+            />
           </el-select>
         </el-form-item>
 
-        <el-form-item label="学号/工号" prop="id_card">
+        <el-form-item
+          label="学号/工号"
+          prop="id_card"
+        >
           <el-input
             v-model="form.id_card"
             placeholder="请输入学号或工号（可选，留空自动生成）"
@@ -80,7 +113,10 @@
           />
         </el-form-item>
 
-        <el-form-item label="手机号" prop="phone">
+        <el-form-item
+          label="手机号"
+          prop="phone"
+        >
           <el-input
             v-model="form.phone"
             placeholder="请输入手机号"
@@ -89,7 +125,10 @@
           />
         </el-form-item>
 
-        <el-form-item label="邮箱" prop="email">
+        <el-form-item
+          label="邮箱"
+          prop="email"
+        >
           <el-input
             v-model="form.email"
             placeholder="请输入邮箱（可选）"
@@ -122,7 +161,12 @@
         <el-form-item>
           <div class="login-link">
             <span>已有账号？</span>
-            <el-link type="primary" @click="goToLogin">立即登录</el-link>
+            <el-link
+              type="primary"
+              @click="goToLogin"
+            >
+              立即登录
+            </el-link>
           </div>
         </el-form-item>
       </el-form>

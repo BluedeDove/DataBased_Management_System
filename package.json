@@ -19,6 +19,7 @@
     "db:generate": "tsx scripts/generate-data.ts",
     "db:clear": "tsx scripts/clear-database.ts",
     "db:clear:all": "tsx scripts/clear-database.ts --all",
+    "generate-pdf": "tsx scripts/generate-pdf.ts",
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
@@ -32,7 +33,9 @@
     "dompurify": "^3.0.6",
     "echarts": "^6.0.0",
     "element-plus": "^2.5.1",
+    "markdown-it": "^14.1.0",
     "marked": "^11.1.0",
+    "pdf-lib": "^1.17.1",
     "pinia": "^2.1.7",
     "vue": "^3.4.0",
     "vue-chartjs": "^5.3.0",
@@ -40,7 +43,7 @@
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.8",
-    "@types/node": "^20.10.6",
+    "@types/node": "^20.19.27",
     "@typescript-eslint/eslint-plugin": "^6.15.0",
     "@typescript-eslint/parser": "^6.15.0",
     "@vitejs/plugin-vue": "^5.0.0",
@@ -50,8 +53,10 @@
     "electron-rebuild": "^3.2.9",
     "eslint": "^8.56.0",
     "eslint-plugin-vue": "^9.19.2",
-    "jsdom": "^23.0.1",
+    "jsdom": "^23.2.0",
+    "mermaid": "^11.12.2",
     "playwright": "^1.40.1",
+    "puppeteer": "^24.34.0",
     "tsx": "^4.20.6",
     "typescript": "^5.3.3",
     "vite": "^5.0.10",

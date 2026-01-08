@@ -11,8 +11,11 @@
 
       <!-- AI服务状态 -->
       <div class="status-section">
-        <div class="status-indicator" :class="{ online: isAIOnline }">
-          <span class="status-dot"></span>
+        <div
+          class="status-indicator"
+          :class="{ online: isAIOnline }"
+        >
+          <span class="status-dot" />
           <span class="status-text">{{ isAIOnline ? '在线' : '离线' }}</span>
         </div>
         <div class="stats-info">
@@ -29,25 +32,43 @@
 
       <!-- 快捷功能 -->
       <div class="quick-actions">
-        <div class="section-title">快捷功能</div>
+        <div class="section-title">
+          快捷功能
+        </div>
         <div class="action-grid">
-          <button class="action-btn" @click="triggerTool('recommend')">
+          <button
+            class="action-btn"
+            @click="triggerTool('recommend')"
+          >
             <el-icon><Reading /></el-icon>
             <span>图书推荐</span>
           </button>
-          <button class="action-btn" @click="triggerTool('search')">
+          <button
+            class="action-btn"
+            @click="triggerTool('search')"
+          >
             <el-icon><Search /></el-icon>
             <span>语义搜索</span>
           </button>
-          <button class="action-btn" @click="startNewChat">
+          <button
+            class="action-btn"
+            @click="startNewChat"
+          >
             <el-icon><ChatDotRound /></el-icon>
             <span>新对话</span>
           </button>
-          <button class="action-btn" @click="regenerateLastMessage" :disabled="loading">
+          <button
+            class="action-btn"
+            :disabled="loading"
+            @click="regenerateLastMessage"
+          >
             <el-icon><RefreshRight /></el-icon>
             <span>重新生成</span>
           </button>
-          <button class="action-btn" @click="exportConversation">
+          <button
+            class="action-btn"
+            @click="exportConversation"
+          >
             <el-icon><Download /></el-icon>
             <span>导出对话</span>
           </button>
@@ -56,7 +77,9 @@
 
       <!-- 历史对话 -->
       <div class="history-section">
-        <div class="section-title">历史对话</div>
+        <div class="section-title">
+          历史对话
+        </div>
         <el-input
           v-model="searchQuery"
           placeholder="搜索对话..."
@@ -73,24 +96,28 @@
             @click="loadChatHistory(item)"
           >
             <el-icon><Clock /></el-icon>
-            <span v-if="editingConversationId !== item.id" class="history-text" @dblclick="startRename(item)">{{ item.title }}</span>
+            <span
+              v-if="editingConversationId !== item.id"
+              class="history-text"
+              @dblclick="startRename(item)"
+            >{{ item.title }}</span>
             <el-input
               v-else
+              ref="renameInputRef"
               v-model="editingTitleText"
               size="small"
+              class="rename-input"
               @blur="saveTitle(item)"
               @keyup.enter="saveTitle(item)"
               @keyup.esc="cancelRename"
-              class="rename-input"
-              ref="renameInputRef"
               @click.stop
             />
             <el-button
               v-if="editingConversationId !== item.id"
               text
               size="small"
-              @click="startRename(item)"
               class="rename-btn"
+              @click="startRename(item)"
             >
               <el-icon><Edit /></el-icon>
             </el-button>
@@ -98,13 +125,16 @@
               text
               size="small"
               type="danger"
-              @click="deleteConversation(item, $event)"
               class="delete-btn"
+              @click="deleteConversation(item, $event)"
             >
               <el-icon><Delete /></el-icon>
             </el-button>
           </div>
-          <div v-if="chatHistoryList.length === 0" class="empty-history">
+          <div
+            v-if="chatHistoryList.length === 0"
+            class="empty-history"
+          >
             暂无历史对话
           </div>
         </div>
@@ -116,52 +146,108 @@
       <!-- 聊天头部 -->
       <div class="chat-header">
         <div class="header-info">
-          <div class="header-title">智能图书助手</div>
-          <div class="header-subtitle">我可以为您推荐图书、查询信息或解答疑问</div>
+          <div class="header-title">
+            智能图书助手
+          </div>
+          <div class="header-subtitle">
+            我可以为您推荐图书、查询信息或解答疑问
+          </div>
         </div>
-        <el-tag type="info" effect="plain" round>Powered by AI</el-tag>
+        <el-tag
+          type="info"
+          effect="plain"
+          round
+        >
+          Powered by AI
+        </el-tag>
       </div>
 
       <!-- 消息列表 -->
-      <div class="chat-messages" ref="messagesRef">
-        <div v-for="(msg, index) in chatHistory" :key="msg.id || index"
-             class="message-row" :class="msg.role">
+      <div
+        ref="messagesRef"
+        class="chat-messages"
+      >
+        <div
+          v-for="(msg, index) in chatHistory"
+          :key="msg.id || index"
+          class="message-row"
+          :class="msg.role"
+        >
           <div class="avatar">
-            <el-icon v-if="msg.role === 'assistant'"><Service /></el-icon>
-            <el-icon v-else><User /></el-icon>
+            <el-icon v-if="msg.role === 'assistant'">
+              <Service />
+            </el-icon>
+            <el-icon v-else>
+              <User />
+            </el-icon>
           </div>
           <div class="bubble">
-            <div v-if="msg.loading" class="typing-indicator">
-              <span></span><span></span><span></span>
+            <div
+              v-if="msg.loading"
+              class="typing-indicator"
+            >
+              <span /><span /><span />
             </div>
-            <div v-else v-html="formatContent(msg.content)"></div>
+            <div
+              v-else
+              v-html="formatContent(msg.content)"
+            />
             <!-- 消息时间戳 -->
-            <div v-if="msg.timestamp && !msg.loading" class="message-timestamp">
+            <div
+              v-if="msg.timestamp && !msg.loading"
+              class="message-timestamp"
+            >
               {{ formatTime(msg.timestamp) }}
             </div>
             <!-- 消息操作按钮 -->
             <div class="message-actions">
               <!-- 复制按钮 -->
-              <el-tooltip content="复制" placement="top">
-                <el-button text size="small" @click="copyMessage(msg.content)">
+              <el-tooltip
+                content="复制"
+                placement="top"
+              >
+                <el-button
+                  text
+                  size="small"
+                  @click="copyMessage(msg.content)"
+                >
                   <el-icon><DocumentCopy /></el-icon>
                 </el-button>
               </el-tooltip>
               <!-- 编辑按钮（仅用户消息） -->
-              <el-tooltip v-if="msg.role === 'user' && !loading" content="编辑" placement="top">
-                <el-button text size="small" @click="editMessage(index)">
+              <el-tooltip
+                v-if="msg.role === 'user' && !loading"
+                content="编辑"
+                placement="top"
+              >
+                <el-button
+                  text
+                  size="small"
+                  @click="editMessage(index)"
+                >
                   <el-icon><Edit /></el-icon>
                 </el-button>
               </el-tooltip>
               <!-- 删除按钮 -->
-              <el-tooltip content="删除" placement="top">
-                <el-button text size="small" type="danger" @click="deleteMessage(index)">
+              <el-tooltip
+                content="删除"
+                placement="top"
+              >
+                <el-button
+                  text
+                  size="small"
+                  type="danger"
+                  @click="deleteMessage(index)"
+                >
                   <el-icon><Delete /></el-icon>
                 </el-button>
               </el-tooltip>
               <!-- 点赞/点踩按钮（仅AI消息） -->
               <template v-if="msg.role === 'assistant'">
-                <el-tooltip content="点赞" placement="top">
+                <el-tooltip
+                  content="点赞"
+                  placement="top"
+                >
                   <el-button
                     text
                     size="small"
@@ -171,7 +257,10 @@
                     <el-icon><Service /></el-icon>
                   </el-button>
                 </el-tooltip>
-                <el-tooltip content="点踩" placement="top">
+                <el-tooltip
+                  content="点踩"
+                  placement="top"
+                >
                   <el-button
                     text
                     size="small"
@@ -183,13 +272,17 @@
                 </el-tooltip>
               </template>
               <!-- 重新发送按钮（仅用户消息） -->
-              <el-tooltip v-if="msg.role === 'user' && !loading" content="重新发送" placement="top">
+              <el-tooltip
+                v-if="msg.role === 'user' && !loading"
+                content="重新发送"
+                placement="top"
+              >
                 <el-button
                   text
                   size="small"
                   type="info"
-                  @click="resendMessage(index)"
                   class="resend-btn"
+                  @click="resendMessage(index)"
                 >
                   <el-icon><RefreshRight /></el-icon>
                 </el-button>
@@ -202,10 +295,34 @@
       <!-- 输入区域 -->
       <div class="chat-input-area">
         <div class="quick-prompts">
-          <el-button size="small" round @click="setInput('最近有什么新书？')">📚 新书推荐</el-button>
-          <el-button size="small" round @click="setInput('适合初学者的Python书')">🐍 Python入门</el-button>
-          <el-button size="small" round @click="setInput('推荐一些关于人工智能的书籍')">🤖 AI相关</el-button>
-          <el-button size="small" round @click="setInput('如何查找图书馆的图书？')">🔍 使用帮助</el-button>
+          <el-button
+            size="small"
+            round
+            @click="setInput('最近有什么新书？')"
+          >
+            📚 新书推荐
+          </el-button>
+          <el-button
+            size="small"
+            round
+            @click="setInput('适合初学者的Python书')"
+          >
+            🐍 Python入门
+          </el-button>
+          <el-button
+            size="small"
+            round
+            @click="setInput('推荐一些关于人工智能的书籍')"
+          >
+            🤖 AI相关
+          </el-button>
+          <el-button
+            size="small"
+            round
+            @click="setInput('如何查找图书馆的图书？')"
+          >
+            🔍 使用帮助
+          </el-button>
         </div>
         <div class="input-wrapper">
           <el-input
@@ -213,15 +330,26 @@
             type="textarea"
             :rows="2"
             placeholder="输入您的问题，按 Enter 发送..."
-            @keydown.enter.prevent="sendMessage"
             :disabled="loading"
+            @keydown.enter.prevent="sendMessage"
           />
           <div class="button-group">
-            <el-button v-if="loading" type="danger" @click="stopGeneration" class="stop-btn">
+            <el-button
+              v-if="loading"
+              type="danger"
+              class="stop-btn"
+              @click="stopGeneration"
+            >
               <el-icon><VideoPause /></el-icon>
               停止
             </el-button>
-            <el-button v-else type="primary" :loading="loading" @click="sendMessage" class="send-btn">
+            <el-button
+              v-else
+              type="primary"
+              :loading="loading"
+              class="send-btn"
+              @click="sendMessage"
+            >
               <el-icon><Promotion /></el-icon>
               发送
             </el-button>
@@ -231,13 +359,20 @@
     </div>
 
     <!-- 右侧推荐面板 -->
-    <div class="recommend-panel glass-card" v-show="showRecommendPanel">
+    <div
+      v-show="showRecommendPanel"
+      class="recommend-panel glass-card"
+    >
       <div class="panel-header">
         <div class="header-title">
           <el-icon><Reading /></el-icon>
           推荐图书
         </div>
-        <el-button text @click="showRecommendPanel = false" v-if="windowWidth > 1400">
+        <el-button
+          v-if="windowWidth > 1400"
+          text
+          @click="showRecommendPanel = false"
+        >
           <el-icon><Close /></el-icon>
         </el-button>
       </div>
@@ -253,18 +388,30 @@
               <el-icon><Document /></el-icon>
             </div>
             <div class="book-info">
-              <div class="book-title">{{ book.title }}</div>
-              <div class="book-author">{{ book.author }}</div>
+              <div class="book-title">
+                {{ book.title }}
+              </div>
+              <div class="book-author">
+                {{ book.author }}
+              </div>
               <div class="book-meta">
                 <span class="similarity">相关度: {{ book.similarity }}%</span>
               </div>
             </div>
-            <el-button size="small" text type="primary" @click="viewBookDetail(book)">
+            <el-button
+              size="small"
+              text
+              type="primary"
+              @click="viewBookDetail(book)"
+            >
               查看详情
             </el-button>
           </div>
         </div>
-        <div v-else class="empty-recommend">
+        <div
+          v-else
+          class="empty-recommend"
+        >
           <el-icon><Reading /></el-icon>
           <p>发起对话后，推荐图书将显示在这里</p>
         </div>

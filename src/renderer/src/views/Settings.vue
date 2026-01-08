@@ -1,12 +1,19 @@
 <template>
   <div class="page-container">
     <div class="page-header">
-      <h1 class="page-title">系统设置</h1>
-      <p class="page-description">管理系统参数和配置</p>
+      <h1 class="page-title">
+        系统设置
+      </h1>
+      <p class="page-description">
+        管理系统参数和配置
+      </p>
     </div>
 
     <div class="glass-card settings-card">
-      <el-tabs v-model="activeTab" class="custom-tabs">
+      <el-tabs
+        v-model="activeTab"
+        class="custom-tabs"
+      >
         <el-tab-pane name="basic">
           <template #label>
             <span class="tab-label">
@@ -15,10 +22,21 @@
             </span>
           </template>
           <div class="settings-content">
-            <el-descriptions title="系统信息" :column="2" border class="custom-descriptions">
-              <el-descriptions-item label="系统名称">智能图书管理系统</el-descriptions-item>
-              <el-descriptions-item label="版本">1.0.0</el-descriptions-item>
-              <el-descriptions-item label="当前用户">{{ userStore.user?.name }}</el-descriptions-item>
+            <el-descriptions
+              title="系统信息"
+              :column="2"
+              border
+              class="custom-descriptions"
+            >
+              <el-descriptions-item label="系统名称">
+                智能图书管理系统
+              </el-descriptions-item>
+              <el-descriptions-item label="版本">
+                1.0.0
+              </el-descriptions-item>
+              <el-descriptions-item label="当前用户">
+                {{ userStore.user?.name }}
+              </el-descriptions-item>
               <el-descriptions-item label="角色">
                 {{ getRoleLabel(userStore.user?.role) }}
               </el-descriptions-item>
@@ -34,21 +52,57 @@
             </span>
           </template>
           <div class="settings-content">
-            <el-button type="primary" :icon="Plus" @click="showCategoryDialog = true" size="large" class="add-btn">
+            <el-button
+              type="primary"
+              :icon="Plus"
+              size="large"
+              class="add-btn"
+              @click="showCategoryDialog = true"
+            >
               新增种类
             </el-button>
-            <el-table :data="readerCategories" class="custom-table" style="margin-top: 20px">
-              <el-table-column prop="code" label="编码" width="100" />
-              <el-table-column prop="name" label="名称" width="120" />
-              <el-table-column prop="max_borrow_count" label="最大借阅数" width="110" />
-              <el-table-column prop="max_borrow_days" label="借阅期限(天)" width="120" />
-              <el-table-column prop="validity_days" label="有效期(天)" width="110" />
-              <el-table-column prop="notes" label="备注" />
+            <el-table
+              :data="readerCategories"
+              class="custom-table"
+              style="margin-top: 20px"
+            >
+              <el-table-column
+                prop="code"
+                label="编码"
+                width="100"
+              />
+              <el-table-column
+                prop="name"
+                label="名称"
+                width="120"
+              />
+              <el-table-column
+                prop="max_borrow_count"
+                label="最大借阅数"
+                width="110"
+              />
+              <el-table-column
+                prop="max_borrow_days"
+                label="借阅期限(天)"
+                width="120"
+              />
+              <el-table-column
+                prop="validity_days"
+                label="有效期(天)"
+                width="110"
+              />
+              <el-table-column
+                prop="notes"
+                label="备注"
+              />
             </el-table>
           </div>
         </el-tab-pane>
 
-        <el-tab-pane v-if="isAdmin" name="ai">
+        <el-tab-pane
+          v-if="isAdmin"
+          name="ai"
+        >
           <template #label>
             <span class="tab-label">
               <el-icon><MagicStick /></el-icon>
@@ -65,10 +119,20 @@
                 <p>配置OpenAI API以启用智能推荐和语义搜索功能</p>
               </div>
             </div>
-            <el-form :model="aiConfigForm" label-width="140px" class="ai-form">
+            <el-form
+              :model="aiConfigForm"
+              label-width="140px"
+              class="ai-form"
+            >
               <el-form-item label="API URL">
-                <el-input v-model="aiConfigForm.apiUrl" placeholder="https://api.openai.com/v1" size="large">
-                  <template #prefix><el-icon><Link /></el-icon></template>
+                <el-input
+                  v-model="aiConfigForm.apiUrl"
+                  placeholder="https://api.openai.com/v1"
+                  size="large"
+                >
+                  <template #prefix>
+                    <el-icon><Link /></el-icon>
+                  </template>
                 </el-input>
               </el-form-item>
               <el-form-item label="API Key">
@@ -79,7 +143,9 @@
                   show-password
                   size="large"
                 >
-                  <template #prefix><el-icon><Lock /></el-icon></template>
+                  <template #prefix>
+                    <el-icon><Lock /></el-icon>
+                  </template>
                 </el-input>
               </el-form-item>
               <el-form-item label="Embedding模型">
@@ -88,20 +154,40 @@
                   placeholder="text-embedding-3-small"
                   size="large"
                 >
-                  <template #prefix><el-icon><Document /></el-icon></template>
+                  <template #prefix>
+                    <el-icon><Document /></el-icon>
+                  </template>
                 </el-input>
               </el-form-item>
               <el-form-item label="Chat模型">
-                <el-input v-model="aiConfigForm.chatModel" placeholder="gpt-4-turbo-preview" size="large">
-                  <template #prefix><el-icon><ChatDotRound /></el-icon></template>
+                <el-input
+                  v-model="aiConfigForm.chatModel"
+                  placeholder="gpt-4-turbo-preview"
+                  size="large"
+                >
+                  <template #prefix>
+                    <el-icon><ChatDotRound /></el-icon>
+                  </template>
                 </el-input>
               </el-form-item>
               <el-form-item>
-                <el-button type="primary" @click="handleTestConnection" :loading="testingConnection" size="large" class="test-btn">
+                <el-button
+                  type="primary"
+                  :loading="testingConnection"
+                  size="large"
+                  class="test-btn"
+                  @click="handleTestConnection"
+                >
                   <el-icon><Connection /></el-icon>
                   测试连接
                 </el-button>
-                <el-button type="success" @click="handleSaveAIConfig" :loading="savingConfig" size="large" class="save-btn">
+                <el-button
+                  type="success"
+                  :loading="savingConfig"
+                  size="large"
+                  class="save-btn"
+                  @click="handleSaveAIConfig"
+                >
                   <el-icon><Check /></el-icon>
                   保存配置
                 </el-button>
@@ -110,7 +196,10 @@
           </div>
         </el-tab-pane>
 
-        <el-tab-pane v-if="isAdmin" name="vector">
+        <el-tab-pane
+          v-if="isAdmin"
+          name="vector"
+        >
           <template #label>
             <span class="tab-label">
               <el-icon><Operation /></el-icon>
@@ -118,7 +207,12 @@
             </span>
           </template>
           <div class="settings-content">
-            <el-descriptions title="向量数据库状态" :column="2" border class="custom-descriptions">
+            <el-descriptions
+              title="向量数据库状态"
+              :column="2"
+              border
+              class="custom-descriptions"
+            >
               <el-descriptions-item label="已向量化图书">
                 {{ vectorStats.totalVectors }}
               </el-descriptions-item>
@@ -131,14 +225,17 @@
               <el-button
                 type="primary"
                 :loading="vectorLoading"
-                @click="handleBatchCreateVectors"
                 size="large"
                 class="vector-btn"
+                @click="handleBatchCreateVectors"
               >
                 <el-icon><Upload /></el-icon>
                 批量生成向量
               </el-button>
-              <el-text type="info" class="hint-text">
+              <el-text
+                type="info"
+                class="hint-text"
+              >
                 将为所有未向量化的图书生成向量（需要API密钥）
               </el-text>
             </div>
@@ -155,27 +252,54 @@
           <div class="settings-content about-section">
             <div class="about-logo">
               <div class="logo-circle">
-                <el-icon :size="48"><Reading /></el-icon>
+                <el-icon :size="48">
+                  <Reading />
+                </el-icon>
               </div>
             </div>
-            <h2 class="about-title">智能图书管理系统</h2>
+            <h2 class="about-title">
+              智能图书管理系统
+            </h2>
             <p class="about-desc">
-              基于 Electron + Vue 3 + TypeScript 开发<br />
-              采用领域驱动设计和分层架构<br />
+              基于 Electron + Vue 3 + TypeScript 开发<br>
+              采用领域驱动设计和分层架构<br>
               提供完整的图书馆管理解决方案
             </p>
             <div class="about-tags">
-              <el-tag size="large" type="primary">v1.0.0</el-tag>
-              <el-tag size="large" type="success">企业级</el-tag>
-              <el-tag size="large" type="info">开源</el-tag>
+              <el-tag
+                size="large"
+                type="primary"
+              >
+                v1.0.0
+              </el-tag>
+              <el-tag
+                size="large"
+                type="success"
+              >
+                企业级
+              </el-tag>
+              <el-tag
+                size="large"
+                type="info"
+              >
+                开源
+              </el-tag>
             </div>
           </div>
         </el-tab-pane>
       </el-tabs>
     </div>
 
-    <el-dialog v-model="showCategoryDialog" title="新增读者种类" width="500px" class="category-dialog">
-      <el-form :model="categoryForm" label-width="120px">
+    <el-dialog
+      v-model="showCategoryDialog"
+      title="新增读者种类"
+      width="500px"
+      class="category-dialog"
+    >
+      <el-form
+        :model="categoryForm"
+        label-width="120px"
+      >
         <el-form-item label="编码">
           <el-input v-model="categoryForm.code" />
         </el-form-item>
@@ -183,21 +307,40 @@
           <el-input v-model="categoryForm.name" />
         </el-form-item>
         <el-form-item label="最大借阅数">
-          <el-input-number v-model="categoryForm.max_borrow_count" :min="1" />
+          <el-input-number
+            v-model="categoryForm.max_borrow_count"
+            :min="1"
+          />
         </el-form-item>
         <el-form-item label="借阅期限(天)">
-          <el-input-number v-model="categoryForm.max_borrow_days" :min="1" />
+          <el-input-number
+            v-model="categoryForm.max_borrow_days"
+            :min="1"
+          />
         </el-form-item>
         <el-form-item label="有效期(天)">
-          <el-input-number v-model="categoryForm.validity_days" :min="1" />
+          <el-input-number
+            v-model="categoryForm.validity_days"
+            :min="1"
+          />
         </el-form-item>
         <el-form-item label="备注">
-          <el-input v-model="categoryForm.notes" type="textarea" />
+          <el-input
+            v-model="categoryForm.notes"
+            type="textarea"
+          />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showCategoryDialog = false">取消</el-button>
-        <el-button type="primary" @click="handleCreateCategory">确定</el-button>
+        <el-button @click="showCategoryDialog = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          @click="handleCreateCategory"
+        >
+          确定
+        </el-button>
       </template>
     </el-dialog>
   </div>

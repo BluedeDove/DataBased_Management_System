@@ -1,16 +1,29 @@
 <template>
   <el-container class="layout-container">
-    <el-aside width="240px" class="glass-sidebar">
+    <el-aside
+      width="240px"
+      class="glass-sidebar"
+    >
       <div class="logo-area">
-        <img src="/images/gdut-logo.jpg" alt="广工校徽" class="gdut-logo" />
+        <img
+          src="/images/gdut-logo.jpg"
+          alt="广工校徽"
+          class="gdut-logo"
+        >
         <div class="brand-text">
           <span class="app-name">智能图书馆</span>
           <span class="gdut-badge">广工</span>
         </div>
       </div>
 
-      <el-menu :default-active="route.path" router class="custom-menu" background-color="transparent"
-        text-color="#64748b" active-text-color="#6366f1">
+      <el-menu
+        :default-active="route.path"
+        router
+        class="custom-menu"
+        background-color="transparent"
+        text-color="#64748b"
+        active-text-color="#6366f1"
+      >
         <el-menu-item index="/dashboard">
           <el-icon>
             <Odometer />
@@ -26,7 +39,10 @@
             <MagicStick />
           </el-icon><span>AI 助手</span>
         </el-menu-item>
-        <el-menu-item v-if="hasPermission(['admin', 'librarian'])" index="/readers">
+        <el-menu-item
+          v-if="hasPermission(['admin', 'librarian'])"
+          index="/readers"
+        >
           <el-icon>
             <User />
           </el-icon><span>读者管理</span>
@@ -36,12 +52,18 @@
             <Notebook />
           </el-icon><span>借阅管理</span>
         </el-menu-item>
-        <el-menu-item v-if="hasPermission(['admin', 'librarian'])" index="/statistics">
+        <el-menu-item
+          v-if="hasPermission(['admin', 'librarian'])"
+          index="/statistics"
+        >
           <el-icon>
             <TrendCharts />
           </el-icon><span>统计分析</span>
         </el-menu-item>
-        <el-menu-item v-if="hasPermission(['admin', 'librarian'])" index="/settings">
+        <el-menu-item
+          v-if="hasPermission(['admin', 'librarian'])"
+          index="/settings"
+        >
           <el-icon>
             <Setting />
           </el-icon><span>系统设置</span>
@@ -52,11 +74,24 @@
     <el-container>
       <el-header class="glass-header">
         <div class="header-content">
-          <h2 class="current-title">{{ route.meta.title || '首页' }}</h2>
+          <h2 class="current-title">
+            {{ route.meta.title || '首页' }}
+          </h2>
           <div class="user-profile">
-            <el-avatar :size="36" class="user-avatar">{{ userStore.user?.name?.charAt(0) }}</el-avatar>
+            <el-avatar
+              :size="36"
+              class="user-avatar"
+            >
+              {{ userStore.user?.name?.charAt(0) }}
+            </el-avatar>
             <span class="username">{{ userStore.user?.name }}</span>
-            <el-button link type="danger" @click="logout">退出</el-button>
+            <el-button
+              link
+              type="danger"
+              @click="logout"
+            >
+              退出
+            </el-button>
           </div>
         </div>
       </el-header>
@@ -64,7 +99,10 @@
       <el-main class="main-content">
         <!-- 核心：过渡动画 + 缓存 -->
         <router-view v-slot="{ Component }">
-          <transition name="fade-slide" mode="out-in">
+          <transition
+            name="fade-slide"
+            mode="out-in"
+          >
             <keep-alive include="AIAssistant">
               <component :is="Component" />
             </keep-alive>

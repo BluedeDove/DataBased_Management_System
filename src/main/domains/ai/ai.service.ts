@@ -262,7 +262,7 @@ export class AIService {
       logger.info('[AI] 历史消息数量:', history.length)
 
       // 简单的意图识别：如果包含搜索关键词，自动触发语义搜索（模拟Agent工具调用）
-      const searchKeywords = ['找', '书', '推荐', '查询', 'book', 'recommend', 'search', 'find', '关于']
+      const searchKeywords = ['找', '书', '推荐', '查询', 'book', 'recommend', 'search', 'find', '关于', '有', '帮']
       const shouldSearch = searchKeywords.some(kw => message.toLowerCase().includes(kw))
 
       if (shouldSearch) {

@@ -2,23 +2,58 @@
   <div class="page-container">
     <div class="action-bar">
       <div class="title-group">
-        <h2 class="page-title">图书库</h2>
-        <div class="gdut-decoration"></div>
+        <h2 class="page-title">
+          图书库
+        </h2>
+        <div class="gdut-decoration" />
         <span class="sub-text">管理全馆 {{ total }} 本藏书</span>
       </div>
       <div class="actions">
-        <el-button type="primary" size="large" icon="Plus" class="glow-btn" @click="handleAdd" v-if="canManage">新增图书</el-button>
-        <el-button icon="Download" size="large" @click="handleExportClick">导出数据</el-button>
+        <el-button
+          v-if="canManage"
+          type="primary"
+          size="large"
+          icon="Plus"
+          class="glow-btn"
+          @click="handleAdd"
+        >
+          新增图书
+        </el-button>
+        <el-button
+          icon="Download"
+          size="large"
+          @click="handleExportClick"
+        >
+          导出数据
+        </el-button>
       </div>
     </div>
 
     <!-- 搜索过滤卡片 -->
     <div class="glass-card search-card">
       <div class="search-row">
-        <el-input v-model="searchQuery" placeholder="搜索书名、ISBN或作者..." prefix-icon="Search" size="large"
-          class="main-search" clearable @clear="fetchData" @keyup.enter="fetchData" />
-        <el-select v-model="category" placeholder="图书类别" size="large" style="width: 160px" clearable @change="fetchData">
-          <el-option label="全部" :value="null" />
+        <el-input
+          v-model="searchQuery"
+          placeholder="搜索书名、ISBN或作者..."
+          prefix-icon="Search"
+          size="large"
+          class="main-search"
+          clearable
+          @clear="fetchData"
+          @keyup.enter="fetchData"
+        />
+        <el-select
+          v-model="category"
+          placeholder="图书类别"
+          size="large"
+          style="width: 160px"
+          clearable
+          @change="fetchData"
+        >
+          <el-option
+            label="全部"
+            :value="null"
+          />
           <el-option
             v-for="cat in categories"
             :key="cat.id"
@@ -26,19 +61,50 @@
             :value="cat.id"
           />
         </el-select>
-        <el-button type="primary" size="large" @click="fetchData">查询</el-button>
-        <el-button :icon="Filter" size="large" @click="advancedSearchVisible = true">高级搜索</el-button>
-        <el-button size="large" @click="handleReset" plain>重置</el-button>
+        <el-button
+          type="primary"
+          size="large"
+          @click="fetchData"
+        >
+          查询
+        </el-button>
+        <el-button
+          :icon="Filter"
+          size="large"
+          @click="advancedSearchVisible = true"
+        >
+          高级搜索
+        </el-button>
+        <el-button
+          size="large"
+          plain
+          @click="handleReset"
+        >
+          重置
+        </el-button>
       </div>
     </div>
 
     <!-- 高级搜索对话框 -->
-    <el-dialog v-model="advancedSearchVisible" title="高级搜索" width="600px" destroy-on-close>
+    <el-dialog
+      v-model="advancedSearchVisible"
+      title="高级搜索"
+      width="600px"
+      destroy-on-close
+    >
       <el-tabs v-model="searchType">
-        <el-tab-pane label="正则匹配" name="regex">
+        <el-tab-pane
+          label="正则匹配"
+          name="regex"
+        >
           <el-form label-position="top">
             <el-form-item label="图书类别">
-              <el-select v-model="advancedForm.category_id" placeholder="选择类别" clearable style="width: 100%">
+              <el-select
+                v-model="advancedForm.category_id"
+                placeholder="选择类别"
+                clearable
+                style="width: 100%"
+              >
                 <el-option
                   v-for="cat in categories"
                   :key="cat.id"
@@ -48,12 +114,30 @@
               </el-select>
             </el-form-item>
             <el-form-item label="搜索模式">
-              <el-select v-model="advancedForm.searchMode" style="width: 100%">
-                <el-option label="包含匹配" value="contains" />
-                <el-option label="精确匹配" value="exact" />
-                <el-option label="前缀匹配" value="startsWith" />
-                <el-option label="后缀匹配" value="endsWith" />
-                <el-option label="正则表达式" value="regex" />
+              <el-select
+                v-model="advancedForm.searchMode"
+                style="width: 100%"
+              >
+                <el-option
+                  label="包含匹配"
+                  value="contains"
+                />
+                <el-option
+                  label="精确匹配"
+                  value="exact"
+                />
+                <el-option
+                  label="前缀匹配"
+                  value="startsWith"
+                />
+                <el-option
+                  label="后缀匹配"
+                  value="endsWith"
+                />
+                <el-option
+                  label="正则表达式"
+                  value="regex"
+                />
               </el-select>
             </el-form-item>
             <el-form-item label="搜索内容">
@@ -63,48 +147,94 @@
                 clearable
                 @input="validateRegexPattern"
               />
-              <div v-if="regexError" style="color: #f56c6c; font-size: 12px; margin-top: 4px;">
+              <div
+                v-if="regexError"
+                style="color: #f56c6c; font-size: 12px; margin-top: 4px;"
+              >
                 {{ regexError }}
               </div>
-              <div v-if="advancedForm.searchMode === 'regex'" style="color: #909399; font-size: 12px; margin-top: 4px;">
+              <div
+                v-if="advancedForm.searchMode === 'regex'"
+                style="color: #909399; font-size: 12px; margin-top: 4px;"
+              >
                 提示：正则表达式模式支持完整的正则语法，如 ^Java$、Py.*n 等
               </div>
             </el-form-item>
             <el-form-item label="匹配字段">
               <el-checkbox-group v-model="advancedForm.fields">
-                <el-checkbox label="title">书名</el-checkbox>
-                <el-checkbox label="author">作者</el-checkbox>
-                <el-checkbox label="isbn">ISBN</el-checkbox>
+                <el-checkbox label="title">
+                  书名
+                </el-checkbox>
+                <el-checkbox label="author">
+                  作者
+                </el-checkbox>
+                <el-checkbox label="isbn">
+                  ISBN
+                </el-checkbox>
               </el-checkbox-group>
             </el-form-item>
           </el-form>
         </el-tab-pane>
-        <el-tab-pane label="语义检索" name="vector">
+        <el-tab-pane
+          label="语义检索"
+          name="vector"
+        >
           <el-form label-position="top">
             <el-form-item label="自然语言描述">
-              <el-input v-model="advancedForm.vectorQuery" type="textarea" rows="3" placeholder="例如: 适合初学者的Python编程书籍，最好有实战案例" />
+              <el-input
+                v-model="advancedForm.vectorQuery"
+                type="textarea"
+                rows="3"
+                placeholder="例如: 适合初学者的Python编程书籍，最好有实战案例"
+              />
             </el-form-item>
           </el-form>
         </el-tab-pane>
-        <el-tab-pane label="SQL查询" name="sql">
+        <el-tab-pane
+          label="SQL查询"
+          name="sql"
+        >
           <el-form label-position="top">
             <el-form-item label="SQL WHERE 子句">
-              <el-input v-model="advancedForm.sql" type="textarea" rows="3" placeholder="例如: SELECT * FROM books WHERE price > 50 AND available_quantity > 0" />
+              <el-input
+                v-model="advancedForm.sql"
+                type="textarea"
+                rows="3"
+                placeholder="例如: SELECT * FROM books WHERE price > 50 AND available_quantity > 0"
+              />
               <span style="font-size:12px;color:#999">注意：仅限SELECT查询，需直接编写完整SQL</span>
             </el-form-item>
           </el-form>
         </el-tab-pane>
       </el-tabs>
       <template #footer>
-        <el-button @click="advancedSearchVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleAdvancedSearch" :loading="loading">执行搜索</el-button>
-        <el-button @click="handleReset">重置所有</el-button>
+        <el-button @click="advancedSearchVisible = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="loading"
+          @click="handleAdvancedSearch"
+        >
+          执行搜索
+        </el-button>
+        <el-button @click="handleReset">
+          重置所有
+        </el-button>
       </template>
     </el-dialog>
 
     <!-- 编辑图书对话框 -->
-    <el-dialog v-model="editVisible" title="编辑图书" width="500px" destroy-on-close>
-      <el-form :model="currentBook" label-width="80px">
+    <el-dialog
+      v-model="editVisible"
+      title="编辑图书"
+      width="500px"
+      destroy-on-close
+    >
+      <el-form
+        :model="currentBook"
+        label-width="80px"
+      >
         <el-form-item label="书名">
           <el-input v-model="currentBook.title" />
         </el-form-item>
@@ -115,40 +245,95 @@
           <el-input v-model="currentBook.publisher" />
         </el-form-item>
         <el-form-item label="定价">
-          <el-input-number v-model="currentBook.price" :precision="2" :step="0.1" />
+          <el-input-number
+            v-model="currentBook.price"
+            :precision="2"
+            :step="0.1"
+          />
         </el-form-item>
         <el-form-item label="总库存">
-          <el-input-number v-model="currentBook.total_quantity" :min="1" />
+          <el-input-number
+            v-model="currentBook.total_quantity"
+            :min="1"
+          />
         </el-form-item>
         <!-- 更多字段... -->
       </el-form>
       <template #footer>
-        <el-button @click="editVisible = false">取消</el-button>
-        <el-button type="primary" @click="saveEdit">保存</el-button>
+        <el-button @click="editVisible = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          @click="saveEdit"
+        >
+          保存
+        </el-button>
       </template>
     </el-dialog>
 
     <!-- 新增图书对话框 -->
-    <el-dialog v-model="addVisible" title="新增图书" width="500px" destroy-on-close>
-      <el-form :model="addForm" label-width="80px">
-        <el-form-item label="书名" required>
-          <el-input v-model="addForm.title" placeholder="请输入书名" />
+    <el-dialog
+      v-model="addVisible"
+      title="新增图书"
+      width="500px"
+      destroy-on-close
+    >
+      <el-form
+        :model="addForm"
+        label-width="80px"
+      >
+        <el-form-item
+          label="书名"
+          required
+        >
+          <el-input
+            v-model="addForm.title"
+            placeholder="请输入书名"
+          />
         </el-form-item>
-        <el-form-item label="作者" required>
-          <el-input v-model="addForm.author" placeholder="请输入作者" />
+        <el-form-item
+          label="作者"
+          required
+        >
+          <el-input
+            v-model="addForm.author"
+            placeholder="请输入作者"
+          />
         </el-form-item>
-        <el-form-item label="出版社" required>
-          <el-input v-model="addForm.publisher" placeholder="请输入出版社" />
+        <el-form-item
+          label="出版社"
+          required
+        >
+          <el-input
+            v-model="addForm.publisher"
+            placeholder="请输入出版社"
+          />
         </el-form-item>
-        <el-form-item label="ISBN" required>
-          <el-input v-model="addForm.isbn" placeholder="留空自动生成">
+        <el-form-item
+          label="ISBN"
+          required
+        >
+          <el-input
+            v-model="addForm.isbn"
+            placeholder="留空自动生成"
+          >
             <template #append>
-              <el-button @click="addForm.isbn = 'AUTO'">自动生成</el-button>
+              <el-button @click="addForm.isbn = 'AUTO'">
+                自动生成
+              </el-button>
             </template>
           </el-input>
         </el-form-item>
-        <el-form-item label="图书类别" required>
-          <el-select v-model="addForm.category_id" placeholder="请选择图书类别" style="width: 100%">
+        <el-form-item
+          label="图书类别"
+          required
+        >
+          <el-select
+            v-model="addForm.category_id"
+            placeholder="请选择图书类别"
+            style="width: 100%"
+          >
             <el-option
               v-for="cat in categories"
               :key="cat.id"
@@ -158,25 +343,55 @@
           </el-select>
         </el-form-item>
         <el-form-item label="定价">
-          <el-input-number v-model="addForm.price" :precision="2" :step="0.1" :min="0" style="width: 100%" />
+          <el-input-number
+            v-model="addForm.price"
+            :precision="2"
+            :step="0.1"
+            :min="0"
+            style="width: 100%"
+          />
         </el-form-item>
-        <el-form-item label="总库存" required>
-          <el-input-number v-model="addForm.total_quantity" :min="1" style="width: 100%" />
+        <el-form-item
+          label="总库存"
+          required
+        >
+          <el-input-number
+            v-model="addForm.total_quantity"
+            :min="1"
+            style="width: 100%"
+          />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="addVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleAddSubmit" :loading="addLoading">添加</el-button>
+        <el-button @click="addVisible = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="addLoading"
+          @click="handleAddSubmit"
+        >
+          添加
+        </el-button>
       </template>
     </el-dialog>
 
     <!-- 导出数据对话框 -->
-    <el-dialog v-model="exportVisible" title="导出图书数据" width="400px" destroy-on-close>
+    <el-dialog
+      v-model="exportVisible"
+      title="导出图书数据"
+      width="400px"
+      destroy-on-close
+    >
       <el-form label-position="top">
         <el-form-item label="选择导出格式">
           <el-radio-group v-model="exportFormat">
-            <el-radio value="csv">CSV 格式</el-radio>
-            <el-radio value="json">JSON 格式</el-radio>
+            <el-radio value="csv">
+              CSV 格式
+            </el-radio>
+            <el-radio value="json">
+              JSON 格式
+            </el-radio>
           </el-radio-group>
         </el-form-item>
         <el-alert
@@ -189,52 +404,112 @@
         </el-alert>
       </el-form>
       <template #footer>
-        <el-button @click="exportVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleExport" :loading="exportLoading">导出</el-button>
+        <el-button @click="exportVisible = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="exportLoading"
+          @click="handleExport"
+        >
+          导出
+        </el-button>
       </template>
     </el-dialog>
 
     <!-- 图书表格 -->
     <div class="glass-card table-wrapper">
-      <el-table :data="bookList" style="width: 100%" size="large" v-loading="loading">
-        <el-table-column label="图书信息" min-width="280">
+      <el-table
+        v-loading="loading"
+        :data="bookList"
+        style="width: 100%"
+        size="large"
+      >
+        <el-table-column
+          label="图书信息"
+          min-width="280"
+        >
           <template #default="{ row }">
             <div class="book-info-cell">
-              <img src="/images/gdut-logo.jpg" alt="广工校徽" class="book-cover-icon" />
+              <img
+                src="/images/gdut-logo.jpg"
+                alt="广工校徽"
+                class="book-cover-icon"
+              >
               <div>
-                <div class="title" v-html="highlightText(row.book_title)"></div>
-                <div class="isbn">ISBN: <span v-html="highlightText(row.isbn)"></span></div>
+                <div
+                  class="title"
+                  v-html="highlightText(row.book_title)"
+                />
+                <div class="isbn">
+                  ISBN: <span v-html="highlightText(row.isbn)" />
+                </div>
               </div>
             </div>
           </template>
         </el-table-column>
 
-        <el-table-column prop="author" label="作者" width="180">
+        <el-table-column
+          prop="author"
+          label="作者"
+          width="180"
+        >
           <template #default="{ row }">
-            <span v-html="highlightText(row.author)"></span>
+            <span v-html="highlightText(row.author)" />
           </template>
         </el-table-column>
-        <el-table-column prop="category" label="分类" width="120">
+        <el-table-column
+          prop="category"
+          label="分类"
+          width="120"
+        >
           <template #default="{ row }">
-            <el-tag effect="plain" round>{{ row.category }}</el-tag>
+            <el-tag
+              effect="plain"
+              round
+            >
+              {{ row.category }}
+            </el-tag>
           </template>
         </el-table-column>
 
-        <el-table-column label="库存状态" width="200">
+        <el-table-column
+          label="库存状态"
+          width="200"
+        >
           <template #default="{ row }">
             <div class="stock-status">
-              <el-progress :percentage="Number((row.available_quantity / row.total_quantity * 100).toFixed(0))"
-                :status="row.available_quantity == 0 ? 'exception' : ''" :stroke-width="6" />
+              <el-progress
+                :percentage="Number((row.available_quantity / row.total_quantity * 100).toFixed(0))"
+                :status="row.available_quantity == 0 ? 'exception' : ''"
+                :stroke-width="6"
+              />
               <span class="stock-text">{{ row.available_quantity }} / {{ row.total_quantity }} 本</span>
             </div>
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column
+          label="操作"
+          width="180"
+          fixed="right"
+        >
           <template #default="{ row }">
             <div v-if="canManage">
-              <el-button link type="primary" @click="handleEdit(row)">编辑</el-button>
-              <el-button link type="danger" @click="handleDelete(row)">下架</el-button>
+              <el-button
+                link
+                type="primary"
+                @click="handleEdit(row)"
+              >
+                编辑
+              </el-button>
+              <el-button
+                link
+                type="danger"
+                @click="handleDelete(row)"
+              >
+                下架
+              </el-button>
             </div>
             <div v-else>
               <el-button
@@ -252,7 +527,11 @@
       </el-table>
 
       <div class="pagination">
-        <el-pagination background layout="prev, pager, next" :total="total" />
+        <el-pagination
+          background
+          layout="prev, pager, next"
+          :total="total"
+        />
       </div>
     </div>
   </div>

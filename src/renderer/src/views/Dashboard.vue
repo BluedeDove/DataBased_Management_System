@@ -2,24 +2,39 @@
   <div class="page-container">
     <div class="page-header">
       <div class="header-content">
-        <h2 class="page-title">{{ dashboardTitle }}</h2>
-        <div class="gdut-accent"></div>
+        <h2 class="page-title">
+          {{ dashboardTitle }}
+        </h2>
+        <div class="gdut-accent" />
       </div>
-      <p class="text-secondary">欢迎回来，每一天都是阅读的好日子。</p>
+      <p class="text-secondary">
+        欢迎回来，每一天都是阅读的好日子。
+      </p>
     </div>
 
     <!-- 统计卡片组 -->
     <div class="stat-grid">
-      <div class="glass-card stat-card" v-for="(item, i) in statCards" :key="i"
-        :style="{ animationDelay: i * 0.1 + 's' }">
-        <div class="stat-icon" :class="item.color">
+      <div
+        v-for="(item, i) in statCards"
+        :key="i"
+        class="glass-card stat-card"
+        :style="{ animationDelay: i * 0.1 + 's' }"
+      >
+        <div
+          class="stat-icon"
+          :class="item.color"
+        >
           <component :is="item.icon" />
         </div>
         <div class="stat-info">
-          <div class="stat-value">{{ item.value }}</div>
-          <div class="stat-label">{{ item.label }}</div>
+          <div class="stat-value">
+            {{ item.value }}
+          </div>
+          <div class="stat-label">
+            {{ item.label }}
+          </div>
         </div>
-        <div class="stat-decoration"></div>
+        <div class="stat-decoration" />
       </div>
     </div>
 
@@ -29,9 +44,17 @@
       <div class="glass-card chart-section">
         <div class="card-header">
           <h3>借阅趋势</h3>
-          <el-tag size="small" effect="dark">近30天</el-tag>
+          <el-tag
+            size="small"
+            effect="dark"
+          >
+            近30天
+          </el-tag>
         </div>
-        <div class="chart-container" ref="chartRef"></div>
+        <div
+          ref="chartRef"
+          class="chart-container"
+        />
       </div>
 
       <!-- 热门推荐 -->
@@ -40,15 +63,29 @@
           <h3>热门借阅 TOP 5</h3>
         </div>
         <div class="book-list">
-          <div v-for="(book, index) in hotBooks" :key="index" class="book-item">
-            <div class="rank-badge" :class="{ 'top-3': index < 3 }">{{ index + 1 }}</div>
+          <div
+            v-for="(book, index) in hotBooks"
+            :key="index"
+            class="book-item"
+          >
+            <div
+              class="rank-badge"
+              :class="{ 'top-3': index < 3 }"
+            >
+              {{ index + 1 }}
+            </div>
             <div class="book-detail">
               <span class="name">{{ book.book_title }}</span>
               <span class="author">{{ book.book_author }}</span>
             </div>
             <span class="count">{{ book.borrow_count }} 次</span>
           </div>
-          <div v-if="hotBooks.length === 0" class="empty-tip">暂无数据</div>
+          <div
+            v-if="hotBooks.length === 0"
+            class="empty-tip"
+          >
+            暂无数据
+          </div>
         </div>
       </div>
     </div>

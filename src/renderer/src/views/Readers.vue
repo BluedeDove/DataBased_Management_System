@@ -2,10 +2,14 @@
   <div class="page-container">
     <div class="page-header">
       <div class="header-group">
-        <h1 class="page-title">读者管理</h1>
-        <div class="gdut-dot"></div>
+        <h1 class="page-title">
+          读者管理
+        </h1>
+        <div class="gdut-dot" />
       </div>
-      <p class="page-description">管理读者信息和读者证</p>
+      <p class="page-description">
+        管理读者信息和读者证
+      </p>
     </div>
 
     <div class="toolbar glass-toolbar">
@@ -15,56 +19,171 @@
           placeholder="搜索姓名、编号、电话..."
           style="width: 320px"
           clearable
-          @keyup.enter="handleSearch"
           size="large"
+          @keyup.enter="handleSearch"
         >
-          <template #prefix><el-icon><Search /></el-icon></template>
+          <template #prefix>
+            <el-icon><Search /></el-icon>
+          </template>
         </el-input>
-        <el-button :icon="Search" @click="handleSearch" size="large">搜索</el-button>
+        <el-button
+          :icon="Search"
+          size="large"
+          @click="handleSearch"
+        >
+          搜索
+        </el-button>
       </div>
       <div class="toolbar-right">
-        <el-button type="primary" :icon="Plus" @click="handleAdd" size="large" class="add-btn">
+        <el-button
+          type="primary"
+          :icon="Plus"
+          size="large"
+          class="add-btn"
+          @click="handleAdd"
+        >
           新增读者
         </el-button>
       </div>
     </div>
 
     <div class="glass-card table-container">
-      <el-table v-loading="loading" :data="readers" style="width: 100%" class="custom-table">
-        <el-table-column type="index" label="#" width="60" />
-        <el-table-column prop="reader_no" label="读者编号" width="120" />
-        <el-table-column prop="name" label="姓名" width="120" />
-        <el-table-column prop="category_name" label="类别" width="100" />
-        <el-table-column prop="id_card" label="学号/工号" width="130" />
-        <el-table-column prop="phone" label="电话" width="130" />
-        <el-table-column prop="organization" label="单位" />
-        <el-table-column label="状态" width="100">
+      <el-table
+        v-loading="loading"
+        :data="readers"
+        style="width: 100%"
+        class="custom-table"
+      >
+        <el-table-column
+          type="index"
+          label="#"
+          width="60"
+        />
+        <el-table-column
+          prop="reader_no"
+          label="读者编号"
+          width="120"
+        />
+        <el-table-column
+          prop="name"
+          label="姓名"
+          width="120"
+        />
+        <el-table-column
+          prop="category_name"
+          label="类别"
+          width="100"
+        />
+        <el-table-column
+          prop="id_card"
+          label="学号/工号"
+          width="130"
+        />
+        <el-table-column
+          prop="phone"
+          label="电话"
+          width="130"
+        />
+        <el-table-column
+          prop="organization"
+          label="单位"
+        />
+        <el-table-column
+          label="状态"
+          width="100"
+        >
           <template #default="{ row }">
-            <el-tag v-if="row.status === 'active'" type="success">正常</el-tag>
-            <el-tag v-else-if="row.status === 'suspended'" type="danger">挂失</el-tag>
-            <el-tag v-else type="warning">过期</el-tag>
+            <el-tag
+              v-if="row.status === 'active'"
+              type="success"
+            >
+              正常
+            </el-tag>
+            <el-tag
+              v-else-if="row.status === 'suspended'"
+              type="danger"
+            >
+              挂失
+            </el-tag>
+            <el-tag
+              v-else
+              type="warning"
+            >
+              过期
+            </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" fixed="right" width="250">
+        <el-table-column
+          label="操作"
+          fixed="right"
+          width="250"
+        >
           <template #default="{ row }">
-            <el-button type="primary" link size="small" @click="handleEdit(row)">编辑</el-button>
-            <el-button type="success" link size="small" @click="handleRenew(row)">续期</el-button>
-            <el-button type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
+            <el-button
+              type="primary"
+              link
+              size="small"
+              @click="handleEdit(row)"
+            >
+              编辑
+            </el-button>
+            <el-button
+              type="success"
+              link
+              size="small"
+              @click="handleRenew(row)"
+            >
+              续期
+            </el-button>
+            <el-button
+              type="danger"
+              link
+              size="small"
+              @click="handleDelete(row)"
+            >
+              删除
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
     </div>
 
-    <el-dialog v-model="showDialog" title="读者信息" width="600px" class="reader-dialog">
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
-        <el-form-item label="读者编号" prop="reader_no">
-          <el-input v-model="form.reader_no" :disabled="!!editingReader" placeholder="留空或输入AUTO自动生成" />
+    <el-dialog
+      v-model="showDialog"
+      title="读者信息"
+      width="600px"
+      class="reader-dialog"
+    >
+      <el-form
+        ref="formRef"
+        :model="form"
+        :rules="rules"
+        label-width="100px"
+      >
+        <el-form-item
+          label="读者编号"
+          prop="reader_no"
+        >
+          <el-input
+            v-model="form.reader_no"
+            :disabled="!!editingReader"
+            placeholder="留空或输入AUTO自动生成"
+          />
         </el-form-item>
-        <el-form-item label="姓名" prop="name">
+        <el-form-item
+          label="姓名"
+          prop="name"
+        >
           <el-input v-model="form.name" />
         </el-form-item>
-        <el-form-item label="类别" prop="category_id">
-          <el-select v-model="form.category_id" style="width: 100%">
+        <el-form-item
+          label="类别"
+          prop="category_id"
+        >
+          <el-select
+            v-model="form.category_id"
+            style="width: 100%"
+          >
             <el-option
               v-for="cat in categories"
               :key="cat.id"
@@ -73,14 +192,26 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="学号/工号" prop="id_card">
-          <el-input v-model="form.id_card" placeholder="请输入学号或工号" />
+        <el-form-item
+          label="学号/工号"
+          prop="id_card"
+        >
+          <el-input
+            v-model="form.id_card"
+            placeholder="请输入学号或工号"
+          />
         </el-form-item>
         <el-form-item label="性别">
           <el-radio-group v-model="form.gender">
-            <el-radio label="male">男</el-radio>
-            <el-radio label="female">女</el-radio>
-            <el-radio label="other">其他</el-radio>
+            <el-radio label="male">
+              男
+            </el-radio>
+            <el-radio label="female">
+              女
+            </el-radio>
+            <el-radio label="other">
+              其他
+            </el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="单位">
@@ -93,12 +224,22 @@
           <el-input v-model="form.email" />
         </el-form-item>
         <el-form-item label="地址">
-          <el-input v-model="form.address" type="textarea" />
+          <el-input
+            v-model="form.address"
+            type="textarea"
+          />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showDialog = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmit">确定</el-button>
+        <el-button @click="showDialog = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          @click="handleSubmit"
+        >
+          确定
+        </el-button>
       </template>
     </el-dialog>
   </div>

@@ -2,13 +2,20 @@
   <div class="page-container">
     <div class="page-header">
       <div class="title-wrapper">
-        <h1 class="page-title">统计分析</h1>
-        <div class="gdut-line"></div>
+        <h1 class="page-title">
+          统计分析
+        </h1>
+        <div class="gdut-line" />
       </div>
-      <p class="page-description">查看图书馆运营数据和分析报告</p>
+      <p class="page-description">
+        查看图书馆运营数据和分析报告
+      </p>
     </div>
 
-    <el-tabs v-model="activeTab" class="custom-tabs">
+    <el-tabs
+      v-model="activeTab"
+      class="custom-tabs"
+    >
       <el-tab-pane name="books">
         <template #label>
           <span class="tab-label">
@@ -26,14 +33,28 @@
               <p>各类别图书数量分布</p>
             </div>
           </div>
-          <el-table :data="categoryStats" class="custom-table">
-            <el-table-column prop="category_name" label="类别" />
-            <el-table-column prop="book_count" label="图书数量" align="right">
+          <el-table
+            :data="categoryStats"
+            class="custom-table"
+          >
+            <el-table-column
+              prop="category_name"
+              label="类别"
+            />
+            <el-table-column
+              prop="book_count"
+              label="图书数量"
+              align="right"
+            >
               <template #default="{ row }">
                 <span class="stat-number">{{ row.book_count }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="available_count" label="可借数量" align="right">
+            <el-table-column
+              prop="available_count"
+              label="可借数量"
+              align="right"
+            >
               <template #default="{ row }">
                 <span class="stat-number success">{{ row.available_count }}</span>
               </template>
@@ -41,7 +62,10 @@
           </el-table>
         </div>
 
-        <div class="glass-card stats-card" style="margin-top: 24px">
+        <div
+          class="glass-card stats-card"
+          style="margin-top: 24px"
+        >
           <div class="card-header">
             <div class="icon-box pink">
               <el-icon><Trophy /></el-icon>
@@ -51,15 +75,35 @@
               <p>借阅次数最多的图书</p>
             </div>
           </div>
-          <el-table :data="popularBooks" class="custom-table">
-            <el-table-column type="index" label="#" width="60">
+          <el-table
+            :data="popularBooks"
+            class="custom-table"
+          >
+            <el-table-column
+              type="index"
+              label="#"
+              width="60"
+            >
               <template #default="{ $index }">
-                <span class="rank-badge" :class="{ 'top-3': $index < 3 }">{{ $index + 1 }}</span>
+                <span
+                  class="rank-badge"
+                  :class="{ 'top-3': $index < 3 }"
+                >{{ $index + 1 }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="book_title" label="书名" />
-            <el-table-column prop="book_author" label="作者" />
-            <el-table-column prop="borrow_count" label="借阅次数" align="right">
+            <el-table-column
+              prop="book_title"
+              label="书名"
+            />
+            <el-table-column
+              prop="book_author"
+              label="作者"
+            />
+            <el-table-column
+              prop="borrow_count"
+              label="借阅次数"
+              align="right"
+            >
               <template #default="{ row }">
                 <span class="stat-number primary">{{ row.borrow_count }}</span>
               </template>
@@ -85,15 +129,35 @@
               <p>借阅次数最多的读者</p>
             </div>
           </div>
-          <el-table :data="activeReaders" class="custom-table">
-            <el-table-column type="index" label="#" width="60">
+          <el-table
+            :data="activeReaders"
+            class="custom-table"
+          >
+            <el-table-column
+              type="index"
+              label="#"
+              width="60"
+            >
               <template #default="{ $index }">
-                <span class="rank-badge" :class="{ 'top-3': $index < 3 }">{{ $index + 1 }}</span>
+                <span
+                  class="rank-badge"
+                  :class="{ 'top-3': $index < 3 }"
+                >{{ $index + 1 }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="reader_name" label="姓名" />
-            <el-table-column prop="reader_no" label="读者编号" />
-            <el-table-column prop="borrow_count" label="借阅次数" align="right">
+            <el-table-column
+              prop="reader_name"
+              label="姓名"
+            />
+            <el-table-column
+              prop="reader_no"
+              label="读者编号"
+            />
+            <el-table-column
+              prop="borrow_count"
+              label="借阅次数"
+              align="right"
+            >
               <template #default="{ row }">
                 <span class="stat-number primary">{{ row.borrow_count }}</span>
               </template>
@@ -115,8 +179,12 @@
               <el-icon><Collection /></el-icon>
             </div>
             <div class="stat-content">
-              <div class="stat-title">总借阅量</div>
-              <div class="stat-value">{{ borrowStats.total_borrowed || 0 }}</div>
+              <div class="stat-title">
+                总借阅量
+              </div>
+              <div class="stat-value">
+                {{ borrowStats.total_borrowed || 0 }}
+              </div>
             </div>
           </div>
           <div class="glass-card stat-card success">
@@ -124,8 +192,12 @@
               <el-icon><Timer /></el-icon>
             </div>
             <div class="stat-content">
-              <div class="stat-title">当前在借</div>
-              <div class="stat-value">{{ borrowStats.currently_borrowed || 0 }}</div>
+              <div class="stat-title">
+                当前在借
+              </div>
+              <div class="stat-value">
+                {{ borrowStats.currently_borrowed || 0 }}
+              </div>
             </div>
           </div>
           <div class="glass-card stat-card danger">
@@ -133,13 +205,20 @@
               <el-icon><WarningFilled /></el-icon>
             </div>
             <div class="stat-content">
-              <div class="stat-title">逾期未还</div>
-              <div class="stat-value">{{ borrowStats.overdue_count || 0 }}</div>
+              <div class="stat-title">
+                逾期未还
+              </div>
+              <div class="stat-value">
+                {{ borrowStats.overdue_count || 0 }}
+              </div>
             </div>
           </div>
         </div>
 
-        <div class="glass-card stats-card" style="margin-top: 24px">
+        <div
+          class="glass-card stats-card"
+          style="margin-top: 24px"
+        >
           <div class="card-header">
             <div class="icon-box danger">
               <el-icon><WarningFilled /></el-icon>
@@ -149,13 +228,33 @@
               <p>需要及时归还的图书</p>
             </div>
           </div>
-          <el-table :data="overdueRecords" class="custom-table">
-            <el-table-column prop="reader_name" label="读者" />
-            <el-table-column prop="book_title" label="图书" />
-            <el-table-column prop="due_date" label="应还日期" />
-            <el-table-column label="逾期天数" align="right">
+          <el-table
+            :data="overdueRecords"
+            class="custom-table"
+          >
+            <el-table-column
+              prop="reader_name"
+              label="读者"
+            />
+            <el-table-column
+              prop="book_title"
+              label="图书"
+            />
+            <el-table-column
+              prop="due_date"
+              label="应还日期"
+            />
+            <el-table-column
+              label="逾期天数"
+              align="right"
+            >
               <template #default="{ row }">
-                <el-tag type="danger" effect="dark">{{ calculateOverdueDays(row.due_date) }}天</el-tag>
+                <el-tag
+                  type="danger"
+                  effect="dark"
+                >
+                  {{ calculateOverdueDays(row.due_date) }}天
+                </el-tag>
               </template>
             </el-table-column>
           </el-table>

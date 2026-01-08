@@ -2,10 +2,14 @@
   <div class="page-container">
     <div class="page-header">
       <div class="title-container">
-        <h1 class="page-title">{{ pageTitle }}</h1>
-        <div class="gdut-bar"></div>
+        <h1 class="page-title">
+          {{ pageTitle }}
+        </h1>
+        <div class="gdut-bar" />
       </div>
-      <p class="page-description">{{ pageDescription }}</p>
+      <p class="page-description">
+        {{ pageDescription }}
+      </p>
     </div>
 
     <!-- 逾期警告横幅（教师/学生） -->
@@ -24,9 +28,16 @@
       </template>
     </el-alert>
 
-    <el-tabs v-model="activeTab" @tab-change="handleTabChange" class="custom-tabs">
+    <el-tabs
+      v-model="activeTab"
+      class="custom-tabs"
+      @tab-change="handleTabChange"
+    >
       <!-- 借书标签页：仅管理员和图书管理员可见 -->
-      <el-tab-pane v-if="canViewAllRecords" name="borrow">
+      <el-tab-pane
+        v-if="canViewAllRecords"
+        name="borrow"
+      >
         <template #label>
           <span class="tab-label">
             <el-icon><Notebook /></el-icon>
@@ -43,7 +54,12 @@
               <p>扫描或输入读者编号和图书ISBN进行借阅</p>
             </div>
           </div>
-          <el-form :inline="true" :model="borrowForm" label-width="100px" class="borrow-form">
+          <el-form
+            :inline="true"
+            :model="borrowForm"
+            label-width="100px"
+            class="borrow-form"
+          >
             <el-form-item label="读者">
               <el-input
                 v-model="borrowForm.readerNo"
@@ -52,9 +68,16 @@
                 size="large"
                 @keyup.enter="searchReader"
               >
-                <template #prefix><el-icon><User /></el-icon></template>
+                <template #prefix>
+                  <el-icon><User /></el-icon>
+                </template>
                 <template #append>
-                  <el-button :icon="Search" @click="searchReader">搜索</el-button>
+                  <el-button
+                    :icon="Search"
+                    @click="searchReader"
+                  >
+                    搜索
+                  </el-button>
                 </template>
               </el-input>
             </el-form-item>
@@ -66,23 +89,32 @@
                 size="large"
                 @keyup.enter="searchBook"
               >
-                <template #prefix><el-icon><Reading /></el-icon></template>
+                <template #prefix>
+                  <el-icon><Reading /></el-icon>
+                </template>
                 <template #append>
-                  <el-button :icon="Search" @click="searchBook">搜索</el-button>
+                  <el-button
+                    :icon="Search"
+                    @click="searchBook"
+                  >
+                    搜索
+                  </el-button>
                 </template>
               </el-input>
             </el-form-item>
             <el-form-item>
               <el-button
                 type="primary"
-                @click="handleBorrow"
                 :loading="isBorrowing"
                 :disabled="isBorrowing"
                 size="large"
                 class="borrow-btn"
+                @click="handleBorrow"
               >
                 <template v-if="isBorrowing">
-                  <el-icon class="is-loading"><Loading /></el-icon>
+                  <el-icon class="is-loading">
+                    <Loading />
+                  </el-icon>
                   借书中...
                 </template>
                 <template v-else>
@@ -94,12 +126,21 @@
           </el-form>
 
           <!-- 已选择的读者和图书信息显示 -->
-          <div v-if="selectedReader || selectedBook" class="selected-info">
-            <div v-if="selectedReader" class="info-item">
+          <div
+            v-if="selectedReader || selectedBook"
+            class="selected-info"
+          >
+            <div
+              v-if="selectedReader"
+              class="info-item"
+            >
               <span class="label">读者：</span>
               <span class="value">{{ selectedReader.name }} ({{ selectedReader.reader_no }})</span>
             </div>
-            <div v-if="selectedBook" class="info-item">
+            <div
+              v-if="selectedBook"
+              class="info-item"
+            >
               <span class="label">图书：</span>
               <span class="value">{{ selectedBook.title }} ({{ selectedBook.isbn }})</span>
             </div>
@@ -120,13 +161,20 @@
               v-model="returnSearchKeyword"
               placeholder="搜索读者编号/姓名、图书ISBN/书名..."
               style="width: 320px"
-              @keyup.enter="searchBorrowedBooks"
               size="large"
               clearable
+              @keyup.enter="searchBorrowedBooks"
             >
-              <template #prefix><el-icon><Search /></el-icon></template>
+              <template #prefix>
+                <el-icon><Search /></el-icon>
+              </template>
               <template #append>
-                <el-button :icon="Search" @click="searchBorrowedBooks">搜索</el-button>
+                <el-button
+                  :icon="Search"
+                  @click="searchBorrowedBooks"
+                >
+                  搜索
+                </el-button>
               </template>
             </el-input>
             <el-date-picker
@@ -136,8 +184,8 @@
               start-placeholder="借书起始日期"
               end-placeholder="借书结束日期"
               size="large"
-              @change="searchBorrowedBooks"
               clearable
+              @change="searchBorrowedBooks"
             />
           </div>
 
@@ -147,42 +195,78 @@
             :row-class-name="getRowClassName"
             class="custom-table"
           >
-            <el-table-column v-if="canViewAllRecords" prop="reader_name" label="读者" width="120" />
-            <el-table-column prop="book_title" label="图书" />
-            <el-table-column prop="borrow_date" label="借书日期" width="110" />
-            <el-table-column prop="due_date" label="应还日期" width="110">
+            <el-table-column
+              v-if="canViewAllRecords"
+              prop="reader_name"
+              label="读者"
+              width="120"
+            />
+            <el-table-column
+              prop="book_title"
+              label="图书"
+            />
+            <el-table-column
+              prop="borrow_date"
+              label="借书日期"
+              width="110"
+            />
+            <el-table-column
+              prop="due_date"
+              label="应还日期"
+              width="110"
+            >
               <template #default="{ row }">
                 <div style="display: flex; align-items: center; gap: 6px">
-                  <el-icon v-if="isOverdue(row.due_date)" color="#f56c6c" :size="16">
+                  <el-icon
+                    v-if="isOverdue(row.due_date)"
+                    color="#f56c6c"
+                    :size="16"
+                  >
                     <WarningFilled />
                   </el-icon>
-                  <span :style="{
-                    color: isOverdue(row.due_date) ? '#f56c6c' : '#303133',
-                    fontWeight: isOverdue(row.due_date) ? '600' : '400'
-                  }">
+                  <span
+                    :style="{
+                      color: isOverdue(row.due_date) ? '#f56c6c' : '#303133',
+                      fontWeight: isOverdue(row.due_date) ? '600' : '400'
+                    }"
+                  >
                     {{ row.due_date }}
                   </span>
                 </div>
               </template>
             </el-table-column>
-            <el-table-column v-if="!canViewAllRecords" label="状态" width="100">
+            <el-table-column
+              v-if="!canViewAllRecords"
+              label="状态"
+              width="100"
+            >
               <template #default="{ row }">
-                <el-tag v-if="isOverdue(row.due_date)" type="danger" effect="dark">
+                <el-tag
+                  v-if="isOverdue(row.due_date)"
+                  type="danger"
+                  effect="dark"
+                >
                   已逾期
                 </el-tag>
-                <el-tag v-else type="success">
+                <el-tag
+                  v-else
+                  type="success"
+                >
                   借阅中
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="200">
+            <el-table-column
+              label="操作"
+              width="200"
+            >
               <template #default="{ row }">
                 <el-button 
                   type="success" 
                   link 
-                  @click="handleReturn(row)"
                   :loading="returningBooks.has(row.id)"
                   :disabled="returningBooks.has(row.id)"
+                  @click="handleReturn(row)"
                 >
                   <template v-if="returningBooks.has(row.id)">
                     <el-icon><Loading /></el-icon>
@@ -195,9 +279,9 @@
                 <el-button
                   type="primary"
                   link
-                  @click="handleRenew(row)"
                   :disabled="isOverdue(row.due_date) || renewingBooks.has(row.id)"
                   :loading="renewingBooks.has(row.id)"
+                  @click="handleRenew(row)"
                 >
                   <template v-if="renewingBooks.has(row.id)">
                     <el-icon><Loading /></el-icon>
@@ -221,21 +305,70 @@
           </span>
         </template>
         <div class="glass-card history-section">
-          <el-table :data="allRecords" style="width: 100%" class="custom-table">
-            <el-table-column type="index" label="#" width="60" />
-            <el-table-column prop="reader_name" label="读者" width="120" />
-            <el-table-column prop="book_title" label="图书" />
-            <el-table-column prop="borrow_date" label="借书日期" width="110" />
-            <el-table-column prop="return_date" label="还书日期" width="110" />
-            <el-table-column label="状态" width="100">
+          <el-table
+            :data="allRecords"
+            style="width: 100%"
+            class="custom-table"
+          >
+            <el-table-column
+              type="index"
+              label="#"
+              width="60"
+            />
+            <el-table-column
+              prop="reader_name"
+              label="读者"
+              width="120"
+            />
+            <el-table-column
+              prop="book_title"
+              label="图书"
+            />
+            <el-table-column
+              prop="borrow_date"
+              label="借书日期"
+              width="110"
+            />
+            <el-table-column
+              prop="return_date"
+              label="还书日期"
+              width="110"
+            />
+            <el-table-column
+              label="状态"
+              width="100"
+            >
               <template #default="{ row }">
-                <el-tag v-if="row.status === 'borrowed'" type="warning">借阅中</el-tag>
-                <el-tag v-else-if="row.status === 'returned'" type="success">已归还</el-tag>
-                <el-tag v-else-if="row.status === 'overdue'" type="danger">逾期</el-tag>
-                <el-tag v-else type="info">丢失</el-tag>
+                <el-tag
+                  v-if="row.status === 'borrowed'"
+                  type="warning"
+                >
+                  借阅中
+                </el-tag>
+                <el-tag
+                  v-else-if="row.status === 'returned'"
+                  type="success"
+                >
+                  已归还
+                </el-tag>
+                <el-tag
+                  v-else-if="row.status === 'overdue'"
+                  type="danger"
+                >
+                  逾期
+                </el-tag>
+                <el-tag
+                  v-else
+                  type="info"
+                >
+                  丢失
+                </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="120">
+            <el-table-column
+              label="操作"
+              width="120"
+            >
               <template #default="{ row }">
                 <el-button
                   type="danger"
@@ -260,14 +393,42 @@
       width="600px"
       destroy-on-close
     >
-      <el-table :data="searchReaderResults" style="width: 100%" max-height="400px">
-        <el-table-column prop="reader_no" label="编号" width="120" />
-        <el-table-column prop="name" label="姓名" width="120" />
-        <el-table-column prop="category_name" label="类型" width="100" />
-        <el-table-column prop="phone" label="电话" />
-        <el-table-column label="操作" width="80">
+      <el-table
+        :data="searchReaderResults"
+        style="width: 100%"
+        max-height="400px"
+      >
+        <el-table-column
+          prop="reader_no"
+          label="编号"
+          width="120"
+        />
+        <el-table-column
+          prop="name"
+          label="姓名"
+          width="120"
+        />
+        <el-table-column
+          prop="category_name"
+          label="类型"
+          width="100"
+        />
+        <el-table-column
+          prop="phone"
+          label="电话"
+        />
+        <el-table-column
+          label="操作"
+          width="80"
+        >
           <template #default="{ row }">
-            <el-button type="primary" link @click="handleSelectReader(row)">选择</el-button>
+            <el-button
+              type="primary"
+              link
+              @click="handleSelectReader(row)"
+            >
+              选择
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -280,18 +441,45 @@
       width="800px"
       destroy-on-close
     >
-      <el-table :data="searchBookResults" style="width: 100%" max-height="400px">
-        <el-table-column prop="isbn" label="ISBN" width="140" />
-        <el-table-column prop="title" label="书名" />
-        <el-table-column prop="author" label="作者" width="120" />
-        <el-table-column label="库存" width="100">
+      <el-table
+        :data="searchBookResults"
+        style="width: 100%"
+        max-height="400px"
+      >
+        <el-table-column
+          prop="isbn"
+          label="ISBN"
+          width="140"
+        />
+        <el-table-column
+          prop="title"
+          label="书名"
+        />
+        <el-table-column
+          prop="author"
+          label="作者"
+          width="120"
+        />
+        <el-table-column
+          label="库存"
+          width="100"
+        >
           <template #default="{ row }">
             {{ row.available_quantity }} / {{ row.total_quantity }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="80">
+        <el-table-column
+          label="操作"
+          width="80"
+        >
           <template #default="{ row }">
-            <el-button type="primary" link @click="handleSelectBook(row)">选择</el-button>
+            <el-button
+              type="primary"
+              link
+              @click="handleSelectBook(row)"
+            >
+              选择
+            </el-button>
           </template>
         </el-table-column>
       </el-table>

@@ -1,8 +1,12 @@
 <template>
   <div class="page-container">
     <div class="page-header">
-      <h1 class="page-title">{{ pageTitle }}</h1>
-      <p class="page-description">{{ pageDescription }}</p>
+      <h1 class="page-title">
+        {{ pageTitle }}
+      </h1>
+      <p class="page-description">
+        {{ pageDescription }}
+      </p>
     </div>
 
     <!-- 逾期警告横幅（教师/学生） -->
@@ -21,25 +25,52 @@
       </template>
     </el-alert>
 
-    <el-tabs v-model="activeTab" @tab-change="handleTabChange">
+    <el-tabs
+      v-model="activeTab"
+      @tab-change="handleTabChange"
+    >
       <!-- 借书标签页：仅管理员和图书管理员可见 -->
-      <el-tab-pane v-if="canViewAllRecords" label="借书" name="borrow">
+      <el-tab-pane
+        v-if="canViewAllRecords"
+        label="借书"
+        name="borrow"
+      >
         <div class="borrow-section">
-          <el-form :inline="true" :model="borrowForm" label-width="100px">
+          <el-form
+            :inline="true"
+            :model="borrowForm"
+            label-width="100px"
+          >
             <el-form-item label="读者编号">
-              <el-input v-model="borrowForm.readerNo" placeholder="扫描或输入" style="width: 200px" />
+              <el-input
+                v-model="borrowForm.readerNo"
+                placeholder="扫描或输入"
+                style="width: 200px"
+              />
             </el-form-item>
             <el-form-item label="图书ISBN">
-              <el-input v-model="borrowForm.bookIsbn" placeholder="扫描或输入" style="width: 200px" />
+              <el-input
+                v-model="borrowForm.bookIsbn"
+                placeholder="扫描或输入"
+                style="width: 200px"
+              />
             </el-form-item>
             <el-form-item>
-              <el-button type="primary" @click="handleBorrow">确认借书</el-button>
+              <el-button
+                type="primary"
+                @click="handleBorrow"
+              >
+                确认借书
+              </el-button>
             </el-form-item>
           </el-form>
         </div>
       </el-tab-pane>
 
-      <el-tab-pane label="还书" name="return">
+      <el-tab-pane
+        label="还书"
+        name="return"
+      >
         <div class="return-section">
           <el-input
             v-model="returnSearchKeyword"
@@ -48,7 +79,10 @@
             @keyup.enter="searchBorrowedBooks"
           >
             <template #append>
-              <el-button :icon="Search" @click="searchBorrowedBooks" />
+              <el-button
+                :icon="Search"
+                @click="searchBorrowedBooks"
+              />
             </template>
           </el-input>
 
@@ -57,42 +91,84 @@
             style="width: 100%"
             :row-class-name="getRowClassName"
           >
-            <el-table-column v-if="canViewAllRecords" prop="reader_name" label="读者" width="120" />
-            <el-table-column prop="book_title" label="图书" />
-            <el-table-column prop="borrow_date" label="借书日期" width="110" />
-            <el-table-column prop="due_date" label="应还日期" width="110">
+            <el-table-column
+              v-if="canViewAllRecords"
+              prop="reader_name"
+              label="读者"
+              width="120"
+            />
+            <el-table-column
+              prop="book_title"
+              label="图书"
+            />
+            <el-table-column
+              prop="borrow_date"
+              label="借书日期"
+              width="110"
+            />
+            <el-table-column
+              prop="due_date"
+              label="应还日期"
+              width="110"
+            >
               <template #default="{ row }">
                 <div style="display: flex; align-items: center; gap: 6px">
-                  <el-icon v-if="isOverdue(row.due_date)" color="#f56c6c" :size="16">
+                  <el-icon
+                    v-if="isOverdue(row.due_date)"
+                    color="#f56c6c"
+                    :size="16"
+                  >
                     <WarningFilled />
                   </el-icon>
-                  <span :style="{
-                    color: isOverdue(row.due_date) ? '#f56c6c' : '#303133',
-                    fontWeight: isOverdue(row.due_date) ? '600' : '400'
-                  }">
+                  <span
+                    :style="{
+                      color: isOverdue(row.due_date) ? '#f56c6c' : '#303133',
+                      fontWeight: isOverdue(row.due_date) ? '600' : '400'
+                    }"
+                  >
                     {{ row.due_date }}
                   </span>
                 </div>
               </template>
             </el-table-column>
-            <el-table-column v-if="!canViewAllRecords" label="状态" width="100">
+            <el-table-column
+              v-if="!canViewAllRecords"
+              label="状态"
+              width="100"
+            >
               <template #default="{ row }">
-                <el-tag v-if="isOverdue(row.due_date)" type="danger" effect="dark">
+                <el-tag
+                  v-if="isOverdue(row.due_date)"
+                  type="danger"
+                  effect="dark"
+                >
                   已逾期
                 </el-tag>
-                <el-tag v-else type="success">
+                <el-tag
+                  v-else
+                  type="success"
+                >
                   借阅中
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="200">
+            <el-table-column
+              label="操作"
+              width="200"
+            >
               <template #default="{ row }">
-                <el-button type="success" link @click="handleReturn(row)">还书</el-button>
+                <el-button
+                  type="success"
+                  link
+                  @click="handleReturn(row)"
+                >
+                  还书
+                </el-button>
                 <el-button
                   type="primary"
                   link
-                  @click="handleRenew(row)"
                   :disabled="isOverdue(row.due_date)"
+                  @click="handleRenew(row)"
                 >
                   续借
                 </el-button>
@@ -102,22 +178,73 @@
         </div>
       </el-tab-pane>
 
-      <el-tab-pane label="借阅记录" name="history">
-        <el-table :data="allRecords" style="width: 100%">
-          <el-table-column type="index" label="#" width="60" />
-          <el-table-column prop="reader_name" label="读者" width="120" />
-          <el-table-column prop="book_title" label="图书" />
-          <el-table-column prop="borrow_date" label="借书日期" width="110" />
-          <el-table-column prop="return_date" label="还书日期" width="110" />
-          <el-table-column label="状态" width="100">
+      <el-tab-pane
+        label="借阅记录"
+        name="history"
+      >
+        <el-table
+          :data="allRecords"
+          style="width: 100%"
+        >
+          <el-table-column
+            type="index"
+            label="#"
+            width="60"
+          />
+          <el-table-column
+            prop="reader_name"
+            label="读者"
+            width="120"
+          />
+          <el-table-column
+            prop="book_title"
+            label="图书"
+          />
+          <el-table-column
+            prop="borrow_date"
+            label="借书日期"
+            width="110"
+          />
+          <el-table-column
+            prop="return_date"
+            label="还书日期"
+            width="110"
+          />
+          <el-table-column
+            label="状态"
+            width="100"
+          >
             <template #default="{ row }">
-              <el-tag v-if="row.status === 'borrowed'" type="warning">借阅中</el-tag>
-              <el-tag v-else-if="row.status === 'returned'" type="success">已归还</el-tag>
-              <el-tag v-else-if="row.status === 'overdue'" type="danger">逾期</el-tag>
-              <el-tag v-else type="info">丢失</el-tag>
+              <el-tag
+                v-if="row.status === 'borrowed'"
+                type="warning"
+              >
+                借阅中
+              </el-tag>
+              <el-tag
+                v-else-if="row.status === 'returned'"
+                type="success"
+              >
+                已归还
+              </el-tag>
+              <el-tag
+                v-else-if="row.status === 'overdue'"
+                type="danger"
+              >
+                逾期
+              </el-tag>
+              <el-tag
+                v-else
+                type="info"
+              >
+                丢失
+              </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="120">
+          <el-table-column
+            label="操作"
+            width="120"
+          >
             <template #default="{ row }">
               <el-button
                 type="danger"

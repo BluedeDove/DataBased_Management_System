@@ -1,44 +1,79 @@
 <template>
   <div class="login-container">
     <div class="background-blobs">
-      <div class="blob blob-1"></div>
-      <div class="blob blob-2"></div>
+      <div class="blob blob-1" />
+      <div class="blob blob-2" />
     </div>
 
     <!-- 新增：背景图片层，与渐变点融合 -->
-    <div class="background-image"></div>
+    <div class="background-image" />
 
     <div class="login-box glass-card">
       <div class="login-left">
         <div class="brand">
-          <img src="/images/gdut-logo.jpg" alt="广工校徽" class="gdut-logo-large" />
+          <img
+            src="/images/gdut-logo.jpg"
+            alt="广工校徽"
+            class="gdut-logo-large"
+          >
           <h1>LMS</h1>
           <p>智能图书管理系统</p>
-          <div class="gdut-tagline">广东工业大学</div>
+          <div class="gdut-tagline">
+            广东工业大学
+          </div>
         </div>
       </div>
 
       <div class="login-right">
         <h2>欢迎回来</h2>
-        <p class="subtitle">请登录您的账号以继续</p>
+        <p class="subtitle">
+          请登录您的账号以继续
+        </p>
 
-        <el-form ref="formRef" :model="form" class="login-form">
+        <el-form
+          ref="formRef"
+          :model="form"
+          class="login-form"
+        >
           <el-form-item>
-            <el-input v-model="form.username" placeholder="请输入账号" :prefix-icon="User" size="large" />
+            <el-input
+              v-model="form.username"
+              placeholder="请输入账号"
+              :prefix-icon="User"
+              size="large"
+            />
           </el-form-item>
           <el-form-item>
-            <el-input v-model="form.password" type="password" placeholder="请输入密码" :prefix-icon="Lock" show-password
-              size="large" />
+            <el-input
+              v-model="form.password"
+              type="password"
+              placeholder="请输入密码"
+              :prefix-icon="Lock"
+              show-password
+              size="large"
+            />
           </el-form-item>
 
-          <el-button type="primary" :loading="loading" class="submit-btn" size="large" @click="handleLogin">
+          <el-button
+            type="primary"
+            :loading="loading"
+            class="submit-btn"
+            size="large"
+            @click="handleLogin"
+          >
             {{ loading ? '登录中...' : '立即登录' }}
           </el-button>
         </el-form>
 
         <div class="footer-actions">
           <span class="tip">默认账号: admin / admin123</span>
-          <el-button link type="primary" @click="$router.push('/register')">注册新账号</el-button>
+          <el-button
+            link
+            type="primary"
+            @click="$router.push('/register')"
+          >
+            注册新账号
+          </el-button>
         </div>
       </div>
     </div>
