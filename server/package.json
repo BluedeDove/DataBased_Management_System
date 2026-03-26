@@ -1,0 +1,14 @@
+{
+  "name": "library-server",
+  "version": "1.0.0",
+  "description": "智能图书管理系统 - 后端服务",
+  "main": "src/server.ts",
+  "scripts": {
+    "dev": "cd .. && tsx watch server/src/server.ts",
+    "build": "tsc",
+    "start": "cd .. && tsx server/src/server.ts"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
