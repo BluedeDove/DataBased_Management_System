@@ -52,6 +52,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '统计分析', icon: 'PieChart', roles: ['admin', 'librarian'] }
       },
       {
+        path: 'notes',
+        name: 'Notes',
+        component: () => import('@/views/Notes.vue'),
+        meta: { title: '读书笔记', icon: 'EditPen', roles: ['admin', 'librarian', 'teacher', 'student'] }
+      },
+      {
         path: 'ai-assistant',
         name: 'AIAssistant',
         component: () => import('@/views/AIAssistant.vue'),
@@ -72,26 +78,45 @@ const router = createRouter({
   routes
 })
 
+// 标记是否已初始化
+let isInitialized = false
+
 // 路由守卫
-router.beforeEach((to, _from, next) => {
+router.beforeEach(async (to, _from, next) => {
   const userStore = useUserStore()
 
-  if (to.meta.requiresAuth !== false && !userStore.isLoggedIn) {
-    next('/login')
-  } else if (to.path === '/login' && userStore.isLoggedIn) {
-    next('/')
-  } else {
+  // 首次访问时初始化用户状态（验证Token）
+  if (!isInitialized) {
+    isInitialized = true
+    await userStore.initialize()
+  }
+
+  // 需要认证的页面
+  if (to.meta.requiresAuth !== false) {
+    if (!userStore.isLoggedIn) {
+      // 未登录，重定向到登录页
+      next({ path: '/login', query: { redirect: to.fullPath } })
+      return
+    }
+
     // 权限检查
     if (to.meta.roles && userStore.user) {
       const allowedRoles = to.meta.roles as string[]
       if (!allowedRoles.includes(userStore.user.role)) {
-        // 没有权限，重定向到无权限页面或Dashboard
+        // 没有权限，重定向到Dashboard
         next('/dashboard')
         return
       }
     }
-    next()
   }
+
+  // 已登录用户访问登录/注册页，重定向到首页
+  if ((to.path === '/login' || to.path === '/register') && userStore.isLoggedIn) {
+    next('/')
+    return
+  }
+
+  next()
 })
 
 export default router

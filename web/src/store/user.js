@@ -4,6 +4,7 @@ import { authApi } from '../api/auth.api';
 export const useUserStore = defineStore('user', () => {
     const user = ref(null);
     const token = ref('');
+    const isInitialized = ref(false);
     const isLoggedIn = computed(() => !!token.value);
     const isAdmin = computed(() => user.value?.role === 'admin');
     async function login(credentials) {
@@ -31,6 +32,9 @@ export const useUserStore = defineStore('user', () => {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
     }
+    /**
+     * 从localStorage恢复会话
+     */
     function restoreSession() {
         const savedToken = localStorage.getItem('token');
         const savedUser = localStorage.getItem('user');
@@ -44,6 +48,68 @@ export const useUserStore = defineStore('user', () => {
             }
         }
     }
+    /**
+     * 验证Token有效性并获取最新用户信息
+     * @returns Token是否有效
+     */
+    async function validateToken() {
+        const savedToken = localStorage.getItem('token');
+        if (!savedToken) {
+            clearSession();
+            return false;
+        }
+        try {
+            const result = await authApi.validate();
+            if (result.success && result.data) {
+                user.value = result.data;
+                token.value = localStorage.getItem('token') || '';
+                // 更新localStorage中的用户信息
+                localStorage.setItem('user', JSON.stringify(result.data));
+                return true;
+            }
+        }
+        catch (error) {
+            console.warn('Token验证失败:', error);
+        }
+        clearSession();
+        return false;
+    }
+    /**
+     * 初始化用户状态（页面刷新时调用）
+     * 优先从localStorage恢复，然后验证Token
+     */
+    async function initialize() {
+        if (isInitialized.value) {
+            return isLoggedIn.value;
+        }
+        // 先从localStorage恢复
+        restoreSession();
+        // 如果有token，验证有效性
+        if (token.value) {
+            const isValid = await validateToken();
+            if (!isValid) {
+                return false;
+            }
+        }
+        isInitialized.value = true;
+        return isLoggedIn.value;
+    }
+    /**
+     * 清除会话
+     */
+    function clearSession() {
+        user.value = null;
+        token.value = '';
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+    }
+    /**
+     * 更新Token（由API拦截器调用）
+     */
+    function updateToken(newToken) {
+        token.value = newToken;
+        localStorage.setItem('token', newToken);
+    }
     async function changePassword(oldPassword, newPassword) {
         if (!user.value)
             throw new Error('未登录');
@@ -55,11 +121,16 @@ export const useUserStore = defineStore('user', () => {
     return {
         user,
         token,
+        isInitialized,
         isLoggedIn,
         isAdmin,
         login,
         logout,
         restoreSession,
+        validateToken,
+        initialize,
+        clearSession,
+        updateToken,
         changePassword
     };
 });

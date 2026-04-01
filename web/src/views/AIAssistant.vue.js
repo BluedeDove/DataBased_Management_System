@@ -1,6 +1,6 @@
 /// <reference types="../../node_modules/.vue-global-types/vue_3.5_0_0_0.d.ts" />
 import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
-import { MagicStick, User, Service, Reading, Search, ChatDotRound, Clock, Promotion, Document, Close, RefreshRight, Delete, VideoPause, Download } from '@element-plus/icons-vue';
+import { MagicStick, User, Service, Reading, Search, ChatDotRound, Clock, Promotion, Document, Close, Delete, VideoPause, Download } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
@@ -20,106 +20,75 @@ const totalVectors = ref(0);
 const recommendedBooks = ref([]);
 const chatHistoryList = ref([]);
 const currentConversationId = ref(null);
-const showRecommendPanel = ref(true);
-const searchQuery = ref('');
-// 过滤后的对话列表
-const filteredChatHistoryList = computed(() => {
-    if (!searchQuery.value)
+const showRecommend = ref(true);
+const historySearch = ref('');
+const filteredHistory = computed(() => {
+    if (!historySearch.value)
         return chatHistoryList.value;
-    return chatHistoryList.value.filter(c => c.title.toLowerCase().includes(searchQuery.value.toLowerCase()));
+    return chatHistoryList.value.filter(c => c.title.toLowerCase().includes(historySearch.value.toLowerCase()));
 });
-// 格式化内容
 const formatContent = (content) => {
     if (!content)
         return '';
-    const html = marked(content);
-    return DOMPurify.sanitize(html);
+    return DOMPurify.sanitize(marked(content));
 };
-// 格式化时间
 const formatTime = (timestamp) => {
     if (!timestamp)
         return '';
-    return new Date(timestamp).toLocaleTimeString('zh-CN', {
-        hour: '2-digit',
-        minute: '2-digit'
-    });
+    return new Date(timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
 };
-// 滚动到底部
 const scrollToBottom = () => {
-    nextTick(() => {
-        if (messagesRef.value) {
-            messagesRef.value.scrollTop = messagesRef.value.scrollHeight;
-        }
-    });
+    nextTick(() => { if (messagesRef.value)
+        messagesRef.value.scrollTop = messagesRef.value.scrollHeight; });
 };
-// 发送消息
 const sendMessage = async () => {
     if (!inputMessage.value.trim() || loading.value)
         return;
     const userMessage = inputMessage.value.trim();
     inputMessage.value = '';
-    // 添加用户消息
-    chatHistory.value.push({
-        id: `user-${Date.now()}`,
-        role: 'user',
-        content: userMessage,
-        timestamp: Date.now()
-    });
+    chatHistory.value.push({ id: `user-${Date.now()}`, role: 'user', content: userMessage, timestamp: Date.now() });
     scrollToBottom();
-    // 添加加载中的AI消息
     const aiMessageId = `ai-${Date.now()}`;
-    chatHistory.value.push({
-        id: aiMessageId,
-        role: 'assistant',
-        content: '',
-        loading: true
-    });
+    chatHistory.value.push({ id: aiMessageId, role: 'assistant', content: '', loading: true });
     loading.value = true;
     scrollToBottom();
     try {
-        // 准备历史消息
-        const history = chatHistory.value
-            .filter(m => !m.loading && m.id !== 'init')
-            .slice(-10)
-            .map(m => ({ role: m.role, content: m.content }));
-        // 使用流式对话
+        const history = chatHistory.value.filter(m => !m.loading && m.id !== 'init').slice(-10).map(m => ({ role: m.role, content: m.content }));
         let fullContent = '';
         const cleanup = aiApi.chatStream(userMessage, history, undefined, (chunk) => {
             fullContent += chunk;
-            const msgIndex = chatHistory.value.findIndex(m => m.id === aiMessageId);
-            if (msgIndex > -1) {
-                chatHistory.value[msgIndex].content = fullContent;
-                chatHistory.value[msgIndex].loading = false;
+            const mi = chatHistory.value.findIndex(m => m.id === aiMessageId);
+            if (mi > -1) {
+                chatHistory.value[mi].content = fullContent;
+                chatHistory.value[mi].loading = false;
                 scrollToBottom();
             }
         }, (error) => {
-            const msgIndex = chatHistory.value.findIndex(m => m.id === aiMessageId);
-            if (msgIndex > -1) {
-                chatHistory.value[msgIndex].content = `发生错误: ${error}`;
-                chatHistory.value[msgIndex].loading = false;
+            const mi = chatHistory.value.findIndex(m => m.id === aiMessageId);
+            if (mi > -1) {
+                chatHistory.value[mi].content = `发生错误: ${error}`;
+                chatHistory.value[mi].loading = false;
             }
             loading.value = false;
             ElMessage.error('AI响应失败');
         }, () => {
-            const msgIndex = chatHistory.value.findIndex(m => m.id === aiMessageId);
-            if (msgIndex > -1) {
-                chatHistory.value[msgIndex].timestamp = Date.now();
-            }
+            const mi = chatHistory.value.findIndex(m => m.id === aiMessageId);
+            if (mi > -1)
+                chatHistory.value[mi].timestamp = Date.now();
             loading.value = false;
             saveCurrentConversation();
         });
         streamCleanup.value = cleanup;
     }
-    catch (error) {
-        const msgIndex = chatHistory.value.findIndex(m => m.id === aiMessageId);
-        if (msgIndex > -1) {
-            chatHistory.value[msgIndex].content = 'AI服务暂时不可用，请稍后再试。';
-            chatHistory.value[msgIndex].loading = false;
+    catch {
+        const mi = chatHistory.value.findIndex(m => m.id === aiMessageId);
+        if (mi > -1) {
+            chatHistory.value[mi].content = 'AI服务暂时不可用，请稍后再试。';
+            chatHistory.value[mi].loading = false;
         }
         loading.value = false;
     }
 };
-// 停止生成
 const stopGeneration = () => {
     if (streamCleanup.value) {
         streamCleanup.value();
@@ -127,89 +96,41 @@ const stopGeneration = () => {
     }
     loading.value = false;
 };
-// 触发工具
-const triggerTool = (tool) => {
-    if (tool === 'recommend') {
-        setInput('请为我推荐一些图书');
-    }
-    else if (tool === 'search') {
-        setInput('请帮我搜索');
-    }
-};
-// 设置输入
-const setInput = (text) => {
-    inputMessage.value = text;
-};
-// 开始新对话
+const setInput = (text) => { inputMessage.value = text; };
 const startNewChat = () => {
-    chatHistory.value = [
-        { id: 'init', role: 'assistant', content: '你好！我是图书馆智能助手。你可以问我关于馆藏图书的问题，或者让我为你推荐书籍。', timestamp: Date.now() }
-    ];
+    chatHistory.value = [{ id: 'init', role: 'assistant', content: '你好！我是图书馆智能助手。你可以问我关于馆藏图书的问题，或者让我为你推荐书籍。', timestamp: Date.now() }];
     currentConversationId.value = null;
     recommendedBooks.value = [];
 };
-// 重新生成最后一条消息
-const regenerateLastMessage = () => {
-    if (chatHistory.value.length < 2)
-        return;
-    const lastUserMsg = [...chatHistory.value].reverse().find(m => m.role === 'user');
-    if (lastUserMsg) {
-        // 移除最后的AI消息
-        const lastAiIndex = chatHistory.value.length - 1;
-        if (chatHistory.value[lastAiIndex].role === 'assistant') {
-            chatHistory.value.splice(lastAiIndex, 1);
-        }
-        // 重新发送
-        inputMessage.value = lastUserMsg.content;
-        sendMessage();
-    }
-};
-// 导出对话
 const exportConversation = () => {
-    const content = chatHistory.value
-        .map(m => `${m.role === 'user' ? '用户' : 'AI'}: ${m.content}`)
-        .join('\n\n');
+    const content = chatHistory.value.map(m => `${m.role === 'user' ? '用户' : 'AI'}: ${m.content}`).join('\n\n');
     const blob = new Blob([content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `chat-${new Date().toISOString().slice(0, 10)}.txt`;
+    const a = Object.assign(document.createElement('a'), { href: url, download: `chat-${new Date().toISOString().slice(0, 10)}.txt` });
     a.click();
     URL.revokeObjectURL(url);
     ElMessage.success('对话已导出');
 };
-// 加载聊天历史
-const loadChatHistory = async (item) => {
-    currentConversationId.value = item.id;
-    chatHistory.value = item.messages;
-    scrollToBottom();
-};
-// 删除对话
+const loadChatHistory = (item) => { currentConversationId.value = item.id; chatHistory.value = item.messages; scrollToBottom(); };
 const deleteConversation = async (item) => {
     try {
         const result = await aiApi.deleteConversation(item.id);
         if (result.success) {
             chatHistoryList.value = chatHistoryList.value.filter(c => c.id !== item.id);
-            if (currentConversationId.value === item.id) {
+            if (currentConversationId.value === item.id)
                 startNewChat();
-            }
             ElMessage.success('对话已删除');
         }
     }
-    catch (error) {
+    catch {
         ElMessage.error('删除失败');
     }
 };
-// 保存当前对话
 const saveCurrentConversation = async () => {
     if (!userStore.user?.id || chatHistory.value.length <= 1)
         return;
     const title = chatHistory.value.find(m => m.role === 'user')?.content.slice(0, 30) || '新对话';
-    const messages = chatHistory.value.map(m => ({
-        role: m.role,
-        content: m.content,
-        timestamp: m.timestamp
-    }));
+    const messages = chatHistory.value.map(m => ({ role: m.role, content: m.content, timestamp: m.timestamp }));
     try {
         if (currentConversationId.value) {
             await aiApi.updateConversation(currentConversationId.value, title, messages);
@@ -222,112 +143,91 @@ const saveCurrentConversation = async () => {
             }
         }
     }
-    catch (error) {
-        console.error('Failed to save conversation:', error);
+    catch (e) {
+        console.error('Save conversation error:', e);
     }
 };
-// 加载对话列表
 const loadConversations = async () => {
     if (!userStore.user?.id)
         return;
     try {
         const result = await aiApi.getConversations(userStore.user.id, 20);
         if (result.success) {
-            chatHistoryList.value = result.data.map((c) => ({
-                ...c,
-                messages: typeof c.messages === 'string' ? JSON.parse(c.messages) : c.messages
-            }));
+            chatHistoryList.value = result.data.map((c) => ({ ...c, messages: typeof c.messages === 'string' ? JSON.parse(c.messages) : c.messages }));
         }
     }
-    catch (error) {
-        console.error('Failed to load conversations:', error);
-    }
+    catch { }
 };
-// 检查AI状态
-const checkAIStatus = async () => {
-    try {
-        const result = await aiApi.isAvailable();
-        isAIOnline.value = result.success && result.data;
+const checkAIStatus = async () => { try {
+    const r = await aiApi.isAvailable();
+    isAIOnline.value = r.success && r.data;
+}
+catch {
+    isAIOnline.value = false;
+} };
+const loadVectorStats = async () => { try {
+    const r = await aiApi.getStatistics();
+    if (r.success) {
+        totalVectors.value = r.data.totalVectors || 0;
+        vectorCoverage.value = r.data.coverageRate || 0;
     }
-    catch (error) {
-        isAIOnline.value = false;
-    }
-};
-// 加载向量统计
-const loadVectorStats = async () => {
-    try {
-        const result = await aiApi.getStatistics();
-        if (result.success) {
-            totalVectors.value = result.data.totalVectors || 0;
-            vectorCoverage.value = result.data.coverageRate || 0;
-        }
-    }
-    catch (error) {
-        console.error('Failed to load vector stats:', error);
-    }
-};
-// 窗口大小变化处理
-const handleResize = () => {
-    // Responsive logic if needed
-};
-onMounted(() => {
-    checkAIStatus();
-    loadVectorStats();
-    loadConversations();
-    window.addEventListener('resize', handleResize);
-});
-onUnmounted(() => {
-    window.removeEventListener('resize', handleResize);
-    if (streamCleanup.value) {
-        streamCleanup.value();
-    }
-});
+}
+catch { } };
+onMounted(() => { checkAIStatus(); loadVectorStats(); loadConversations(); });
+onUnmounted(() => { if (streamCleanup.value)
+    streamCleanup.value(); });
 debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
 const __VLS_ctx = {};
 let __VLS_components;
 let __VLS_directives;
-/** @type {__VLS_StyleScopedClasses['status-indicator']} */ ;
-/** @type {__VLS_StyleScopedClasses['status-dot']} */ ;
-/** @type {__VLS_StyleScopedClasses['action-btn']} */ ;
-/** @type {__VLS_StyleScopedClasses['action-btn']} */ ;
-/** @type {__VLS_StyleScopedClasses['history-item']} */ ;
-/** @type {__VLS_StyleScopedClasses['message-row']} */ ;
-/** @type {__VLS_StyleScopedClasses['message-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['action-chip']} */ ;
+/** @type {__VLS_StyleScopedClasses['hp-item']} */ ;
+/** @type {__VLS_StyleScopedClasses['hp-item']} */ ;
+/** @type {__VLS_StyleScopedClasses['hp-item']} */ ;
+/** @type {__VLS_StyleScopedClasses['hp-del']} */ ;
+/** @type {__VLS_StyleScopedClasses['hp-del']} */ ;
+/** @type {__VLS_StyleScopedClasses['msg-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['msg-avatar']} */ ;
+/** @type {__VLS_StyleScopedClasses['msg-avatar']} */ ;
 /** @type {__VLS_StyleScopedClasses['user']} */ ;
-/** @type {__VLS_StyleScopedClasses['avatar']} */ ;
-/** @type {__VLS_StyleScopedClasses['message-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['msg-bubble']} */ ;
+/** @type {__VLS_StyleScopedClasses['assistant']} */ ;
+/** @type {__VLS_StyleScopedClasses['msg-bubble']} */ ;
 /** @type {__VLS_StyleScopedClasses['user']} */ ;
-/** @type {__VLS_StyleScopedClasses['bubble']} */ ;
-/** @type {__VLS_StyleScopedClasses['typing-indicator']} */ ;
-/** @type {__VLS_StyleScopedClasses['typing-indicator']} */ ;
-/** @type {__VLS_StyleScopedClasses['typing-indicator']} */ ;
-/** @type {__VLS_StyleScopedClasses['input-wrapper']} */ ;
+/** @type {__VLS_StyleScopedClasses['typing-dots']} */ ;
+/** @type {__VLS_StyleScopedClasses['typing-dots']} */ ;
+/** @type {__VLS_StyleScopedClasses['typing-dots']} */ ;
+/** @type {__VLS_StyleScopedClasses['qp-chip']} */ ;
+/** @type {__VLS_StyleScopedClasses['input-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['send-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['stop-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['rp-book']} */ ;
+/** @type {__VLS_StyleScopedClasses['rp-empty']} */ ;
 /** @type {__VLS_StyleScopedClasses['recommend-panel']} */ ;
-/** @type {__VLS_StyleScopedClasses['panel-header']} */ ;
-/** @type {__VLS_StyleScopedClasses['recommend-panel']} */ ;
-/** @type {__VLS_StyleScopedClasses['header-title']} */ ;
-/** @type {__VLS_StyleScopedClasses['empty-recommend']} */ ;
-/** @type {__VLS_StyleScopedClasses['history-item']} */ ;
-/** @type {__VLS_StyleScopedClasses['delete-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['history-panel']} */ ;
 // CSS variable injection 
 // CSS variable injection end 
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "page-container ai-container" },
+    ...{ class: "ai-page" },
+});
+__VLS_asFunctionalElement(__VLS_intrinsicElements.aside, __VLS_intrinsicElements.aside)({
+    ...{ class: "history-panel" },
 });
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "side-panel glass-card" },
+    ...{ class: "hp-header" },
 });
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "panel-header" },
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "ai-logo" },
+    ...{ class: "hp-logo" },
 });
 const __VLS_0 = {}.ElIcon;
 /** @type {[typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, ]} */ ;
 // @ts-ignore
-const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({}));
-const __VLS_2 = __VLS_1({}, ...__VLS_functionalComponentArgsRest(__VLS_1));
+const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
+    ...{ style: {} },
+}));
+const __VLS_2 = __VLS_1({
+    ...{ style: {} },
+}, ...__VLS_functionalComponentArgsRest(__VLS_1));
 __VLS_3.slots.default;
 const __VLS_4 = {}.MagicStick;
 /** @type {[typeof __VLS_components.MagicStick, ]} */ ;
@@ -337,75 +237,44 @@ const __VLS_6 = __VLS_5({}, ...__VLS_functionalComponentArgsRest(__VLS_5));
 var __VLS_3;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "status-section" },
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "status-indicator" },
     ...{ class: ({ online: __VLS_ctx.isAIOnline }) },
 });
 __VLS_asFunctionalElement(__VLS_intrinsicElements.span)({
-    ...{ class: "status-dot" },
+    ...{ class: "pulse-dot" },
 });
-__VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-    ...{ class: "status-text" },
-});
+__VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
 (__VLS_ctx.isAIOnline ? '在线' : '离线');
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "stats-info" },
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "stat-item" },
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-    ...{ class: "stat-label" },
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-    ...{ class: "stat-value" },
-});
-(__VLS_ctx.vectorCoverage);
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "stat-item" },
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-    ...{ class: "stat-label" },
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-    ...{ class: "stat-value" },
-});
-(__VLS_ctx.totalVectors);
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "quick-actions" },
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "section-title" },
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "action-grid" },
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-    ...{ onClick: (...[$event]) => {
-            __VLS_ctx.triggerTool('recommend');
-        } },
-    ...{ class: "action-btn" },
+    ...{ class: "search-bar" },
+    ...{ style: {} },
 });
 const __VLS_8 = {}.ElIcon;
 /** @type {[typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, ]} */ ;
 // @ts-ignore
-const __VLS_9 = __VLS_asFunctionalComponent(__VLS_8, new __VLS_8({}));
-const __VLS_10 = __VLS_9({}, ...__VLS_functionalComponentArgsRest(__VLS_9));
+const __VLS_9 = __VLS_asFunctionalComponent(__VLS_8, new __VLS_8({
+    ...{ class: "search-icon" },
+}));
+const __VLS_10 = __VLS_9({
+    ...{ class: "search-icon" },
+}, ...__VLS_functionalComponentArgsRest(__VLS_9));
 __VLS_11.slots.default;
-const __VLS_12 = {}.Reading;
-/** @type {[typeof __VLS_components.Reading, ]} */ ;
+const __VLS_12 = {}.Search;
+/** @type {[typeof __VLS_components.Search, ]} */ ;
 // @ts-ignore
 const __VLS_13 = __VLS_asFunctionalComponent(__VLS_12, new __VLS_12({}));
 const __VLS_14 = __VLS_13({}, ...__VLS_functionalComponentArgsRest(__VLS_13));
 var __VLS_11;
-__VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+__VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
+    placeholder: "搜索对话…",
+});
+(__VLS_ctx.historySearch);
+__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+    ...{ class: "hp-actions" },
+});
 __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-    ...{ onClick: (...[$event]) => {
-            __VLS_ctx.triggerTool('search');
-        } },
-    ...{ class: "action-btn" },
+    ...{ onClick: (__VLS_ctx.startNewChat) },
+    ...{ class: "action-chip" },
 });
 const __VLS_16 = {}.ElIcon;
 /** @type {[typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, ]} */ ;
@@ -413,16 +282,15 @@ const __VLS_16 = {}.ElIcon;
 const __VLS_17 = __VLS_asFunctionalComponent(__VLS_16, new __VLS_16({}));
 const __VLS_18 = __VLS_17({}, ...__VLS_functionalComponentArgsRest(__VLS_17));
 __VLS_19.slots.default;
-const __VLS_20 = {}.Search;
-/** @type {[typeof __VLS_components.Search, ]} */ ;
+const __VLS_20 = {}.ChatDotRound;
+/** @type {[typeof __VLS_components.ChatDotRound, ]} */ ;
 // @ts-ignore
 const __VLS_21 = __VLS_asFunctionalComponent(__VLS_20, new __VLS_20({}));
 const __VLS_22 = __VLS_21({}, ...__VLS_functionalComponentArgsRest(__VLS_21));
 var __VLS_19;
-__VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
 __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-    ...{ onClick: (__VLS_ctx.startNewChat) },
-    ...{ class: "action-btn" },
+    ...{ onClick: (__VLS_ctx.exportConversation) },
+    ...{ class: "action-chip" },
 });
 const __VLS_24 = {}.ElIcon;
 /** @type {[typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, ]} */ ;
@@ -430,223 +298,173 @@ const __VLS_24 = {}.ElIcon;
 const __VLS_25 = __VLS_asFunctionalComponent(__VLS_24, new __VLS_24({}));
 const __VLS_26 = __VLS_25({}, ...__VLS_functionalComponentArgsRest(__VLS_25));
 __VLS_27.slots.default;
-const __VLS_28 = {}.ChatDotRound;
-/** @type {[typeof __VLS_components.ChatDotRound, ]} */ ;
+const __VLS_28 = {}.Download;
+/** @type {[typeof __VLS_components.Download, ]} */ ;
 // @ts-ignore
 const __VLS_29 = __VLS_asFunctionalComponent(__VLS_28, new __VLS_28({}));
 const __VLS_30 = __VLS_29({}, ...__VLS_functionalComponentArgsRest(__VLS_29));
 var __VLS_27;
-__VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-    ...{ onClick: (__VLS_ctx.regenerateLastMessage) },
-    ...{ class: "action-btn" },
-    disabled: (__VLS_ctx.loading),
-});
-const __VLS_32 = {}.ElIcon;
-/** @type {[typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, ]} */ ;
-// @ts-ignore
-const __VLS_33 = __VLS_asFunctionalComponent(__VLS_32, new __VLS_32({}));
-const __VLS_34 = __VLS_33({}, ...__VLS_functionalComponentArgsRest(__VLS_33));
-__VLS_35.slots.default;
-const __VLS_36 = {}.RefreshRight;
-/** @type {[typeof __VLS_components.RefreshRight, ]} */ ;
-// @ts-ignore
-const __VLS_37 = __VLS_asFunctionalComponent(__VLS_36, new __VLS_36({}));
-const __VLS_38 = __VLS_37({}, ...__VLS_functionalComponentArgsRest(__VLS_37));
-var __VLS_35;
-__VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-    ...{ onClick: (__VLS_ctx.exportConversation) },
-    ...{ class: "action-btn" },
-});
-const __VLS_40 = {}.ElIcon;
-/** @type {[typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, ]} */ ;
-// @ts-ignore
-const __VLS_41 = __VLS_asFunctionalComponent(__VLS_40, new __VLS_40({}));
-const __VLS_42 = __VLS_41({}, ...__VLS_functionalComponentArgsRest(__VLS_41));
-__VLS_43.slots.default;
-const __VLS_44 = {}.Download;
-/** @type {[typeof __VLS_components.Download, ]} */ ;
-// @ts-ignore
-const __VLS_45 = __VLS_asFunctionalComponent(__VLS_44, new __VLS_44({}));
-const __VLS_46 = __VLS_45({}, ...__VLS_functionalComponentArgsRest(__VLS_45));
-var __VLS_43;
-__VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "history-section" },
+    ...{ class: "hp-list" },
 });
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "section-title" },
-});
-const __VLS_48 = {}.ElInput;
-/** @type {[typeof __VLS_components.ElInput, typeof __VLS_components.elInput, ]} */ ;
-// @ts-ignore
-const __VLS_49 = __VLS_asFunctionalComponent(__VLS_48, new __VLS_48({
-    modelValue: (__VLS_ctx.searchQuery),
-    placeholder: "搜索对话...",
-    prefixIcon: "Search",
-    clearable: true,
-    size: "small",
-    ...{ class: "history-search" },
-}));
-const __VLS_50 = __VLS_49({
-    modelValue: (__VLS_ctx.searchQuery),
-    placeholder: "搜索对话...",
-    prefixIcon: "Search",
-    clearable: true,
-    size: "small",
-    ...{ class: "history-search" },
-}, ...__VLS_functionalComponentArgsRest(__VLS_49));
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "history-list" },
-});
-for (const [item] of __VLS_getVForSourceType((__VLS_ctx.filteredChatHistoryList))) {
+for (const [item] of __VLS_getVForSourceType((__VLS_ctx.filteredHistory))) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ onClick: (...[$event]) => {
                 __VLS_ctx.loadChatHistory(item);
             } },
         key: (item.id),
-        ...{ class: "history-item" },
+        ...{ class: "hp-item" },
+        ...{ class: ({ active: __VLS_ctx.currentConversationId === item.id }) },
     });
-    const __VLS_52 = {}.ElIcon;
+    const __VLS_32 = {}.ElIcon;
     /** @type {[typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, ]} */ ;
     // @ts-ignore
-    const __VLS_53 = __VLS_asFunctionalComponent(__VLS_52, new __VLS_52({}));
-    const __VLS_54 = __VLS_53({}, ...__VLS_functionalComponentArgsRest(__VLS_53));
-    __VLS_55.slots.default;
-    const __VLS_56 = {}.Clock;
+    const __VLS_33 = __VLS_asFunctionalComponent(__VLS_32, new __VLS_32({
+        ...{ style: {} },
+    }));
+    const __VLS_34 = __VLS_33({
+        ...{ style: {} },
+    }, ...__VLS_functionalComponentArgsRest(__VLS_33));
+    __VLS_35.slots.default;
+    const __VLS_36 = {}.Clock;
     /** @type {[typeof __VLS_components.Clock, ]} */ ;
     // @ts-ignore
-    const __VLS_57 = __VLS_asFunctionalComponent(__VLS_56, new __VLS_56({}));
-    const __VLS_58 = __VLS_57({}, ...__VLS_functionalComponentArgsRest(__VLS_57));
-    var __VLS_55;
+    const __VLS_37 = __VLS_asFunctionalComponent(__VLS_36, new __VLS_36({}));
+    const __VLS_38 = __VLS_37({}, ...__VLS_functionalComponentArgsRest(__VLS_37));
+    var __VLS_35;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-        ...{ class: "history-text" },
+        ...{ class: "hp-item-text" },
     });
     (item.title);
-    const __VLS_60 = {}.ElButton;
-    /** @type {[typeof __VLS_components.ElButton, typeof __VLS_components.elButton, typeof __VLS_components.ElButton, typeof __VLS_components.elButton, ]} */ ;
-    // @ts-ignore
-    const __VLS_61 = __VLS_asFunctionalComponent(__VLS_60, new __VLS_60({
-        ...{ 'onClick': {} },
-        text: true,
-        size: "small",
-        type: "danger",
-        ...{ class: "delete-btn" },
-    }));
-    const __VLS_62 = __VLS_61({
-        ...{ 'onClick': {} },
-        text: true,
-        size: "small",
-        type: "danger",
-        ...{ class: "delete-btn" },
-    }, ...__VLS_functionalComponentArgsRest(__VLS_61));
-    let __VLS_64;
-    let __VLS_65;
-    let __VLS_66;
-    const __VLS_67 = {
-        onClick: (...[$event]) => {
-            __VLS_ctx.deleteConversation(item);
-        }
-    };
-    __VLS_63.slots.default;
-    const __VLS_68 = {}.ElIcon;
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+        ...{ onClick: (...[$event]) => {
+                __VLS_ctx.deleteConversation(item);
+            } },
+        ...{ class: "hp-del" },
+    });
+    const __VLS_40 = {}.ElIcon;
     /** @type {[typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, ]} */ ;
     // @ts-ignore
-    const __VLS_69 = __VLS_asFunctionalComponent(__VLS_68, new __VLS_68({}));
-    const __VLS_70 = __VLS_69({}, ...__VLS_functionalComponentArgsRest(__VLS_69));
-    __VLS_71.slots.default;
-    const __VLS_72 = {}.Delete;
+    const __VLS_41 = __VLS_asFunctionalComponent(__VLS_40, new __VLS_40({}));
+    const __VLS_42 = __VLS_41({}, ...__VLS_functionalComponentArgsRest(__VLS_41));
+    __VLS_43.slots.default;
+    const __VLS_44 = {}.Delete;
     /** @type {[typeof __VLS_components.Delete, ]} */ ;
     // @ts-ignore
-    const __VLS_73 = __VLS_asFunctionalComponent(__VLS_72, new __VLS_72({}));
-    const __VLS_74 = __VLS_73({}, ...__VLS_functionalComponentArgsRest(__VLS_73));
-    var __VLS_71;
-    var __VLS_63;
+    const __VLS_45 = __VLS_asFunctionalComponent(__VLS_44, new __VLS_44({}));
+    const __VLS_46 = __VLS_45({}, ...__VLS_functionalComponentArgsRest(__VLS_45));
+    var __VLS_43;
 }
 if (__VLS_ctx.chatHistoryList.length === 0) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "empty-history" },
+        ...{ class: "hp-empty" },
     });
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "main-chat-area glass-card" },
+    ...{ class: "hp-stats" },
+});
+__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+    ...{ class: "hp-stat" },
+});
+__VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+    ...{ class: "hp-stat-val" },
+});
+(__VLS_ctx.totalVectors);
+__VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+    ...{ class: "hp-stat-lbl" },
+});
+__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+    ...{ class: "hp-stat" },
+});
+__VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+    ...{ class: "hp-stat-val" },
+});
+(__VLS_ctx.vectorCoverage);
+__VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+    ...{ class: "hp-stat-lbl" },
+});
+__VLS_asFunctionalElement(__VLS_intrinsicElements.main, __VLS_intrinsicElements.main)({
+    ...{ class: "chat-main" },
 });
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "chat-header" },
 });
+__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "header-info" },
+    ...{ class: "ch-title" },
 });
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "header-title" },
+    ...{ class: "ch-sub" },
 });
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "header-subtitle" },
+__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+    ...{ onClick: (...[$event]) => {
+            __VLS_ctx.showRecommend = !__VLS_ctx.showRecommend;
+        } },
+    ...{ class: "icon-btn" },
+    title: "推荐面板",
 });
-const __VLS_76 = {}.ElTag;
-/** @type {[typeof __VLS_components.ElTag, typeof __VLS_components.elTag, typeof __VLS_components.ElTag, typeof __VLS_components.elTag, ]} */ ;
+const __VLS_48 = {}.ElIcon;
+/** @type {[typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, ]} */ ;
 // @ts-ignore
-const __VLS_77 = __VLS_asFunctionalComponent(__VLS_76, new __VLS_76({
-    type: "info",
-    effect: "plain",
-    round: true,
-}));
-const __VLS_78 = __VLS_77({
-    type: "info",
-    effect: "plain",
-    round: true,
-}, ...__VLS_functionalComponentArgsRest(__VLS_77));
-__VLS_79.slots.default;
-var __VLS_79;
+const __VLS_49 = __VLS_asFunctionalComponent(__VLS_48, new __VLS_48({}));
+const __VLS_50 = __VLS_49({}, ...__VLS_functionalComponentArgsRest(__VLS_49));
+__VLS_51.slots.default;
+const __VLS_52 = {}.Reading;
+/** @type {[typeof __VLS_components.Reading, ]} */ ;
+// @ts-ignore
+const __VLS_53 = __VLS_asFunctionalComponent(__VLS_52, new __VLS_52({}));
+const __VLS_54 = __VLS_53({}, ...__VLS_functionalComponentArgsRest(__VLS_53));
+var __VLS_51;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ref: "messagesRef",
     ...{ class: "chat-messages" },
 });
 /** @type {typeof __VLS_ctx.messagesRef} */ ;
-for (const [msg, index] of __VLS_getVForSourceType((__VLS_ctx.chatHistory))) {
+for (const [msg, idx] of __VLS_getVForSourceType((__VLS_ctx.chatHistory))) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        key: (msg.id || index),
-        ...{ class: "message-row" },
+        key: (msg.id || idx),
+        ...{ class: "msg-row" },
         ...{ class: (msg.role) },
     });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "avatar" },
+        ...{ class: "msg-avatar" },
+        ...{ class: (msg.role) },
     });
     if (msg.role === 'assistant') {
-        const __VLS_80 = {}.ElIcon;
+        const __VLS_56 = {}.ElIcon;
         /** @type {[typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, ]} */ ;
         // @ts-ignore
-        const __VLS_81 = __VLS_asFunctionalComponent(__VLS_80, new __VLS_80({}));
-        const __VLS_82 = __VLS_81({}, ...__VLS_functionalComponentArgsRest(__VLS_81));
-        __VLS_83.slots.default;
-        const __VLS_84 = {}.Service;
+        const __VLS_57 = __VLS_asFunctionalComponent(__VLS_56, new __VLS_56({}));
+        const __VLS_58 = __VLS_57({}, ...__VLS_functionalComponentArgsRest(__VLS_57));
+        __VLS_59.slots.default;
+        const __VLS_60 = {}.Service;
         /** @type {[typeof __VLS_components.Service, ]} */ ;
         // @ts-ignore
-        const __VLS_85 = __VLS_asFunctionalComponent(__VLS_84, new __VLS_84({}));
-        const __VLS_86 = __VLS_85({}, ...__VLS_functionalComponentArgsRest(__VLS_85));
-        var __VLS_83;
+        const __VLS_61 = __VLS_asFunctionalComponent(__VLS_60, new __VLS_60({}));
+        const __VLS_62 = __VLS_61({}, ...__VLS_functionalComponentArgsRest(__VLS_61));
+        var __VLS_59;
     }
     else {
-        const __VLS_88 = {}.ElIcon;
+        const __VLS_64 = {}.ElIcon;
         /** @type {[typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, ]} */ ;
         // @ts-ignore
-        const __VLS_89 = __VLS_asFunctionalComponent(__VLS_88, new __VLS_88({}));
-        const __VLS_90 = __VLS_89({}, ...__VLS_functionalComponentArgsRest(__VLS_89));
-        __VLS_91.slots.default;
-        const __VLS_92 = {}.User;
+        const __VLS_65 = __VLS_asFunctionalComponent(__VLS_64, new __VLS_64({}));
+        const __VLS_66 = __VLS_65({}, ...__VLS_functionalComponentArgsRest(__VLS_65));
+        __VLS_67.slots.default;
+        const __VLS_68 = {}.User;
         /** @type {[typeof __VLS_components.User, ]} */ ;
         // @ts-ignore
-        const __VLS_93 = __VLS_asFunctionalComponent(__VLS_92, new __VLS_92({}));
-        const __VLS_94 = __VLS_93({}, ...__VLS_functionalComponentArgsRest(__VLS_93));
-        var __VLS_91;
+        const __VLS_69 = __VLS_asFunctionalComponent(__VLS_68, new __VLS_68({}));
+        const __VLS_70 = __VLS_69({}, ...__VLS_functionalComponentArgsRest(__VLS_69));
+        var __VLS_67;
     }
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "bubble" },
+        ...{ class: "msg-bubble" },
+        ...{ class: (msg.role) },
     });
     if (msg.loading) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            ...{ class: "typing-indicator" },
+            ...{ class: "typing-dots" },
         });
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span)({});
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span)({});
@@ -658,7 +476,7 @@ for (const [msg, index] of __VLS_getVForSourceType((__VLS_ctx.chatHistory))) {
     }
     if (msg.timestamp && !msg.loading) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            ...{ class: "message-timestamp" },
+            ...{ class: "msg-time" },
         });
         (__VLS_ctx.formatTime(msg.timestamp));
     }
@@ -669,361 +487,244 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.d
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "quick-prompts" },
 });
-const __VLS_96 = {}.ElButton;
-/** @type {[typeof __VLS_components.ElButton, typeof __VLS_components.elButton, typeof __VLS_components.ElButton, typeof __VLS_components.elButton, ]} */ ;
-// @ts-ignore
-const __VLS_97 = __VLS_asFunctionalComponent(__VLS_96, new __VLS_96({
-    ...{ 'onClick': {} },
-    size: "small",
-    round: true,
-}));
-const __VLS_98 = __VLS_97({
-    ...{ 'onClick': {} },
-    size: "small",
-    round: true,
-}, ...__VLS_functionalComponentArgsRest(__VLS_97));
-let __VLS_100;
-let __VLS_101;
-let __VLS_102;
-const __VLS_103 = {
-    onClick: (...[$event]) => {
-        __VLS_ctx.setInput('最近有什么新书？');
-    }
-};
-__VLS_99.slots.default;
-var __VLS_99;
-const __VLS_104 = {}.ElButton;
-/** @type {[typeof __VLS_components.ElButton, typeof __VLS_components.elButton, typeof __VLS_components.ElButton, typeof __VLS_components.elButton, ]} */ ;
-// @ts-ignore
-const __VLS_105 = __VLS_asFunctionalComponent(__VLS_104, new __VLS_104({
-    ...{ 'onClick': {} },
-    size: "small",
-    round: true,
-}));
-const __VLS_106 = __VLS_105({
-    ...{ 'onClick': {} },
-    size: "small",
-    round: true,
-}, ...__VLS_functionalComponentArgsRest(__VLS_105));
-let __VLS_108;
-let __VLS_109;
-let __VLS_110;
-const __VLS_111 = {
-    onClick: (...[$event]) => {
-        __VLS_ctx.setInput('适合初学者的Python书');
-    }
-};
-__VLS_107.slots.default;
-var __VLS_107;
-const __VLS_112 = {}.ElButton;
-/** @type {[typeof __VLS_components.ElButton, typeof __VLS_components.elButton, typeof __VLS_components.ElButton, typeof __VLS_components.elButton, ]} */ ;
-// @ts-ignore
-const __VLS_113 = __VLS_asFunctionalComponent(__VLS_112, new __VLS_112({
-    ...{ 'onClick': {} },
-    size: "small",
-    round: true,
-}));
-const __VLS_114 = __VLS_113({
-    ...{ 'onClick': {} },
-    size: "small",
-    round: true,
-}, ...__VLS_functionalComponentArgsRest(__VLS_113));
-let __VLS_116;
-let __VLS_117;
-let __VLS_118;
-const __VLS_119 = {
-    onClick: (...[$event]) => {
-        __VLS_ctx.setInput('推荐一些关于人工智能的书籍');
-    }
-};
-__VLS_115.slots.default;
-var __VLS_115;
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "input-wrapper" },
+__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+    ...{ onClick: (...[$event]) => {
+            __VLS_ctx.setInput('最近有什么新书？');
+        } },
+    ...{ class: "qp-chip" },
 });
-const __VLS_120 = {}.ElInput;
+__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+    ...{ onClick: (...[$event]) => {
+            __VLS_ctx.setInput('适合初学者的Python书');
+        } },
+    ...{ class: "qp-chip" },
+});
+__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+    ...{ onClick: (...[$event]) => {
+            __VLS_ctx.setInput('推荐一些关于人工智能的书籍');
+        } },
+    ...{ class: "qp-chip" },
+});
+__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+    ...{ class: "input-row" },
+});
+const __VLS_72 = {}.ElInput;
 /** @type {[typeof __VLS_components.ElInput, typeof __VLS_components.elInput, ]} */ ;
 // @ts-ignore
-const __VLS_121 = __VLS_asFunctionalComponent(__VLS_120, new __VLS_120({
+const __VLS_73 = __VLS_asFunctionalComponent(__VLS_72, new __VLS_72({
     ...{ 'onKeydown': {} },
     modelValue: (__VLS_ctx.inputMessage),
     type: "textarea",
     rows: (2),
-    placeholder: "输入您的问题，按 Enter 发送...",
+    placeholder: "输入您的问题，按 Enter 发送…",
     disabled: (__VLS_ctx.loading),
 }));
-const __VLS_122 = __VLS_121({
+const __VLS_74 = __VLS_73({
     ...{ 'onKeydown': {} },
     modelValue: (__VLS_ctx.inputMessage),
     type: "textarea",
     rows: (2),
-    placeholder: "输入您的问题，按 Enter 发送...",
+    placeholder: "输入您的问题，按 Enter 发送…",
     disabled: (__VLS_ctx.loading),
-}, ...__VLS_functionalComponentArgsRest(__VLS_121));
-let __VLS_124;
-let __VLS_125;
-let __VLS_126;
-const __VLS_127 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_73));
+let __VLS_76;
+let __VLS_77;
+let __VLS_78;
+const __VLS_79 = {
     onKeydown: (__VLS_ctx.sendMessage)
 };
-var __VLS_123;
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "button-group" },
-});
+var __VLS_75;
 if (__VLS_ctx.loading) {
-    const __VLS_128 = {}.ElButton;
-    /** @type {[typeof __VLS_components.ElButton, typeof __VLS_components.elButton, typeof __VLS_components.ElButton, typeof __VLS_components.elButton, ]} */ ;
-    // @ts-ignore
-    const __VLS_129 = __VLS_asFunctionalComponent(__VLS_128, new __VLS_128({
-        ...{ 'onClick': {} },
-        type: "danger",
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+        ...{ onClick: (__VLS_ctx.stopGeneration) },
         ...{ class: "stop-btn" },
-    }));
-    const __VLS_130 = __VLS_129({
-        ...{ 'onClick': {} },
-        type: "danger",
-        ...{ class: "stop-btn" },
-    }, ...__VLS_functionalComponentArgsRest(__VLS_129));
-    let __VLS_132;
-    let __VLS_133;
-    let __VLS_134;
-    const __VLS_135 = {
-        onClick: (__VLS_ctx.stopGeneration)
-    };
-    __VLS_131.slots.default;
-    const __VLS_136 = {}.ElIcon;
+    });
+    const __VLS_80 = {}.ElIcon;
     /** @type {[typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, ]} */ ;
     // @ts-ignore
-    const __VLS_137 = __VLS_asFunctionalComponent(__VLS_136, new __VLS_136({}));
-    const __VLS_138 = __VLS_137({}, ...__VLS_functionalComponentArgsRest(__VLS_137));
-    __VLS_139.slots.default;
-    const __VLS_140 = {}.VideoPause;
+    const __VLS_81 = __VLS_asFunctionalComponent(__VLS_80, new __VLS_80({}));
+    const __VLS_82 = __VLS_81({}, ...__VLS_functionalComponentArgsRest(__VLS_81));
+    __VLS_83.slots.default;
+    const __VLS_84 = {}.VideoPause;
     /** @type {[typeof __VLS_components.VideoPause, ]} */ ;
     // @ts-ignore
-    const __VLS_141 = __VLS_asFunctionalComponent(__VLS_140, new __VLS_140({}));
-    const __VLS_142 = __VLS_141({}, ...__VLS_functionalComponentArgsRest(__VLS_141));
-    var __VLS_139;
-    var __VLS_131;
+    const __VLS_85 = __VLS_asFunctionalComponent(__VLS_84, new __VLS_84({}));
+    const __VLS_86 = __VLS_85({}, ...__VLS_functionalComponentArgsRest(__VLS_85));
+    var __VLS_83;
 }
 else {
-    const __VLS_144 = {}.ElButton;
-    /** @type {[typeof __VLS_components.ElButton, typeof __VLS_components.elButton, typeof __VLS_components.ElButton, typeof __VLS_components.elButton, ]} */ ;
-    // @ts-ignore
-    const __VLS_145 = __VLS_asFunctionalComponent(__VLS_144, new __VLS_144({
-        ...{ 'onClick': {} },
-        type: "primary",
-        loading: (__VLS_ctx.loading),
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+        ...{ onClick: (__VLS_ctx.sendMessage) },
         ...{ class: "send-btn" },
-    }));
-    const __VLS_146 = __VLS_145({
-        ...{ 'onClick': {} },
-        type: "primary",
-        loading: (__VLS_ctx.loading),
-        ...{ class: "send-btn" },
-    }, ...__VLS_functionalComponentArgsRest(__VLS_145));
-    let __VLS_148;
-    let __VLS_149;
-    let __VLS_150;
-    const __VLS_151 = {
-        onClick: (__VLS_ctx.sendMessage)
-    };
-    __VLS_147.slots.default;
-    const __VLS_152 = {}.ElIcon;
+    });
+    const __VLS_88 = {}.ElIcon;
     /** @type {[typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, ]} */ ;
     // @ts-ignore
-    const __VLS_153 = __VLS_asFunctionalComponent(__VLS_152, new __VLS_152({}));
-    const __VLS_154 = __VLS_153({}, ...__VLS_functionalComponentArgsRest(__VLS_153));
-    __VLS_155.slots.default;
-    const __VLS_156 = {}.Promotion;
+    const __VLS_89 = __VLS_asFunctionalComponent(__VLS_88, new __VLS_88({}));
+    const __VLS_90 = __VLS_89({}, ...__VLS_functionalComponentArgsRest(__VLS_89));
+    __VLS_91.slots.default;
+    const __VLS_92 = {}.Promotion;
     /** @type {[typeof __VLS_components.Promotion, ]} */ ;
     // @ts-ignore
-    const __VLS_157 = __VLS_asFunctionalComponent(__VLS_156, new __VLS_156({}));
-    const __VLS_158 = __VLS_157({}, ...__VLS_functionalComponentArgsRest(__VLS_157));
-    var __VLS_155;
-    var __VLS_147;
+    const __VLS_93 = __VLS_asFunctionalComponent(__VLS_92, new __VLS_92({}));
+    const __VLS_94 = __VLS_93({}, ...__VLS_functionalComponentArgsRest(__VLS_93));
+    var __VLS_91;
 }
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "recommend-panel glass-card" },
+__VLS_asFunctionalElement(__VLS_intrinsicElements.aside, __VLS_intrinsicElements.aside)({
+    ...{ class: "recommend-panel" },
 });
-__VLS_asFunctionalDirective(__VLS_directives.vShow)(null, { ...__VLS_directiveBindingRestFields, value: (__VLS_ctx.showRecommendPanel) }, null, null);
+__VLS_asFunctionalDirective(__VLS_directives.vShow)(null, { ...__VLS_directiveBindingRestFields, value: (__VLS_ctx.showRecommend) }, null, null);
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "panel-header" },
+    ...{ class: "rp-header" },
 });
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "header-title" },
+    ...{ class: "rp-title" },
 });
-const __VLS_160 = {}.ElIcon;
+const __VLS_96 = {}.ElIcon;
 /** @type {[typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, ]} */ ;
 // @ts-ignore
-const __VLS_161 = __VLS_asFunctionalComponent(__VLS_160, new __VLS_160({}));
-const __VLS_162 = __VLS_161({}, ...__VLS_functionalComponentArgsRest(__VLS_161));
-__VLS_163.slots.default;
-const __VLS_164 = {}.Reading;
+const __VLS_97 = __VLS_asFunctionalComponent(__VLS_96, new __VLS_96({}));
+const __VLS_98 = __VLS_97({}, ...__VLS_functionalComponentArgsRest(__VLS_97));
+__VLS_99.slots.default;
+const __VLS_100 = {}.Reading;
 /** @type {[typeof __VLS_components.Reading, ]} */ ;
 // @ts-ignore
-const __VLS_165 = __VLS_asFunctionalComponent(__VLS_164, new __VLS_164({}));
-const __VLS_166 = __VLS_165({}, ...__VLS_functionalComponentArgsRest(__VLS_165));
-var __VLS_163;
-const __VLS_168 = {}.ElButton;
-/** @type {[typeof __VLS_components.ElButton, typeof __VLS_components.elButton, typeof __VLS_components.ElButton, typeof __VLS_components.elButton, ]} */ ;
-// @ts-ignore
-const __VLS_169 = __VLS_asFunctionalComponent(__VLS_168, new __VLS_168({
-    ...{ 'onClick': {} },
-    text: true,
-}));
-const __VLS_170 = __VLS_169({
-    ...{ 'onClick': {} },
-    text: true,
-}, ...__VLS_functionalComponentArgsRest(__VLS_169));
-let __VLS_172;
-let __VLS_173;
-let __VLS_174;
-const __VLS_175 = {
-    onClick: (...[$event]) => {
-        __VLS_ctx.showRecommendPanel = false;
-    }
-};
-__VLS_171.slots.default;
-const __VLS_176 = {}.ElIcon;
+const __VLS_101 = __VLS_asFunctionalComponent(__VLS_100, new __VLS_100({}));
+const __VLS_102 = __VLS_101({}, ...__VLS_functionalComponentArgsRest(__VLS_101));
+var __VLS_99;
+__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+    ...{ onClick: (...[$event]) => {
+            __VLS_ctx.showRecommend = false;
+        } },
+    ...{ class: "icon-btn" },
+});
+const __VLS_104 = {}.ElIcon;
 /** @type {[typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, ]} */ ;
 // @ts-ignore
-const __VLS_177 = __VLS_asFunctionalComponent(__VLS_176, new __VLS_176({}));
-const __VLS_178 = __VLS_177({}, ...__VLS_functionalComponentArgsRest(__VLS_177));
-__VLS_179.slots.default;
-const __VLS_180 = {}.Close;
+const __VLS_105 = __VLS_asFunctionalComponent(__VLS_104, new __VLS_104({}));
+const __VLS_106 = __VLS_105({}, ...__VLS_functionalComponentArgsRest(__VLS_105));
+__VLS_107.slots.default;
+const __VLS_108 = {}.Close;
 /** @type {[typeof __VLS_components.Close, ]} */ ;
 // @ts-ignore
-const __VLS_181 = __VLS_asFunctionalComponent(__VLS_180, new __VLS_180({}));
-const __VLS_182 = __VLS_181({}, ...__VLS_functionalComponentArgsRest(__VLS_181));
-var __VLS_179;
-var __VLS_171;
+const __VLS_109 = __VLS_asFunctionalComponent(__VLS_108, new __VLS_108({}));
+const __VLS_110 = __VLS_109({}, ...__VLS_functionalComponentArgsRest(__VLS_109));
+var __VLS_107;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "recommend-list" },
+    ...{ class: "rp-list" },
 });
-if (__VLS_ctx.recommendedBooks.length > 0) {
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
-    for (const [book, index] of __VLS_getVForSourceType((__VLS_ctx.recommendedBooks))) {
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            key: (index),
-            ...{ class: "book-card" },
-        });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            ...{ class: "book-icon" },
-        });
-        const __VLS_184 = {}.ElIcon;
-        /** @type {[typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, ]} */ ;
-        // @ts-ignore
-        const __VLS_185 = __VLS_asFunctionalComponent(__VLS_184, new __VLS_184({}));
-        const __VLS_186 = __VLS_185({}, ...__VLS_functionalComponentArgsRest(__VLS_185));
-        __VLS_187.slots.default;
-        const __VLS_188 = {}.Document;
-        /** @type {[typeof __VLS_components.Document, ]} */ ;
-        // @ts-ignore
-        const __VLS_189 = __VLS_asFunctionalComponent(__VLS_188, new __VLS_188({}));
-        const __VLS_190 = __VLS_189({}, ...__VLS_functionalComponentArgsRest(__VLS_189));
-        var __VLS_187;
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            ...{ class: "book-info" },
-        });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            ...{ class: "book-title" },
-        });
-        (book.title);
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            ...{ class: "book-author" },
-        });
-        (book.author);
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            ...{ class: "book-meta" },
-        });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-            ...{ class: "similarity" },
-        });
-        (book.similarity);
-    }
-}
-else {
+for (const [book, i] of __VLS_getVForSourceType((__VLS_ctx.recommendedBooks))) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "empty-recommend" },
+        key: (i),
+        ...{ class: "rp-book" },
     });
-    const __VLS_192 = {}.ElIcon;
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "rp-book-icon" },
+    });
+    const __VLS_112 = {}.ElIcon;
     /** @type {[typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, ]} */ ;
     // @ts-ignore
-    const __VLS_193 = __VLS_asFunctionalComponent(__VLS_192, new __VLS_192({}));
-    const __VLS_194 = __VLS_193({}, ...__VLS_functionalComponentArgsRest(__VLS_193));
-    __VLS_195.slots.default;
-    const __VLS_196 = {}.Reading;
+    const __VLS_113 = __VLS_asFunctionalComponent(__VLS_112, new __VLS_112({}));
+    const __VLS_114 = __VLS_113({}, ...__VLS_functionalComponentArgsRest(__VLS_113));
+    __VLS_115.slots.default;
+    const __VLS_116 = {}.Document;
+    /** @type {[typeof __VLS_components.Document, ]} */ ;
+    // @ts-ignore
+    const __VLS_117 = __VLS_asFunctionalComponent(__VLS_116, new __VLS_116({}));
+    const __VLS_118 = __VLS_117({}, ...__VLS_functionalComponentArgsRest(__VLS_117));
+    var __VLS_115;
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "rp-book-info" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "rp-book-title" },
+    });
+    (book.title);
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "rp-book-author" },
+    });
+    (book.author);
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "rp-book-similarity" },
+    });
+    (book.similarity);
+}
+if (!__VLS_ctx.recommendedBooks.length) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "rp-empty" },
+    });
+    const __VLS_120 = {}.ElIcon;
+    /** @type {[typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, typeof __VLS_components.ElIcon, typeof __VLS_components.elIcon, ]} */ ;
+    // @ts-ignore
+    const __VLS_121 = __VLS_asFunctionalComponent(__VLS_120, new __VLS_120({
+        ...{ style: {} },
+    }));
+    const __VLS_122 = __VLS_121({
+        ...{ style: {} },
+    }, ...__VLS_functionalComponentArgsRest(__VLS_121));
+    __VLS_123.slots.default;
+    const __VLS_124 = {}.Reading;
     /** @type {[typeof __VLS_components.Reading, ]} */ ;
     // @ts-ignore
-    const __VLS_197 = __VLS_asFunctionalComponent(__VLS_196, new __VLS_196({}));
-    const __VLS_198 = __VLS_197({}, ...__VLS_functionalComponentArgsRest(__VLS_197));
-    var __VLS_195;
+    const __VLS_125 = __VLS_asFunctionalComponent(__VLS_124, new __VLS_124({}));
+    const __VLS_126 = __VLS_125({}, ...__VLS_functionalComponentArgsRest(__VLS_125));
+    var __VLS_123;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({});
 }
-/** @type {__VLS_StyleScopedClasses['page-container']} */ ;
-/** @type {__VLS_StyleScopedClasses['ai-container']} */ ;
-/** @type {__VLS_StyleScopedClasses['side-panel']} */ ;
-/** @type {__VLS_StyleScopedClasses['glass-card']} */ ;
-/** @type {__VLS_StyleScopedClasses['panel-header']} */ ;
-/** @type {__VLS_StyleScopedClasses['ai-logo']} */ ;
-/** @type {__VLS_StyleScopedClasses['status-section']} */ ;
+/** @type {__VLS_StyleScopedClasses['ai-page']} */ ;
+/** @type {__VLS_StyleScopedClasses['history-panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['hp-header']} */ ;
+/** @type {__VLS_StyleScopedClasses['hp-logo']} */ ;
 /** @type {__VLS_StyleScopedClasses['status-indicator']} */ ;
-/** @type {__VLS_StyleScopedClasses['status-dot']} */ ;
-/** @type {__VLS_StyleScopedClasses['status-text']} */ ;
-/** @type {__VLS_StyleScopedClasses['stats-info']} */ ;
-/** @type {__VLS_StyleScopedClasses['stat-item']} */ ;
-/** @type {__VLS_StyleScopedClasses['stat-label']} */ ;
-/** @type {__VLS_StyleScopedClasses['stat-value']} */ ;
-/** @type {__VLS_StyleScopedClasses['stat-item']} */ ;
-/** @type {__VLS_StyleScopedClasses['stat-label']} */ ;
-/** @type {__VLS_StyleScopedClasses['stat-value']} */ ;
-/** @type {__VLS_StyleScopedClasses['quick-actions']} */ ;
-/** @type {__VLS_StyleScopedClasses['section-title']} */ ;
-/** @type {__VLS_StyleScopedClasses['action-grid']} */ ;
-/** @type {__VLS_StyleScopedClasses['action-btn']} */ ;
-/** @type {__VLS_StyleScopedClasses['action-btn']} */ ;
-/** @type {__VLS_StyleScopedClasses['action-btn']} */ ;
-/** @type {__VLS_StyleScopedClasses['action-btn']} */ ;
-/** @type {__VLS_StyleScopedClasses['action-btn']} */ ;
-/** @type {__VLS_StyleScopedClasses['history-section']} */ ;
-/** @type {__VLS_StyleScopedClasses['section-title']} */ ;
-/** @type {__VLS_StyleScopedClasses['history-search']} */ ;
-/** @type {__VLS_StyleScopedClasses['history-list']} */ ;
-/** @type {__VLS_StyleScopedClasses['history-item']} */ ;
-/** @type {__VLS_StyleScopedClasses['history-text']} */ ;
-/** @type {__VLS_StyleScopedClasses['delete-btn']} */ ;
-/** @type {__VLS_StyleScopedClasses['empty-history']} */ ;
-/** @type {__VLS_StyleScopedClasses['main-chat-area']} */ ;
-/** @type {__VLS_StyleScopedClasses['glass-card']} */ ;
+/** @type {__VLS_StyleScopedClasses['pulse-dot']} */ ;
+/** @type {__VLS_StyleScopedClasses['search-bar']} */ ;
+/** @type {__VLS_StyleScopedClasses['search-icon']} */ ;
+/** @type {__VLS_StyleScopedClasses['hp-actions']} */ ;
+/** @type {__VLS_StyleScopedClasses['action-chip']} */ ;
+/** @type {__VLS_StyleScopedClasses['action-chip']} */ ;
+/** @type {__VLS_StyleScopedClasses['hp-list']} */ ;
+/** @type {__VLS_StyleScopedClasses['hp-item']} */ ;
+/** @type {__VLS_StyleScopedClasses['hp-item-text']} */ ;
+/** @type {__VLS_StyleScopedClasses['hp-del']} */ ;
+/** @type {__VLS_StyleScopedClasses['hp-empty']} */ ;
+/** @type {__VLS_StyleScopedClasses['hp-stats']} */ ;
+/** @type {__VLS_StyleScopedClasses['hp-stat']} */ ;
+/** @type {__VLS_StyleScopedClasses['hp-stat-val']} */ ;
+/** @type {__VLS_StyleScopedClasses['hp-stat-lbl']} */ ;
+/** @type {__VLS_StyleScopedClasses['hp-stat']} */ ;
+/** @type {__VLS_StyleScopedClasses['hp-stat-val']} */ ;
+/** @type {__VLS_StyleScopedClasses['hp-stat-lbl']} */ ;
+/** @type {__VLS_StyleScopedClasses['chat-main']} */ ;
 /** @type {__VLS_StyleScopedClasses['chat-header']} */ ;
-/** @type {__VLS_StyleScopedClasses['header-info']} */ ;
-/** @type {__VLS_StyleScopedClasses['header-title']} */ ;
-/** @type {__VLS_StyleScopedClasses['header-subtitle']} */ ;
+/** @type {__VLS_StyleScopedClasses['ch-title']} */ ;
+/** @type {__VLS_StyleScopedClasses['ch-sub']} */ ;
+/** @type {__VLS_StyleScopedClasses['icon-btn']} */ ;
 /** @type {__VLS_StyleScopedClasses['chat-messages']} */ ;
-/** @type {__VLS_StyleScopedClasses['message-row']} */ ;
-/** @type {__VLS_StyleScopedClasses['avatar']} */ ;
-/** @type {__VLS_StyleScopedClasses['bubble']} */ ;
-/** @type {__VLS_StyleScopedClasses['typing-indicator']} */ ;
-/** @type {__VLS_StyleScopedClasses['message-timestamp']} */ ;
+/** @type {__VLS_StyleScopedClasses['msg-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['msg-avatar']} */ ;
+/** @type {__VLS_StyleScopedClasses['msg-bubble']} */ ;
+/** @type {__VLS_StyleScopedClasses['typing-dots']} */ ;
+/** @type {__VLS_StyleScopedClasses['msg-time']} */ ;
 /** @type {__VLS_StyleScopedClasses['chat-input-area']} */ ;
 /** @type {__VLS_StyleScopedClasses['quick-prompts']} */ ;
-/** @type {__VLS_StyleScopedClasses['input-wrapper']} */ ;
-/** @type {__VLS_StyleScopedClasses['button-group']} */ ;
+/** @type {__VLS_StyleScopedClasses['qp-chip']} */ ;
+/** @type {__VLS_StyleScopedClasses['qp-chip']} */ ;
+/** @type {__VLS_StyleScopedClasses['qp-chip']} */ ;
+/** @type {__VLS_StyleScopedClasses['input-row']} */ ;
 /** @type {__VLS_StyleScopedClasses['stop-btn']} */ ;
 /** @type {__VLS_StyleScopedClasses['send-btn']} */ ;
 /** @type {__VLS_StyleScopedClasses['recommend-panel']} */ ;
-/** @type {__VLS_StyleScopedClasses['glass-card']} */ ;
-/** @type {__VLS_StyleScopedClasses['panel-header']} */ ;
-/** @type {__VLS_StyleScopedClasses['header-title']} */ ;
-/** @type {__VLS_StyleScopedClasses['recommend-list']} */ ;
-/** @type {__VLS_StyleScopedClasses['book-card']} */ ;
-/** @type {__VLS_StyleScopedClasses['book-icon']} */ ;
-/** @type {__VLS_StyleScopedClasses['book-info']} */ ;
-/** @type {__VLS_StyleScopedClasses['book-title']} */ ;
-/** @type {__VLS_StyleScopedClasses['book-author']} */ ;
-/** @type {__VLS_StyleScopedClasses['book-meta']} */ ;
-/** @type {__VLS_StyleScopedClasses['similarity']} */ ;
-/** @type {__VLS_StyleScopedClasses['empty-recommend']} */ ;
+/** @type {__VLS_StyleScopedClasses['rp-header']} */ ;
+/** @type {__VLS_StyleScopedClasses['rp-title']} */ ;
+/** @type {__VLS_StyleScopedClasses['icon-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['rp-list']} */ ;
+/** @type {__VLS_StyleScopedClasses['rp-book']} */ ;
+/** @type {__VLS_StyleScopedClasses['rp-book-icon']} */ ;
+/** @type {__VLS_StyleScopedClasses['rp-book-info']} */ ;
+/** @type {__VLS_StyleScopedClasses['rp-book-title']} */ ;
+/** @type {__VLS_StyleScopedClasses['rp-book-author']} */ ;
+/** @type {__VLS_StyleScopedClasses['rp-book-similarity']} */ ;
+/** @type {__VLS_StyleScopedClasses['rp-empty']} */ ;
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
@@ -1038,7 +739,6 @@ const __VLS_self = (await import('vue')).defineComponent({
             Promotion: Promotion,
             Document: Document,
             Close: Close,
-            RefreshRight: RefreshRight,
             Delete: Delete,
             VideoPause: VideoPause,
             Download: Download,
@@ -1051,17 +751,16 @@ const __VLS_self = (await import('vue')).defineComponent({
             totalVectors: totalVectors,
             recommendedBooks: recommendedBooks,
             chatHistoryList: chatHistoryList,
-            showRecommendPanel: showRecommendPanel,
-            searchQuery: searchQuery,
-            filteredChatHistoryList: filteredChatHistoryList,
+            currentConversationId: currentConversationId,
+            showRecommend: showRecommend,
+            historySearch: historySearch,
+            filteredHistory: filteredHistory,
             formatContent: formatContent,
             formatTime: formatTime,
             sendMessage: sendMessage,
             stopGeneration: stopGeneration,
-            triggerTool: triggerTool,
             setInput: setInput,
             startNewChat: startNewChat,
-            regenerateLastMessage: regenerateLastMessage,
             exportConversation: exportConversation,
             loadChatHistory: loadChatHistory,
             deleteConversation: deleteConversation,

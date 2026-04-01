@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express'
 import { AuthService } from '../domains/auth/auth.service'
 import { asyncHandler } from '../middleware/error.middleware'
+import { generateToken, verifyToken, decodeToken } from '../lib/jwt'
 
 const authService = new AuthService()
 
@@ -23,6 +24,61 @@ export const logout = asyncHandler(async (req: Request, res: Response) => {
   res.json({
     success: true,
     data: null
+  })
+})
+
+/**
+ * 刷新 Token
+ */
+export const refresh = asyncHandler(async (req: Request, res: Response) => {
+  const authHeader = req.headers.authorization
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({
+      success: false,
+      error: {
+        code: 'UNAUTHORIZED',
+        message: '未提供认证令牌'
+      }
+    })
+  }
+
+  const token = authHeader.substring(7)
+
+  // 尝试验证Token（即使过期也尝试解码）
+  let payload = verifyToken(token)
+
+  // 如果Token完全无效，返回错误
+  if (!payload) {
+    // 尝试解码以检查是否只是过期
+    const decoded = decodeToken(token)
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'INVALID_TOKEN',
+          message: '无效的令牌'
+        }
+      })
+    }
+
+    // Token已过期但格式正确，允许刷新
+    payload = decoded
+  }
+
+  // 生成新Token
+  const newToken = generateToken({
+    userId: payload.userId,
+    username: payload.username,
+    role: payload.role
+  })
+
+  res.json({
+    success: true,
+    data: {
+      token: newToken,
+      expiresIn: 7 * 24 * 60 * 60  // 7天（秒）
+    }
   })
 })
 

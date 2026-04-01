@@ -5,7 +5,8 @@ import {
   NotFoundError,
   ValidationError,
   AuthenticationError,
-  BusinessError
+  BusinessError,
+  ConflictError
 } from '../lib/errorHandler'
 
 /**
@@ -42,6 +43,29 @@ export function errorMiddleware(err: Error, req: Request, res: Response, _next: 
       error: {
         code: err.code || 'NOT_FOUND',
         message: err.message
+      }
+    })
+  }
+
+  // 乐观锁冲突错误
+  if (err instanceof ConflictError) {
+    return res.status(409).json({
+      success: false,
+      error: {
+        code: 'VERSION_CONFLICT',
+        message: err.message,
+        details: err.details
+      }
+    })
+  }
+
+  // 检测版本冲突错误（来自repository的错误消息）
+  if (err.message && err.message.includes('版本冲突')) {
+    return res.status(409).json({
+      success: false,
+      error: {
+        code: 'VERSION_CONFLICT',
+        message: '数据已被其他用户修改，请刷新后重试'
       }
     })
   }

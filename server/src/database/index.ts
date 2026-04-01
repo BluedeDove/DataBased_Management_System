@@ -416,6 +416,32 @@ export function initDatabase() {
     )
   `)
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS notes (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id       INTEGER NOT NULL,
+      title         TEXT NOT NULL DEFAULT '无标题',
+      content       TEXT NOT NULL DEFAULT '',
+      book_id       INTEGER,
+      visibility    TEXT NOT NULL DEFAULT 'private' CHECK(visibility IN ('private', 'public', 'legacy')),
+      legacy_borrowing_id INTEGER,
+      view_count    INTEGER NOT NULL DEFAULT 0,
+      version       INTEGER NOT NULL DEFAULT 1,
+      is_deleted    INTEGER NOT NULL DEFAULT 0,
+      created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE SET NULL,
+      FOREIGN KEY (legacy_borrowing_id) REFERENCES borrowing_records(id) ON DELETE SET NULL
+    )
+  `)
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_notes_user_id    ON notes(user_id);
+    CREATE INDEX IF NOT EXISTS idx_notes_book_id    ON notes(book_id);
+    CREATE INDEX IF NOT EXISTS idx_notes_visibility ON notes(visibility);
+    CREATE INDEX IF NOT EXISTS idx_notes_deleted    ON notes(is_deleted);
+  `)
+
   // 插入默认权限
   db.exec(`
     INSERT OR IGNORE INTO role_permissions (role, permission) VALUES

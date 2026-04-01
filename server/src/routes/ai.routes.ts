@@ -1,16 +1,29 @@
 import { Router, Request, Response } from 'express'
+import OpenAI from 'openai'
 import { authMiddleware } from '../middleware/auth.middleware'
 import { requirePermission } from '../middleware/permission.middleware'
 import { asyncHandler } from '../middleware/error.middleware'
 import { db } from '../database'
-import { config } from '../config'
 import { logger } from '../lib/logger'
+
+function getAIConfig() {
+  const rows = db.prepare(`SELECT setting_key, setting_value FROM system_settings WHERE category = 'ai'`).all() as { setting_key: string; setting_value: string }[]
+  const map: Record<string, string> = {}
+  rows.forEach(r => { map[r.setting_key] = r.setting_value })
+  return {
+    apiKey: map['ai.openai.apiKey'] || '',
+    baseURL: map['ai.openai.baseURL'] || 'https://api.openai.com/v1',
+    chatModel: map['ai.openai.chatModel'] || 'gpt-4-turbo-preview',
+    embeddingModel: map['ai.openai.embeddingModel'] || 'text-embedding-3-small',
+  }
+}
 
 const router = Router()
 
 // AI服务状态检查
-router.get('/available', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
-  res.json({ success: true, data: config.ai.enabled })
+router.get('/available', authMiddleware, asyncHandler(async (_req: Request, res: Response) => {
+  const { apiKey } = getAIConfig()
+  res.json({ success: true, data: !!apiKey })
 }))
 
 // 创建图书向量嵌入
@@ -33,36 +46,91 @@ router.post('/embeddings/batch', authMiddleware, requirePermission('books:write'
 // 语义搜索
 router.post('/semantic-search', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const { query, topK = 10 } = req.body
-  // 简化实现：使用普通文本搜索
+  const q = (query || '').trim().toLowerCase()
   const books = db.prepare(`
     SELECT b.*, bc.name as category_name FROM books b
     JOIN book_categories bc ON b.category_id = bc.id
-    WHERE b.is_deleted = 0 AND (b.title LIKE ? OR b.description LIKE ? OR b.keywords LIKE ?)
+    WHERE b.is_deleted = 0 AND (b.title LIKE ? OR b.description LIKE ? OR b.keywords LIKE ? OR b.author LIKE ?)
     LIMIT ?
-  `).all(`%${query}%`, `%${query}%`, `%${query}%`, topK)
-  res.json({ success: true, data: books })
+  `).all(`%${query}%`, `%${query}%`, `%${query}%`, `%${query}%`, topK) as any[]
+
+  // 计算相关性分数（0-1），分数越高代表越相关
+  const scored = books.map((b, idx) => {
+    const title  = (b.title       || '').toLowerCase()
+    const desc   = (b.description || '').toLowerCase()
+    const kw     = (b.keywords    || '').toLowerCase()
+    const author = (b.author      || '').toLowerCase()
+    let score = 0.40
+    if (title === q)               score = 0.98
+    else if (title.startsWith(q))  score = 0.90
+    else if (title.includes(q))    score = 0.78
+    else if (author.includes(q))   score = 0.65
+    else if (kw.includes(q))       score = 0.55
+    else if (desc.includes(q))     score = 0.45
+    // slight decay by rank
+    score = Math.max(0.10, score - idx * 0.01)
+    return { ...b, similarity: parseFloat(score.toFixed(2)) }
+  })
+  // sort highest similarity first
+  scored.sort((a, b) => b.similarity - a.similarity)
+  res.json({ success: true, data: scored })
 }))
 
 // AI对话（非流式）
 router.post('/chat', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
-  const { message } = req.body
-  if (!config.ai.enabled) {
-    res.json({ success: true, data: 'AI服务未配置' })
-    return
-  }
-  // 简化实现
-  res.json({ success: true, data: `收到消息: ${message}` })
+  const { apiKey, baseURL, chatModel } = getAIConfig()
+  if (!apiKey) { res.json({ success: true, data: 'AI服务未配置，请先在系统设置中填写 API Key' }); return }
+  const { message, history = [] } = req.body
+  const client = new OpenAI({ apiKey, baseURL })
+  const completion = await client.chat.completions.create({
+    model: chatModel,
+    messages: [
+      { role: 'system', content: '你是一个图书馆智能助手，帮助用户查询图书信息、推荐书籍、解答图书馆相关问题。回答简洁友好，使用中文。' },
+      ...history,
+      { role: 'user', content: message }
+    ]
+  })
+  res.json({ success: true, data: completion.choices[0]?.message?.content || '' })
 }))
 
 // AI对话（流式SSE）
-router.post('/chat/stream', authMiddleware, (req: Request, res: Response) => {
+router.post('/chat/stream', authMiddleware, async (req: Request, res: Response) => {
+  const { apiKey, baseURL, chatModel } = getAIConfig()
+
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache')
   res.setHeader('Connection', 'keep-alive')
 
-  const { message } = req.body
-  res.write(`data: ${JSON.stringify({ chunk: `回复: ${message}` })}\n\n`)
-  res.write(`data: ${JSON.stringify({ done: true })}\n\n`)
+  if (!apiKey) {
+    res.write(`data: ${JSON.stringify({ chunk: 'AI服务未配置，请管理员在系统设置中填写 API Key。' })}\n\n`)
+    res.write(`data: ${JSON.stringify({ done: true })}\n\n`)
+    res.end()
+    return
+  }
+
+  const { message, history = [] } = req.body
+  const client = new OpenAI({ apiKey, baseURL })
+
+  try {
+    const stream = await client.chat.completions.create({
+      model: chatModel,
+      stream: true,
+      messages: [
+        { role: 'system', content: '你是一个图书馆智能助手，帮助用户查询图书信息、推荐书籍、解答图书馆相关问题。回答简洁友好，使用中文。' },
+        ...history,
+        { role: 'user', content: message }
+      ]
+    })
+    for await (const chunk of stream) {
+      const text = chunk.choices[0]?.delta?.content || ''
+      if (text) res.write(`data: ${JSON.stringify({ chunk: text })}\n\n`)
+    }
+    res.write(`data: ${JSON.stringify({ done: true })}\n\n`)
+  } catch (err: any) {
+    logger.error('AI stream error:', err)
+    res.write(`data: ${JSON.stringify({ chunk: `AI请求失败: ${err?.message || '未知错误'}` })}\n\n`)
+    res.write(`data: ${JSON.stringify({ done: true })}\n\n`)
+  }
   res.end()
 })
 

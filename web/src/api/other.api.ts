@@ -24,12 +24,12 @@ export const searchApi = {
 
 export const exportApi = {
   booksToCSV: (): Promise<Blob> =>
-    fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api/v1'}/export/books/csv`, {
+    fetch(`${import.meta.env.VITE_API_BASE_URL || '/api/v1'}/export/books/csv`, {
       headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
     }).then(res => res.blob()),
 
   booksToJSON: (): Promise<Blob> =>
-    fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api/v1'}/export/books/json`, {
+    fetch(`${import.meta.env.VITE_API_BASE_URL || '/api/v1'}/export/books/json`, {
       headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
     }).then(res => res.blob()),
 

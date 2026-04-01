@@ -24,7 +24,10 @@ export class BorrowingService {
       if (this.readerRepository.hasOverdueBooks(readerId)) throw new BusinessError('您有图书逾期未还，请先归还逾期图书')
       book = this.bookRepository.findById(bookId)
       if (!book) throw new ValidationError('图书不存在')
-      if (book.status !== 'normal') throw new BusinessError(`图书状态异常：${book.status}`)
+      if (book.status !== 'normal') {
+        const statusMap: Record<string, string> = { damaged: '已损坏', lost: '已丢失', maintenance: '正在维修', retired: '已报废' }
+        throw new BusinessError(`该图书无法借阅（${statusMap[book.status] || book.status}），请联系管理员`)
+      }
       if (book.available_quantity < 1) throw new StockUnavailableError('暂无可借图书')
       const existingBorrowing = this.borrowingRepository.findActiveBorrowing(readerId, bookId)
       if (existingBorrowing) throw new BusinessError('您已借阅该图书，不能重复借阅')

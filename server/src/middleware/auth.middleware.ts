@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express'
-import { verifyToken } from '../lib/jwt'
+import { verifyToken, shouldRefreshToken, generateToken } from '../lib/jwt'
 import { db } from '../database'
 import { logger } from '../lib/logger'
 
@@ -28,7 +28,7 @@ export interface User {
 }
 
 /**
- * 认证中间件
+ * 认证中间件（带Token自动刷新）
  */
 export function authMiddleware(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization
@@ -75,6 +75,19 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction) 
     }
 
     req.user = user
+
+    // 检查是否需要刷新Token
+    if (shouldRefreshToken(token)) {
+      const newToken = generateToken({
+        userId: user.id,
+        username: user.username,
+        role: user.role
+      })
+      // 在响应头中返回新Token
+      res.setHeader('X-New-Token', newToken)
+      logger.debug(`Token自动刷新: 用户 ${user.username}`)
+    }
+
     next()
   } catch (error) {
     logger.error('认证中间件错误:', error)

@@ -1,7 +1,37 @@
 import dotenv from 'dotenv'
+import crypto from 'crypto'
 
 // 加载环境变量
 dotenv.config()
+
+const DEFAULT_JWT_SECRET = 'your-super-secret-jwt-key-change-in-production'
+
+/**
+ * 生成随机JWT Secret
+ */
+const generateSecret = (): string => {
+  return crypto.randomBytes(64).toString('hex')
+}
+
+/**
+ * 获取并验证JWT Secret
+ */
+const getJwtSecret = (): string => {
+  const secret = process.env.JWT_SECRET
+
+  if (!secret || secret === DEFAULT_JWT_SECRET) {
+    if (process.env.NODE_ENV === 'production') {
+      console.error('❌ 错误: 生产环境必须设置自定义JWT_SECRET环境变量')
+      process.exit(1)
+    }
+    console.warn('⚠️  警告: 使用默认JWT密钥，请在生产环境中设置JWT_SECRET环境变量')
+    console.warn('⚠️  建议使用以下随机生成的密钥:')
+    console.warn(`   JWT_SECRET=${generateSecret()}`)
+    return DEFAULT_JWT_SECRET
+  }
+
+  return secret
+}
 
 export const config = {
   app: {
@@ -15,8 +45,9 @@ export const config = {
   },
 
   jwt: {
-    secret: process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production',
-    expiresIn: process.env.JWT_EXPIRES_IN || '7d'
+    secret: getJwtSecret(),
+    expiresIn: process.env.JWT_EXPIRES_IN || '7d',
+    refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '30d'
   },
 
   database: {

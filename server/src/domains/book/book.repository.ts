@@ -203,6 +203,11 @@ export class BookRepository {
     return db.prepare(`SELECT b.*, bc.name as category_name, bc.code as category_code FROM books b JOIN book_categories bc ON b.category_id = bc.id WHERE b.is_deleted = 1 ORDER BY b.updated_at DESC LIMIT ? OFFSET ?`).all(limit, offset) as BookWithCategory[]
   }
 
+  getTotalCount(): number {
+    const result = db.prepare('SELECT SUM(total_quantity) as total FROM books WHERE is_deleted = 0').get() as { total: number | null }
+    return result?.total ?? 0
+  }
+
   hardDelete(id: number): void {
     const book = this.findById(id, true)
     if (!book) throw new NotFoundError('图书')

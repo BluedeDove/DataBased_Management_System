@@ -66,6 +66,16 @@ export class StockUnavailableError extends BusinessError {
   }
 }
 
+/**
+ * 冲突错误（乐观锁版本冲突）
+ */
+export class ConflictError extends AppError {
+  constructor(message: string, details?: any) {
+    super(message, 'CONFLICT', details)
+    this.name = 'ConflictError'
+  }
+}
+
 class ErrorHandler {
   handle(error: any): SuccessResponse {
     logger.error('Error occurred:', error)

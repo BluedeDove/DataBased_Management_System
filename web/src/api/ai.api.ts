@@ -41,7 +41,7 @@ export const aiApi = {
     const controller = new AbortController()
     const token = localStorage.getItem('token')
 
-    fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api/v1'}/ai/chat/stream`, {
+    fetch(`${import.meta.env.VITE_API_BASE_URL || '/api/v1'}/ai/chat/stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -91,7 +91,7 @@ export const aiApi = {
     const controller = new AbortController()
     const token = localStorage.getItem('token')
 
-    fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api/v1'}/ai/recommend/stream`, {
+    fetch(`${import.meta.env.VITE_API_BASE_URL || '/api/v1'}/ai/recommend/stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
