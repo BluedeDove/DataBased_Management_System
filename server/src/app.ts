@@ -1,6 +1,8 @@
 import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
+import path from 'path'
+import fs from 'fs'
 import { config } from './config'
 import { errorMiddleware, notFoundMiddleware } from './middleware/error.middleware'
 import { globalLimiter, apiLimiter } from './middleware/rateLimit.middleware'
@@ -130,6 +132,16 @@ export function createApp() {
 
   // 图书类别路由 (别名)
   app.use('/api/v1/book-categories', bookRoutes)
+
+  // 静态文件托管（Replit 单端口模式，所有 API 路由之后）
+  const distPath = path.join(process.cwd(), 'web', 'dist')
+  if (fs.existsSync(distPath)) {
+    app.use(express.static(distPath))
+    // Vue Router hash 模式兜底
+    app.get('*', (_req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'))
+    })
+  }
 
   // 404 处理
   app.use(notFoundMiddleware)

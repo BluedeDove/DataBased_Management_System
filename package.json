@@ -9,7 +9,9 @@
     "dev:web": "cd web && npm run dev",
     "db:generate": "tsx scripts/generate-data-v2.ts",
     "db:clear": "tsx scripts/clear-database.ts",
-    "db:clear:all": "tsx scripts/clear-database.ts --all"
+    "db:clear:all": "tsx scripts/clear-database.ts --all",
+    "replit:build": "cd web && npm install && npm run build",
+    "replit:start": "npm run replit:build && NODE_ENV=production tsx server/src/server.ts"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.8",

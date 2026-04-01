@@ -1,0 +1,8 @@
+run = "npm run replit:start"
+
+[nix]
+channel = "stable-24_05"
+
+[deployment]
+run = ["sh", "-c", "npm run replit:start"]
+deploymentTarget = "cloudrun"

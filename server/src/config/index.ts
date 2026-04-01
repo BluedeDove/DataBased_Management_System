@@ -40,7 +40,7 @@ export const config = {
   },
 
   server: {
-    port: parseInt(process.env.PORT || '3001', 10),
+    port: parseInt(process.env.PORT || '3000', 10),
     nodeEnv: process.env.NODE_ENV || 'development'
   },
 
@@ -55,7 +55,7 @@ export const config = {
   },
 
   cors: {
-    origins: (process.env.CORS_ORIGIN || 'http://localhost:3000,http://localhost:5173').split(',')
+    origins: (process.env.CORS_ORIGIN || '*').split(',')
   },
 
   ai: {
