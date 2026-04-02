@@ -1,4 +1,5 @@
 run = "npm run replit:start"
+modules = ["nodejs-20"]
 
 [nix]
 channel = "stable-24_05"
@@ -12,3 +13,34 @@ deploymentTarget = "cloudrun"
 [userenv.shared]
 NODE_ENV = "production"
 JWT_SECRET = "a392c18d34d24ee6746e375f02ec95f519cfc98fc3129290603380e3f699e2d4dffae7a6bcb31596aa59e78f171008f019b5a505ea9b0964cf128f9f71d354ab"
+
+[agent]
+expertMode = true
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run replit:serve"
+waitForPort = 5000
+
+[[ports]]
+localPort = 5000
+externalPort = 80
