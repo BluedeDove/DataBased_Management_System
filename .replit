@@ -6,3 +6,9 @@ channel = "stable-24_05"
 [deployment]
 run = ["sh", "-c", "npm run replit:start"]
 deploymentTarget = "cloudrun"
+
+[userenv]
+
+[userenv.shared]
+NODE_ENV = "production"
+JWT_SECRET = "a392c18d34d24ee6746e375f02ec95f519cfc98fc3129290603380e3f699e2d4dffae7a6bcb31596aa59e78f171008f019b5a505ea9b0964cf128f9f71d354ab"
