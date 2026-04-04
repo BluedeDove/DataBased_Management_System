@@ -46,6 +46,12 @@ export const getPlazaNotes = asyncHandler(async (req: Request, res: Response) =>
   res.json({ success: true, data: result })
 })
 
+export const getLegacyForMe = asyncHandler(async (req: Request, res: Response) => {
+  const user = req.user!
+  const result = noteService.getLegacyNotesForMe(user.id, user.reader_id ?? null)
+  res.json({ success: true, data: result })
+})
+
 export const getLegacyNote = asyncHandler(async (req: Request, res: Response) => {
   const user = req.user!
   const bookId = parseInt(req.params.bookId)

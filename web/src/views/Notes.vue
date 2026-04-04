@@ -1,15 +1,18 @@
 <template>
   <div class="notes-page">
-    <!-- Left: Note List Panel -->
+    <!-- ── Left: Sidebar ── -->
     <aside class="notes-sidebar">
-      <!-- Tabs: My Notes / Plaza -->
+      <!-- Tab bar -->
       <div class="tab-bar">
         <button class="tab-btn" :class="{ active: activeTab === 'my' }" @click="switchTab('my')">我的笔记</button>
         <button class="tab-btn" :class="{ active: activeTab === 'plaza' }" @click="switchTab('plaza')">公开广场</button>
+        <button class="tab-btn legacy-tab" :class="{ active: activeTab === 'legacy-hall' }" @click="switchTab('legacy-hall')">
+          传承长廊
+        </button>
       </div>
 
-      <!-- Search + Filter row -->
-      <div class="sidebar-toolbar">
+      <!-- Search + filter row (hidden for legacy-hall) -->
+      <div v-if="activeTab !== 'legacy-hall'" class="sidebar-toolbar">
         <div class="search-bar">
           <el-icon class="search-icon"><Search /></el-icon>
           <input v-model="searchKeyword" placeholder="搜索笔记…" @keydown.enter="loadNotes" />
@@ -30,6 +33,12 @@
         </template>
       </div>
 
+      <!-- Legacy hall intro (replaces search bar) -->
+      <div v-else class="legacy-hall-intro">
+        <span class="scroll-icon">📜</span>
+        <span>借阅中图书留下的前人智慧</span>
+      </div>
+
       <!-- New note button (my tab only) -->
       <button v-if="activeTab === 'my'" class="new-note-btn" @click="createNewNote">
         <el-icon><Plus /></el-icon> 新建笔记
@@ -37,35 +46,63 @@
 
       <!-- Note list -->
       <div class="note-list" v-loading="listLoading">
-        <div
-          v-for="note in noteList"
-          :key="note.id"
-          class="note-item"
-          :class="{ active: selectedNote?.id === note.id }"
-          @click="selectNote(note)"
-        >
-          <div class="note-item-header">
-            <span class="note-title">{{ note.title || '无标题' }}</span>
-            <span class="note-vis-badge" :class="note.visibility">{{ visLabel(note.visibility) }}</span>
+
+        <!-- ── Legacy-hall special cards ── -->
+        <template v-if="activeTab === 'legacy-hall'">
+          <div v-if="!listLoading && legacyForMeList.length === 0" class="note-empty">
+            <span style="font-size:36px;opacity:0.25">📜</span>
+            <p v-if="activeBorrowedBooks.length === 0">您当前没有借阅中的图书</p>
+            <p v-else>您借阅的图书暂无前人留下的传承笔记</p>
           </div>
-          <div class="note-meta">
-            <span v-if="activeTab === 'plaza'" class="note-author">{{ note.author_name }}</span>
-            <span v-if="note.book_title" class="note-book">📖 {{ note.book_title }}</span>
-            <span class="note-time">{{ formatDate(note.updated_at) }}</span>
+          <div
+            v-for="note in legacyForMeList"
+            :key="note.id"
+            class="note-item legacy-card"
+            :class="{ active: selectedNote?.id === note.id }"
+            @click="selectLegacyNote(note)"
+          >
+            <div class="legacy-card-book">📖 {{ note.book_title }}</div>
+            <div class="legacy-card-title">{{ note.title || '无标题' }}</div>
+            <div class="legacy-card-meta">
+              <span class="legacy-author">{{ note.author_name }}</span>
+              <span class="legacy-time">{{ formatDate(note.updated_at) }}</span>
+            </div>
+            <div class="legacy-card-excerpt">{{ stripMarkdown(note.content) }}</div>
           </div>
-          <div class="note-excerpt">{{ stripMarkdown(note.content) }}</div>
-          <div v-if="activeTab === 'plaza'" class="note-views">
-            <el-icon><View /></el-icon> {{ note.view_count }}
+        </template>
+
+        <!-- ── Normal note items ── -->
+        <template v-else>
+          <div
+            v-for="note in noteList"
+            :key="note.id"
+            class="note-item"
+            :class="{ active: selectedNote?.id === note.id, 'is-legacy': note.visibility === 'legacy' }"
+            @click="selectNote(note)"
+          >
+            <div class="note-item-header">
+              <span class="note-title">{{ note.title || '无标题' }}</span>
+              <span class="note-vis-badge" :class="note.visibility">{{ visLabel(note.visibility) }}</span>
+            </div>
+            <div class="note-meta">
+              <span v-if="activeTab === 'plaza'" class="note-author">{{ note.author_name }}</span>
+              <span v-if="note.book_title" class="note-book">📖 {{ note.book_title }}</span>
+              <span class="note-time">{{ formatDate(note.updated_at) }}</span>
+            </div>
+            <div class="note-excerpt">{{ stripMarkdown(note.content) }}</div>
+            <div v-if="activeTab === 'plaza'" class="note-views">
+              <el-icon><View /></el-icon> {{ note.view_count }}
+            </div>
           </div>
-        </div>
-        <div v-if="!listLoading && noteList.length === 0" class="note-empty">
-          <el-icon style="font-size: 36px; opacity: 0.25"><EditPen /></el-icon>
-          <p>{{ activeTab === 'my' ? '还没有笔记，点击"新建笔记"开始' : '广场暂无公开笔记' }}</p>
-        </div>
+          <div v-if="!listLoading && noteList.length === 0" class="note-empty">
+            <el-icon style="font-size:36px;opacity:0.25"><EditPen /></el-icon>
+            <p>{{ activeTab === 'my' ? '还没有笔记，点击"新建笔记"开始' : '广场暂无公开笔记' }}</p>
+          </div>
+        </template>
       </div>
 
-      <!-- Pagination -->
-      <div v-if="total > pageSize" class="sidebar-pagination">
+      <!-- Pagination (not for legacy-hall) -->
+      <div v-if="activeTab !== 'legacy-hall' && total > pageSize" class="sidebar-pagination">
         <el-pagination
           v-model:current-page="page"
           :page-size="pageSize"
@@ -77,18 +114,42 @@
       </div>
     </aside>
 
-    <!-- Right: Editor / Viewer -->
+    <!-- ── Right: Editor / Viewer ── -->
     <main class="note-editor-area">
       <!-- Placeholder when nothing selected -->
       <div v-if="!selectedNote && !isCreating" class="editor-empty">
-        <el-icon style="font-size: 60px; opacity: 0.15"><EditPen /></el-icon>
-        <p>从左侧选择一篇笔记，或点击"新建笔记"</p>
+        <template v-if="activeTab === 'legacy-hall'">
+          <span style="font-size:60px;opacity:0.15">📜</span>
+          <p>从左侧选择一篇传承笔记阅读</p>
+          <p class="editor-empty-hint">前人的智慧，在书页间流传</p>
+        </template>
+        <template v-else>
+          <el-icon style="font-size:60px;opacity:0.15"><EditPen /></el-icon>
+          <p>从左侧选择一篇笔记，或点击"新建笔记"</p>
+        </template>
       </div>
 
       <!-- Editor / Viewer -->
       <template v-else>
-        <!-- Toolbar -->
-        <div class="editor-toolbar">
+        <!-- ── Legacy note special banner ── -->
+        <div v-if="isLegacyView" class="legacy-banner">
+          <div class="legacy-banner-inner">
+            <div class="legacy-banner-title">
+              <span class="legacy-scroll-icon">📜</span>
+              <span>《{{ selectedNote?.book_title }}》的传承笔记</span>
+            </div>
+            <div class="legacy-banner-meta">
+              <span class="legacy-banner-author">前借阅者&nbsp;·&nbsp;{{ selectedNote?.author_name }}</span>
+              <span class="legacy-banner-dot">·</span>
+              <span>{{ formatDateFull(selectedNote?.updated_at ?? '') }}</span>
+              <span class="legacy-banner-dot">·</span>
+              <span class="legacy-banner-views"><el-icon><View /></el-icon>&nbsp;{{ selectedNote?.view_count }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Normal toolbar (non-legacy-view) ── -->
+        <div v-else class="editor-toolbar">
           <div class="editor-toolbar-left">
             <input
               v-model="editTitle"
@@ -145,7 +206,7 @@
                 />
               </el-select>
               <!-- Legacy hint -->
-              <span v-if="editVisibility === 'legacy' && activeBorrowedBooks.length === 0" class="legacy-hint">
+              <span v-if="editVisibility === 'legacy' && activeBorrowedBooks.length === 0" class="legacy-hint-text">
                 ⚠ 请先借阅图书
               </span>
               <!-- Preview toggle -->
@@ -163,14 +224,26 @@
             </template>
             <template v-else>
               <span class="note-vis-badge" :class="selectedNote?.visibility">{{ visLabel(selectedNote?.visibility) }}</span>
+              <span v-if="selectedNote?.book_title" class="toolbar-book-tag">📖 {{ selectedNote.book_title }}</span>
             </template>
           </div>
         </div>
 
-        <!-- Editor body: split or single -->
-        <div class="editor-body" :class="{ split: showPreview && !isReadOnly }">
+        <!-- Editor/viewer title row for legacy-view -->
+        <div v-if="isLegacyView" class="legacy-title-bar">
+          <h2 class="legacy-note-title">{{ selectedNote?.title || '无标题' }}</h2>
+        </div>
+
+        <!-- Editor body -->
+        <div
+          class="editor-body"
+          :class="{
+            split: showPreview && !isReadOnly && !isLegacyView,
+            'legacy-body': isLegacyView
+          }"
+        >
           <!-- Markdown textarea (edit mode) -->
-          <div v-if="!isReadOnly" class="editor-pane">
+          <div v-if="!isReadOnly && !isLegacyView" class="editor-pane">
             <el-input
               v-model="editContent"
               type="textarea"
@@ -182,7 +255,7 @@
           <!-- Preview / Read-only -->
           <div
             class="preview-pane"
-            :class="{ readonly: isReadOnly }"
+            :class="{ readonly: isReadOnly || isLegacyView, 'legacy-content': isLegacyView }"
             v-html="renderedContent"
           />
         </div>
@@ -204,12 +277,13 @@ import apiClient from '../api/index'
 const userStore = useUserStore()
 
 // ── State ──────────────────────────────────────────────────────
-const activeTab = ref<'my' | 'plaza'>('my')
+const activeTab = ref<'my' | 'plaza' | 'legacy-hall'>('my')
 const searchKeyword = ref('')
 const visibilityFilter = ref('')
 const plazaOrderBy = ref<'newest' | 'hottest'>('newest')
 
 const noteList = ref<Note[]>([])
+const legacyForMeList = ref<Note[]>([])
 const listLoading = ref(false)
 const page = ref(1)
 const pageSize = 20
@@ -232,10 +306,15 @@ const bookOptions = ref<{ id: number; title: string }[]>([])
 const isReadOnly = computed(() => {
   if (isCreating.value) return false
   if (!selectedNote.value) return false
-  // plaza tab is always read-only; my tab is editable (own notes)
   if (activeTab.value === 'plaza') return true
+  if (activeTab.value === 'legacy-hall') return true
   return selectedNote.value.user_id !== userStore.user?.id
 })
+
+// 传承长廊中看别人的传承笔记 → 特殊卷轴模式
+const isLegacyView = computed(() =>
+  activeTab.value === 'legacy-hall' && !!selectedNote.value
+)
 
 // 传承模式只能选择当前借阅中的书；其他模式显示全部图书
 const currentBookOptions = computed(() => {
@@ -244,7 +323,9 @@ const currentBookOptions = computed(() => {
 })
 
 const renderedContent = computed(() => {
-  const src = isReadOnly.value ? (selectedNote.value?.content ?? '') : editContent.value
+  const src = (isReadOnly.value || isLegacyView.value)
+    ? (selectedNote.value?.content ?? '')
+    : editContent.value
   if (!src) return '<p style="color:var(--text-muted);font-size:13px">预览区域</p>'
   return DOMPurify.sanitize(marked(src) as string)
 })
@@ -262,10 +343,17 @@ const formatDate = (s: string) => {
   return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
 }
 
+const formatDateFull = (s: string) => {
+  if (!s) return ''
+  const d = new Date(s)
+  return d.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })
+}
+
 const stripMarkdown = (s: string) => s.replace(/[#*`_~>\[\]!]/g, '').slice(0, 60)
 
 // ── Data loading ───────────────────────────────────────────────
 const loadNotes = async () => {
+  if (activeTab.value === 'legacy-hall') return loadLegacyForMe()
   listLoading.value = true
   try {
     let result: any
@@ -282,9 +370,17 @@ const loadNotes = async () => {
   finally { listLoading.value = false }
 }
 
+const loadLegacyForMe = async () => {
+  listLoading.value = true
+  try {
+    const r = await notesApi.getLegacyForMe()
+    if (r.success) legacyForMeList.value = r.data.items
+  } catch { ElMessage.error('加载传承笔记失败') }
+  finally { listLoading.value = false }
+}
+
 const loadBookOptions = async () => {
   try {
-    // 获取当前用户的借阅中图书（用于传承笔记，包含借阅中和逾期）
     const r = await apiClient.get('/borrowings/my')
     if (r.data.success) {
       activeBorrowedBooks.value = r.data.data.items
@@ -293,7 +389,6 @@ const loadBookOptions = async () => {
     }
   } catch {}
   try {
-    // 获取全部图书（用于普通关联）
     const r2 = await apiClient.get('/books', { params: { page: 1, pageSize: 200 } })
     if (r2.data.success) {
       bookOptions.value = r2.data.data.items.map((b: any) => ({ id: b.id, title: b.title }))
@@ -302,7 +397,7 @@ const loadBookOptions = async () => {
 }
 
 // ── Actions ────────────────────────────────────────────────────
-const switchTab = (tab: 'my' | 'plaza') => {
+const switchTab = (tab: 'my' | 'plaza' | 'legacy-hall') => {
   activeTab.value = tab
   page.value = 1
   searchKeyword.value = ''
@@ -319,14 +414,22 @@ const selectNote = async (note: Note) => {
   editVisibility.value = note.visibility
   editBookId.value = note.book_id
   showPreview.value = false
-
-  // If plaza note, fetch fresh (increments view count)
   if (activeTab.value === 'plaza') {
     try {
       const r = await notesApi.getNoteById(note.id)
       if (r.success) selectedNote.value = r.data
     } catch {}
   }
+}
+
+const selectLegacyNote = async (note: Note) => {
+  selectedNote.value = note
+  isCreating.value = false
+  // Fetch full note to increment view count
+  try {
+    const r = await notesApi.getNoteById(note.id)
+    if (r.success) selectedNote.value = r.data
+  } catch {}
 }
 
 const createNewNote = () => {
@@ -397,7 +500,6 @@ const confirmDelete = async () => {
 // 切换可见性时处理图书关联逻辑
 watch(editVisibility, (v) => {
   if (v === 'legacy') {
-    // 切换到传承：如果当前关联的书不在借阅列表中，则重置为第一本借阅中的书
     const borrowedIds = activeBorrowedBooks.value.map(b => b.id)
     if (editBookId.value && !borrowedIds.includes(editBookId.value)) {
       editBookId.value = null
@@ -448,7 +550,7 @@ onMounted(() => { loadNotes(); loadBookOptions() })
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   font-family: var(--font-sans);
   transition: all 0.15s;
@@ -457,6 +559,10 @@ onMounted(() => { loadNotes(); loadBookOptions() })
   background: var(--gradient-brand);
   color: #fff;
   box-shadow: 0 2px 8px rgba(200,16,46,0.25);
+}
+.tab-btn.legacy-tab.active {
+  background: linear-gradient(135deg, #b8860b 0%, #daa520 100%);
+  box-shadow: 0 2px 8px rgba(184,134,11,0.35);
 }
 
 .sidebar-toolbar {
@@ -492,6 +598,21 @@ onMounted(() => { loadNotes(); loadBookOptions() })
 }
 .search-bar input:focus { border-color: var(--gdut-red); }
 
+/* Legacy hall intro bar */
+.legacy-hall-intro {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px;
+  background: linear-gradient(90deg, rgba(184,134,11,0.12) 0%, rgba(218,165,32,0.06) 100%);
+  border-radius: 10px;
+  border: 1px solid rgba(184,134,11,0.2);
+  font-size: 12px;
+  color: #8b6914;
+  font-weight: 500;
+}
+.scroll-icon { font-size: 15px; }
+
 .new-note-btn {
   display: flex;
   align-items: center;
@@ -508,10 +629,7 @@ onMounted(() => { loadNotes(); loadBookOptions() })
   font-family: var(--font-sans);
   transition: all 0.15s;
 }
-.new-note-btn:hover {
-  border-color: var(--gdut-red);
-  background: rgba(200,16,46,0.12);
-}
+.new-note-btn:hover { border-color: var(--gdut-red); background: rgba(200,16,46,0.12); }
 
 .note-list {
   flex: 1;
@@ -521,6 +639,7 @@ onMounted(() => { loadNotes(); loadBookOptions() })
   gap: 6px;
 }
 
+/* ── Normal note item ── */
 .note-item {
   padding: 10px 12px;
   border-radius: 12px;
@@ -531,6 +650,7 @@ onMounted(() => { loadNotes(); loadBookOptions() })
 }
 .note-item:hover { background: rgba(255,255,255,0.55); transform: translateY(-1px); }
 .note-item.active { background: rgba(255,255,255,0.65); border-color: rgba(200,16,46,0.25); box-shadow: 0 2px 12px rgba(200,16,46,0.08); }
+.note-item.is-legacy { border-left: 3px solid #daa520; }
 
 .note-item-header {
   display: flex;
@@ -557,7 +677,7 @@ onMounted(() => { loadNotes(); loadBookOptions() })
 }
 .note-vis-badge.private { background: var(--gdut-purple-tint); color: var(--gdut-purple); }
 .note-vis-badge.public  { background: var(--success-tint);      color: var(--success); }
-.note-vis-badge.legacy  { background: var(--warning-tint);      color: var(--warning); }
+.note-vis-badge.legacy  { background: rgba(218,165,32,0.15);    color: #8b6914; }
 
 .note-meta {
   display: flex;
@@ -586,6 +706,61 @@ onMounted(() => { loadNotes(); loadBookOptions() })
   font-size: 11px;
   color: var(--text-muted);
   margin-top: 4px;
+}
+
+/* ── Legacy gallery card ── */
+.legacy-card {
+  background: linear-gradient(135deg, rgba(255,248,220,0.75) 0%, rgba(255,255,255,0.5) 100%);
+  border: 1px solid rgba(184,134,11,0.25);
+  border-left: 3px solid #daa520;
+}
+.legacy-card:hover {
+  background: linear-gradient(135deg, rgba(255,248,220,0.9) 0%, rgba(255,255,255,0.65) 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(184,134,11,0.15);
+}
+.legacy-card.active {
+  background: linear-gradient(135deg, rgba(255,248,220,0.95) 0%, rgba(255,255,255,0.8) 100%);
+  border-color: #b8860b;
+  box-shadow: 0 4px 16px rgba(184,134,11,0.25);
+}
+.legacy-card-book {
+  font-size: 11px;
+  color: #8b6914;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 3px;
+}
+.legacy-card-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
+}
+.legacy-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.legacy-author {
+  color: #8b6914;
+  font-weight: 500;
+}
+.legacy-time { margin-left: auto; font-size: 10px; }
+.legacy-card-excerpt {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .note-empty {
@@ -624,7 +799,74 @@ onMounted(() => { loadNotes(); loadBookOptions() })
   color: var(--text-muted);
   font-size: 14px;
 }
+.editor-empty-hint {
+  font-size: 12px;
+  opacity: 0.7;
+  font-style: italic;
+}
 
+/* ── Legacy note banner ── */
+.legacy-banner {
+  background: linear-gradient(135deg, #fdf3dc 0%, #fef9ee 50%, #fffbf0 100%);
+  border-bottom: 2px solid rgba(184,134,11,0.3);
+  padding: 16px 24px 14px;
+  position: relative;
+  overflow: hidden;
+}
+.legacy-banner::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent,
+    transparent 40px,
+    rgba(184,134,11,0.03) 40px,
+    rgba(184,134,11,0.03) 41px
+  );
+  pointer-events: none;
+}
+.legacy-banner-inner { position: relative; z-index: 1; }
+.legacy-banner-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 17px;
+  font-weight: 700;
+  color: #6b4f0a;
+  margin-bottom: 6px;
+}
+.legacy-scroll-icon { font-size: 22px; }
+.legacy-banner-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #8b6914;
+}
+.legacy-banner-author { font-weight: 600; }
+.legacy-banner-dot { opacity: 0.45; }
+.legacy-banner-views {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  opacity: 0.75;
+}
+
+/* ── Legacy note title bar ── */
+.legacy-title-bar {
+  padding: 14px 24px 0;
+  background: linear-gradient(180deg, #fef9ee 0%, transparent 100%);
+}
+.legacy-note-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: #3d2e0a;
+  margin: 0;
+  font-family: var(--font-sans);
+}
+
+/* ── Normal toolbar ── */
 .editor-toolbar {
   display: flex;
   align-items: center;
@@ -652,6 +894,16 @@ onMounted(() => { loadNotes(); loadBookOptions() })
 }
 .title-input::placeholder { color: var(--text-muted); font-weight: 400; }
 .title-input:disabled { color: var(--text-primary); cursor: default; }
+
+.toolbar-book-tag {
+  font-size: 11px;
+  color: #8b6914;
+  background: rgba(218,165,32,0.12);
+  border: 1px solid rgba(184,134,11,0.2);
+  padding: 2px 8px;
+  border-radius: 99px;
+  font-weight: 500;
+}
 
 .toolbar-btn {
   width: 32px;
@@ -704,7 +956,7 @@ onMounted(() => { loadNotes(); loadBookOptions() })
 }
 .delete-btn:hover { border-color: var(--danger); color: var(--danger); background: var(--danger-tint); }
 
-.legacy-hint {
+.legacy-hint-text {
   font-size: 11px;
   color: var(--warning);
   white-space: nowrap;
@@ -715,70 +967,93 @@ onMounted(() => { loadNotes(); loadBookOptions() })
 .editor-body {
   flex: 1;
   display: flex;
+  min-height: 0;
   overflow: hidden;
 }
-.editor-body.split .editor-pane { width: 50%; border-right: 1px solid rgba(255,255,255,0.35); }
-.editor-body.split .preview-pane { width: 50%; }
+.editor-body.split { }
+.editor-body.legacy-body {
+  background: linear-gradient(180deg, #fef9ee 0%, #fffcf2 40%, #ffffff 100%);
+}
 
 .editor-pane {
   flex: 1;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  border-right: 1px solid rgba(255,255,255,0.35);
+  min-width: 0;
 }
-.editor-pane :deep(.el-textarea) { height: 100%; }
-.editor-pane :deep(.el-textarea__inner) {
-  height: 100% !important;
-  border: none !important;
-  border-radius: 0 !important;
-  background: rgba(255,255,255,0.30) !important;
-  backdrop-filter: blur(8px);
+
+.md-textarea {
+  flex: 1;
+  height: 100%;
+}
+.md-textarea :deep(.el-textarea__inner) {
+  height: 100%;
+  resize: none;
+  border: none;
+  border-radius: 0;
+  background: rgba(255,255,255,0.25);
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
   font-size: 14px;
   line-height: 1.7;
-  color: var(--text-primary);
-  resize: none;
   padding: 20px 24px;
+  box-shadow: none;
+  color: var(--text-primary);
 }
-.editor-pane :deep(.el-textarea__inner):focus {
-  box-shadow: none !important;
-}
+.md-textarea :deep(.el-textarea__inner):focus { box-shadow: none; }
 
 .preview-pane {
   flex: 1;
   overflow-y: auto;
-  padding: 20px 28px;
-  background: rgba(255,255,255,0.25);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  padding: 24px 32px;
+  font-size: 15px;
+  line-height: 1.8;
+  color: var(--text-primary);
+  min-width: 0;
 }
-.preview-pane.readonly {
-  flex: 1;
-  background: rgba(255,255,255,0.28);
+.preview-pane.readonly { flex: 1; }
+.preview-pane.legacy-content {
+  color: #2c1f06;
+  font-size: 15px;
+  line-height: 1.9;
 }
 
-/* Markdown content styles */
+/* Markdown rendered styles */
 .preview-pane :deep(h1),
 .preview-pane :deep(h2),
-.preview-pane :deep(h3) { color: var(--text-primary); font-weight: 700; margin: 1em 0 0.5em; }
-.preview-pane :deep(h1) { font-size: 1.5em; }
-.preview-pane :deep(h2) { font-size: 1.25em; }
-.preview-pane :deep(h3) { font-size: 1.1em; }
-.preview-pane :deep(p) { color: var(--text-secondary); line-height: 1.8; margin-bottom: 0.75em; font-size: 14px; }
-.preview-pane :deep(code) { background: rgba(124,58,237,0.08); padding: 2px 6px; border-radius: 4px; font-size: 0.9em; color: var(--gdut-purple); }
-.preview-pane :deep(pre) { background: rgba(28,16,51,0.06); padding: 12px 16px; border-radius: 10px; overflow-x: auto; margin-bottom: 0.75em; }
-.preview-pane :deep(pre code) { background: transparent; padding: 0; color: var(--text-primary); }
-.preview-pane :deep(blockquote) { border-left: 3px solid var(--gdut-red); padding-left: 12px; color: var(--text-muted); font-style: italic; margin-bottom: 0.75em; }
-.preview-pane :deep(ul), .preview-pane :deep(ol) { padding-left: 20px; margin-bottom: 0.75em; color: var(--text-secondary); font-size: 14px; line-height: 1.8; }
-.preview-pane :deep(a) { color: var(--gdut-red); text-decoration: none; }
-.preview-pane :deep(a:hover) { text-decoration: underline; }
+.preview-pane :deep(h3) { margin: 1.2em 0 0.5em; font-weight: 700; }
+.preview-pane :deep(p) { margin: 0.6em 0; }
+.preview-pane :deep(pre) {
+  background: rgba(0,0,0,0.04);
+  padding: 12px 16px;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-size: 13px;
+}
+.preview-pane :deep(code) {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.9em;
+}
+.preview-pane :deep(blockquote) {
+  border-left: 3px solid rgba(184,134,11,0.5);
+  padding-left: 14px;
+  color: var(--text-secondary);
+  margin: 0.8em 0;
+  font-style: italic;
+}
+.preview-pane.legacy-content :deep(blockquote) {
+  border-left-color: #b8860b;
+  background: rgba(255,248,220,0.5);
+  border-radius: 0 8px 8px 0;
+  padding: 8px 14px;
+}
+.preview-pane :deep(a) { color: var(--gdut-red); }
+.preview-pane :deep(ul),
+.preview-pane :deep(ol) { padding-left: 1.5em; }
+.preview-pane :deep(li) { margin: 0.3em 0; }
 .preview-pane :deep(hr) { border: none; border-top: 1px solid var(--border-color); margin: 1.5em 0; }
-
-@media (max-width: 900px) {
-  .notes-sidebar { width: 240px; }
-}
-@media (max-width: 700px) {
-  .notes-page { flex-direction: column; }
-  .notes-sidebar { width: 100%; height: 260px; }
-}
+.preview-pane :deep(table) { border-collapse: collapse; width: 100%; font-size: 13px; }
+.preview-pane :deep(th),
+.preview-pane :deep(td) { border: 1px solid var(--border-color); padding: 6px 12px; }
+.preview-pane :deep(th) { background: rgba(0,0,0,0.03); font-weight: 600; }
 </style>

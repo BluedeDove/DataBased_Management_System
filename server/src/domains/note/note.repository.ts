@@ -112,6 +112,24 @@ export class NoteRepository {
     return { items: db.prepare(sql).all(...args) as NoteWithDetails[], total }
   }
 
+  /** 获取当前读者正在借阅的书中，其他人留下的所有传承笔记 */
+  findLegacyNotesForReader(readerId: number, excludeUserId: number): NoteWithDetails[] {
+    return db.prepare(`
+      SELECT n.*, u.name as author_name, b.title as book_title, b.isbn as book_isbn
+      FROM notes n
+      JOIN users u ON n.user_id = u.id
+      LEFT JOIN books b ON n.book_id = b.id
+      WHERE n.visibility = 'legacy'
+        AND n.is_deleted = 0
+        AND n.user_id != ?
+        AND n.book_id IN (
+          SELECT book_id FROM borrowing_records
+          WHERE reader_id = ? AND status IN ('borrowed', 'overdue') AND is_deleted = 0
+        )
+      ORDER BY b.title ASC, n.created_at DESC
+    `).all(excludeUserId, readerId) as NoteWithDetails[]
+  }
+
   findLatestLegacyByBook(bookId: number): NoteWithDetails | undefined {
     return db.prepare(`
       SELECT n.*, u.name as author_name, b.title as book_title, b.isbn as book_isbn

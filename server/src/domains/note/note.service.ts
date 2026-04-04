@@ -144,6 +144,13 @@ export class NoteService {
     return updated
   }
 
+  /** 获取当前读者正在借阅的图书中，其他读者留下的传承笔记 */
+  getLegacyNotesForMe(userId: number, readerId: number | null | undefined): { items: NoteWithDetails[]; total: number } {
+    if (!readerId) return { items: [], total: 0 }
+    const items = this.noteRepository.findLegacyNotesForReader(readerId, userId)
+    return { items, total: items.length }
+  }
+
   deleteNote(id: number, userId: number, role: string): void {
     const note = this.noteRepository.findById(id)
     if (!note) throw new NotFoundError('笔记不存在')

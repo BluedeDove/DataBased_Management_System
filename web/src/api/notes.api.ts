@@ -48,6 +48,10 @@ export const notesApi = {
     return apiClient.get(`/notes/legacy/${bookId}`).then(r => r.data)
   },
 
+  getLegacyForMe() {
+    return apiClient.get('/notes/legacy-for-me').then(r => r.data)
+  },
+
   updateNote(id: number, data: { title?: string; content?: string; book_id?: number | null; visibility?: string }) {
     return apiClient.put(`/notes/${id}`, data).then(r => r.data)
   },
