@@ -101,11 +101,11 @@ body::before {
   z-index: -2;
   background-image:
     linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.08)),
+    url('https://library.gdut.edu.cn/images/bannar2401.png'),
     radial-gradient(circle at top right, rgba(200, 16, 46, 0.16), transparent 36%),
-    radial-gradient(circle at bottom left, rgba(124, 58, 237, 0.14), transparent 40%),
-    url('../assets/images/gdut-logo.jpg');
-  background-position: center center, top right, bottom left, center center;
-  background-size: cover, auto, auto, clamp(260px, 34vw, 520px) auto;
+    radial-gradient(circle at bottom left, rgba(124, 58, 237, 0.14), transparent 40%);
+  background-position: center center, center center, top right, bottom left;
+  background-size: cover, cover, auto, auto;
   background-repeat: no-repeat, no-repeat, no-repeat, no-repeat;
   background-attachment: fixed, fixed, fixed, fixed;
 }

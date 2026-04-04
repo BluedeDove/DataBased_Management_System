@@ -161,7 +161,10 @@ const handleGlobalSearch = () => {
 }
 
 const goSettings  = () => router.push('/settings')
-const handleLogout = () => { userStore.logout(); router.push('/login') }
+const handleLogout = async () => {
+  userStore.logout()
+  await router.replace('/login')
+}
 </script>
 
 <style scoped>

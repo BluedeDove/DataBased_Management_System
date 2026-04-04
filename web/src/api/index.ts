@@ -31,6 +31,13 @@ const onRefreshed = (token: string) => {
   refreshSubscribers = []
 }
 
+const redirectToLogin = () => {
+  const loginUrl = `${window.location.origin}${window.location.pathname}#/login`
+  if (window.location.href !== loginUrl) {
+    window.location.replace(loginUrl)
+  }
+}
+
 /**
  * 刷新Token
  */
@@ -52,7 +59,7 @@ const refreshToken = async (): Promise<string | null> => {
     console.error('Token刷新失败:', error)
     localStorage.removeItem('token')
     localStorage.removeItem('user')
-    window.location.href = '/login'
+    redirectToLogin()
   }
 
   return null
@@ -119,7 +126,7 @@ apiClient.interceptors.response.use(
       // 刷新失败，清除登录状态
       localStorage.removeItem('token')
       localStorage.removeItem('user')
-      window.location.href = '/login'
+      redirectToLogin()
     }
 
     // 409冲突错误特殊处理（乐观锁冲突）

@@ -1,7 +1,5 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { authApi } from '../api/auth.api'
-
 interface User {
   id: number
   username: string
@@ -32,18 +30,8 @@ export const useUserStore = defineStore('user', () => {
     throw new Error(result.error?.message || '登录失败')
   }
 
-  async function logout() {
-    if (token.value) {
-      try {
-        await authApi.logout()
-      } catch (e) {
-        // ignore logout errors
-      }
-    }
-    user.value = null
-    token.value = ''
-    localStorage.removeItem('token')
-    localStorage.removeItem('user')
+  function logout() {
+    clearSession()
   }
 
   /**

@@ -42,7 +42,7 @@ export function createApp() {
         frameSrc: ["'none'"],
       },
     } : false,
-    crossOriginEmbedderPolicy: isProduction,
+    crossOriginEmbedderPolicy: false,
     crossOriginOpenerPolicy: isProduction,
     crossOriginResourcePolicy: isProduction ? { policy: 'same-origin' } : false,
     dnsPrefetchControl: { allow: false },

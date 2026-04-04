@@ -187,11 +187,9 @@ const handleLogin = async () => {
   position: absolute;
   inset: -5%;          /* 留出 Ken Burns 缩放空间 */
   background:
-    radial-gradient(circle at 20% 20%, rgba(124, 58, 237, 0.28), transparent 32%),
-    radial-gradient(circle at 80% 30%, rgba(200, 16, 46, 0.24), transparent 30%),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04)),
-    url('../assets/images/gdut-logo.jpg')
-    center center / min(56%, 420px) auto no-repeat;
+    linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.04)),
+    url('https://library.gdut.edu.cn/images/bannar2401.png')
+    center center / cover no-repeat;
   z-index: 0;
   animation: lpKenBurns 40s ease-in-out infinite alternate;
   will-change: transform;

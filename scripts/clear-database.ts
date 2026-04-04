@@ -1,118 +1,126 @@
 /**
- * 数据库清理脚本
- * 
- * 功能：
- * - 删除所有表中的数据（保留表结构）
- * - 删除整个数据库文件（可选）
- * 
- * 使用方法：
- *   npm run db:clear          # 仅删除数据，保留表结构
- *   npm run db:clear:all      # 删除整个数据库文件
- * 
- * 注意：此脚本仅用于演示，不考虑安全性
+ * Database reset helper.
+ *
+ * Usage:
+ *   npm run db:clear
+ *   npm run db:clear:all
  */
 
 import Database from 'better-sqlite3'
 import path from 'path'
 import { existsSync, unlinkSync } from 'fs'
-import os from 'os'
 
-// 获取数据库路径（尝试多个可能的路径）
-const possiblePaths = [
-  path.join(process.env.APPDATA || '', 'electron-smart-library', 'library.db'),
-  path.join(os.homedir(), '.electron-smart-library', 'library.db'),
-  path.join(os.homedir(), 'AppData', 'Roaming', 'electron-smart-library', 'library.db')
-]
+type TableRow = { name: string }
+type CountRow = { count: number }
 
-let dbPath = possiblePaths.find(p => existsSync(p))
-if (!dbPath) {
-  dbPath = possiblePaths[0]  // 使用默认路径
+const PRESERVED_USERNAMES = ['admin', 'librarian'] as const
+
+function resolveDatabasePath(): string {
+  const rawPath = process.env.DATABASE_PATH || path.join('data', 'library.db')
+  return path.isAbsolute(rawPath) ? rawPath : path.resolve(process.cwd(), rawPath)
 }
-const userDataPath = path.dirname(dbPath)
 
-// 解析命令行参数
-const args = process.argv.slice(2)
-const deleteAll = args.includes('--all') || args.includes('-a')
+function quoteIdentifier(identifier: string): string {
+  return `"${identifier.replace(/"/g, '""')}"`
+}
 
-console.log('🗑️  数据库清理脚本\n')
-console.log(`📁 数据库路径: ${dbPath}`)
+const dbPath = resolveDatabasePath()
+const args = new Set(process.argv.slice(2))
+const deleteAll = args.has('--all') || args.has('-a')
+
+console.log('DB clear helper\n')
+console.log(`Database path: ${dbPath}`)
 
 if (!existsSync(dbPath)) {
-  console.log('⚠️  数据库文件不存在，无需清理')
+  console.log('Database file does not exist, nothing to clear.')
   process.exit(0)
 }
 
 if (deleteAll) {
-  // 删除整个数据库文件
-  console.log('\n🔥 删除整个数据库文件...')
+  console.log('\nDeleting database file...')
   try {
     unlinkSync(dbPath)
-    console.log('✅ 数据库文件已删除')
-    console.log('\n💡 提示: 下次启动应用时会自动创建新的数据库')
+    console.log('Database file deleted.')
+    console.log('It will be recreated on next app startup.')
+    process.exit(0)
   } catch (error) {
-    console.error('❌ 删除数据库文件失败:', error)
+    console.error('Failed to delete database file:', error)
     process.exit(1)
-  }
-} else {
-  // 仅删除数据，保留表结构
-  console.log('\n🧹 清理数据库数据（保留表结构）...')
-  console.log('\n⚠️  警告：此操作将删除所有表的数据，包括：')
-  console.log('   - 用户、读者、图书、借阅记录')
-  console.log('   - 默认的读者种类、图书类别')
-  console.log('   - 角色权限、系统设置')
-  console.log('   - AI对话历史、图书向量')
-  console.log('   - 操作日志、审计日志')
-  console.log('\n💡 清理后需要重新启动应用来初始化默认数据\n')
-  
-  const db = new Database(dbPath)
-  db.pragma('foreign_keys = OFF') // 暂时关闭外键约束以便删除数据
-  
-  try {
-    // 获取所有表名
-    const tables = db.prepare(`
-      SELECT name FROM sqlite_master 
-      WHERE type='table' AND name NOT LIKE 'sqlite_%'
-      ORDER BY name
-    `).all() as { name: string }[]
-    
-    console.log(`\n找到 ${tables.length} 个表:`)
-    tables.forEach(t => console.log(`  - ${t.name}`))
-    
-    // 删除每个表的数据
-    tables.forEach(table => {
-      const count = db.prepare(`SELECT COUNT(*) as count FROM ${table.name}`).get() as { count: number }
-      if (count.count > 0) {
-        db.exec(`DELETE FROM ${table.name}`)
-        console.log(`✅ 已删除 ${table.name} 表的 ${count.count} 条记录`)
-      }
-    })
-    
-    // 重置自增ID
-    tables.forEach(table => {
-      try {
-        db.exec(`DELETE FROM sqlite_sequence WHERE name='${table.name}'`)
-      } catch (error) {
-        // 某些表可能没有自增ID，忽略错误
-      }
-    })
-    
-    console.log('\n✅ 数据清理完成')
-    console.log('💡 提示: 表结构已保留，可以重新生成测试数据')
-    
-    // 显示当前数据统计
-    console.log('\n📊 当前数据统计:')
-    tables.forEach(table => {
-      const count = db.prepare(`SELECT COUNT(*) as count FROM ${table.name}`).get() as { count: number }
-      console.log(`  ${table.name}: ${count.count} 条`)
-    })
-    
-  } catch (error) {
-    console.error('❌ 清理数据失败:', error)
-    process.exit(1)
-  } finally {
-    db.close()
   }
 }
 
-console.log('\n🎉 清理操作完成')
-process.exit(0)
+const db = new Database(dbPath)
+db.pragma('foreign_keys = OFF')
+
+try {
+  const tables = db.prepare(`
+    SELECT name
+    FROM sqlite_master
+    WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+    ORDER BY name
+  `).all() as TableRow[]
+
+  console.log('\nClearing table data and keeping schema...')
+  console.log(`Found ${tables.length} tables`)
+
+  for (const table of tables) {
+    const tableName = table.name
+    const quotedTableName = quoteIdentifier(tableName)
+
+    if (tableName === 'users') {
+      const placeholders = PRESERVED_USERNAMES.map(() => '?').join(', ')
+      const removableCount = db.prepare(`
+        SELECT COUNT(*) AS count
+        FROM ${quotedTableName}
+        WHERE username NOT IN (${placeholders})
+      `).get(...PRESERVED_USERNAMES) as CountRow
+
+      if (removableCount.count > 0) {
+        db.prepare(`
+          DELETE FROM ${quotedTableName}
+          WHERE username NOT IN (${placeholders})
+        `).run(...PRESERVED_USERNAMES)
+      }
+
+      console.log(`${tableName}: cleared ${removableCount.count} rows, kept ${PRESERVED_USERNAMES.join(' / ')}`)
+    } else {
+      const rowCount = db.prepare(`
+        SELECT COUNT(*) AS count
+        FROM ${quotedTableName}
+      `).get() as CountRow
+
+      if (rowCount.count > 0) {
+        db.exec(`DELETE FROM ${quotedTableName}`)
+      }
+
+      console.log(`${tableName}: cleared ${rowCount.count} rows`)
+    }
+
+    try {
+      db.prepare(`DELETE FROM sqlite_sequence WHERE name = ?`).run(tableName)
+    } catch {
+      // ignore
+    }
+  }
+
+  db.pragma('foreign_keys = ON')
+
+  console.log('\nRemaining rows after clear:')
+  for (const table of tables) {
+    const tableName = table.name
+    const quotedTableName = quoteIdentifier(tableName)
+    const rowCount = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM ${quotedTableName}
+    `).get() as CountRow
+    console.log(`  - ${tableName}: ${rowCount.count}`)
+  }
+
+  console.log('\nDatabase clear completed.')
+  console.log('Next step: run npm run db:generate')
+} catch (error) {
+  console.error('Failed to clear database:', error)
+  process.exitCode = 1
+} finally {
+  db.close()
+}
