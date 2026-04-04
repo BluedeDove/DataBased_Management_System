@@ -2,6 +2,7 @@ import OpenAI from 'openai'
 import { db } from '../../database'
 import { RegexSearchService } from '../search/regex-search.service'
 import { BorrowingService } from '../borrowing/borrowing.service'
+import { NoteRepository } from '../note/note.repository'
 import { cosineSimilarity, getAIConfig } from './ai.service'
 
 // ── Tool definitions (OpenAI function calling format) ──
@@ -81,6 +82,74 @@ export const toolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
           book_id: { type: 'number', description: '要借阅的图书ID（必填）' }
         },
         required: ['book_id']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_notes',
+      description: '搜索公共读书笔记/心得。支持按关键词搜索，可按图书过滤。',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: '搜索关键词' },
+          book_id: { type: 'number', description: '按图书ID过滤（可选）' },
+          limit: { type: 'number', description: '返回结果数量上限，默认5', default: 5 }
+        },
+        required: ['query']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'publish_note',
+      description: '以当前用户身份发布一条公开读书笔记。',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: '笔记标题（必填）' },
+          content: { type: 'string', description: '笔记内容（必填）' },
+          book_id: { type: 'number', description: '关联的图书ID（可选）' }
+        },
+        required: ['title', 'content']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_my_borrowings',
+      description: '查看当前用户的借阅记录，包括在借和逾期的图书。',
+      parameters: {
+        type: 'object',
+        properties: {}
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_popular_books',
+      description: '获取热门图书排行（按近期借阅量统计）。',
+      parameters: {
+        type: 'object',
+        properties: {
+          limit: { type: 'number', description: '返回数量，默认5', default: 5 },
+          category: { type: 'string', description: '按图书类别过滤（可选）' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_reader_info',
+      description: '查看当前读者的个人信息，包括借阅上限、到期时间等。',
+      parameters: {
+        type: 'object',
+        properties: {}
       }
     }
   }
@@ -282,6 +351,136 @@ async function executeBorrowBook(args: { book_id: number }, context: ToolContext
   }
 }
 
+function executeSearchNotes(args: { query: string; book_id?: number; limit?: number }): any {
+  const { query, book_id, limit = 5 } = args
+  const repo = new NoteRepository()
+  const result = repo.findPlaza({
+    keyword: query,
+    bookId: book_id,
+    page: 1,
+    pageSize: limit,
+    orderBy: 'newest'
+  })
+  return {
+    total: result.total,
+    notes: result.items.map(n => ({
+      id: n.id,
+      title: n.title,
+      author_name: n.author_name,
+      book_title: n.book_title,
+      content: n.content.length > 100 ? n.content.slice(0, 100) + '...' : n.content,
+      view_count: n.view_count,
+      created_at: n.created_at
+    }))
+  }
+}
+
+function executePublishNote(args: { title: string; content: string; book_id?: number }, context: ToolContext): any {
+  if (!context.userId) {
+    return { success: false, message: '请先登录后再发布笔记。' }
+  }
+  try {
+    const repo = new NoteRepository()
+    const note = repo.create({
+      user_id: context.userId,
+      title: args.title,
+      content: args.content,
+      book_id: args.book_id,
+      visibility: 'public'
+    })
+    return { success: true, note_id: note.id, title: note.title }
+  } catch (err: any) {
+    return { success: false, message: err?.message || '发布笔记失败' }
+  }
+}
+
+function executeGetMyBorrowings(context: ToolContext): any {
+  if (!context.readerId) {
+    return { success: false, message: '您的账号未关联读者信息，无法查看借阅记录。' }
+  }
+  const records = db.prepare(`
+    SELECT b.title as book_title, br.borrow_date, br.due_date, br.status,
+           br.renewal_count,
+           CASE WHEN br.status = 'overdue' THEN CAST(julianday('now') - julianday(br.due_date) AS INTEGER) ELSE 0 END as overdue_days
+    FROM borrowing_records br
+    JOIN books b ON br.book_id = b.id
+    WHERE br.reader_id = ? AND br.status IN ('borrowed', 'overdue') AND br.is_deleted = 0
+    ORDER BY br.due_date ASC
+  `).all(context.readerId) as any[]
+
+  return {
+    success: true,
+    count: records.length,
+    records
+  }
+}
+
+function executeGetPopularBooks(args: { limit?: number; category?: string }): any {
+  const { limit = 5, category } = args
+
+  let query = `
+    SELECT b.id, b.title, b.author, bc.name as category_name,
+           b.available_quantity,
+           COUNT(br.id) as borrow_count
+    FROM borrowing_records br
+    JOIN books b ON br.book_id = b.id
+    JOIN book_categories bc ON b.category_id = bc.id
+    WHERE br.is_deleted = 0 AND b.is_deleted = 0
+      AND br.borrow_date >= date('now', '-30 days')
+  `
+  const params: any[] = []
+
+  if (category) {
+    query += ` AND bc.name LIKE ?`
+    params.push(`%${category}%`)
+  }
+
+  query += `
+    GROUP BY b.id
+    ORDER BY borrow_count DESC
+    LIMIT ?
+  `
+  params.push(limit)
+
+  const books = db.prepare(query).all(...params) as any[]
+  return { total: books.length, books }
+}
+
+function executeGetReaderInfo(context: ToolContext): any {
+  if (!context.readerId) {
+    return { success: false, message: '您的账号未关联读者信息。' }
+  }
+
+  const reader = db.prepare(`
+    SELECT r.id, r.name, r.reader_no, r.status, r.expiry_date,
+           rc.name as category_name, rc.max_borrowings, rc.max_days
+    FROM readers r
+    JOIN reader_categories rc ON r.category_id = rc.id
+    WHERE r.id = ? AND r.is_deleted = 0
+  `).get(context.readerId) as any
+
+  if (!reader) {
+    return { success: false, message: '未找到读者信息。' }
+  }
+
+  const stats = db.prepare(`
+    SELECT
+      COUNT(CASE WHEN status = 'borrowed' THEN 1 END) as current_borrowings,
+      COUNT(CASE WHEN status = 'overdue' THEN 1 END) as overdue_count
+    FROM borrowing_records
+    WHERE reader_id = ? AND is_deleted = 0 AND status IN ('borrowed', 'overdue')
+  `).get(context.readerId) as any
+
+  return {
+    success: true,
+    reader: {
+      ...reader,
+      current_borrowings: stats.current_borrowings,
+      overdue_count: stats.overdue_count
+    }
+  }
+}
+
 export async function executeTool(
   name: string,
   args: Record<string, any>,
@@ -307,6 +506,21 @@ export async function executeTool(
 
     case 'borrow_book':
       return { result: await executeBorrowBook(args as any, context) }
+
+    case 'search_notes':
+      return { result: executeSearchNotes(args as any) }
+
+    case 'publish_note':
+      return { result: executePublishNote(args as any, context) }
+
+    case 'get_my_borrowings':
+      return { result: executeGetMyBorrowings(context) }
+
+    case 'get_popular_books':
+      return { result: executeGetPopularBooks(args as any) }
+
+    case 'get_reader_info':
+      return { result: executeGetReaderInfo(context) }
 
     default:
       return { result: { error: `未知工具: ${name}` } }
