@@ -127,8 +127,12 @@ export const aiApi = {
     return () => controller.abort()
   },
 
+  // AI 智能书籍推荐（根据对话上下文，AI 返回 book_ids JSON）
+  chatRecommend: (messages: any[], userQuery: string): Promise<ApiResponse<{ books: any[]; ai_powered: boolean }>> =>
+    request.post('/ai/chat-recommend', { messages, userQuery }),
+
   // Statistics
-  getStatistics: (): Promise<ApiResponse<{ totalVectors: number; coverageRate: number }>> =>
+  getStatistics: (): Promise<ApiResponse<{ totalVectors: number; coverageRate: number; totalBooks?: number }>> =>
     request.get('/ai/statistics'),
 
   // Conversations
