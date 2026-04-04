@@ -32,12 +32,20 @@ interface CreateNotificationInput {
 }
 
 export class NotificationService {
-  private readonly insertStmt = db.prepare(`
-    INSERT OR IGNORE INTO notifications (
-      recipient_user_id, title, content, type, level, is_read,
-      dedupe_key, metadata, created_by, related_record_id
-    ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
-  `)
+  private insertStmt: any = null
+
+  private getInsertStmt() {
+    if (!this.insertStmt) {
+      this.insertStmt = db.prepare(`
+        INSERT OR IGNORE INTO notifications (
+          recipient_user_id, title, content, type, level, is_read,
+          dedupe_key, metadata, created_by, related_record_id
+        ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
+      `)
+    }
+
+    return this.insertStmt
+  }
 
   private parseRow(row: any): NotificationItem {
     let metadata: Record<string, any> | null = null
@@ -70,11 +78,12 @@ export class NotificationService {
 
   private createForUsers(userIds: number[], input: CreateNotificationInput) {
     if (!userIds.length) return
+    const insertStmt = this.getInsertStmt()
 
     const tx = db.transaction((ids: number[]) => {
       for (const userId of ids) {
         const dedupeKey = input.dedupeKey ? `${input.dedupeKey}:${userId}` : null
-        this.insertStmt.run(
+        insertStmt.run(
           userId,
           input.title,
           input.content,
