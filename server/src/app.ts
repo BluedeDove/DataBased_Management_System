@@ -140,7 +140,7 @@ export function createApp() {
   if (fs.existsSync(distPath)) {
     app.use(express.static(distPath))
     // Vue Router hash 模式兜底
-    app.get('*', (_req, res) => {
+    app.get('/{*splat}', (_req, res) => {
       res.sendFile(path.join(distPath, 'index.html'))
     })
   }
