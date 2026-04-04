@@ -108,7 +108,7 @@ export class NoteService {
     throw new AuthError('您需要借阅该图书才能查看传承笔记')
   }
 
-  updateNote(id: number, userId: number, role: string, data: {
+  updateNote(id: number, userId: number, role: string, readerId: number | null | undefined, data: {
     title?: string
     content?: string
     book_id?: number | null
@@ -117,7 +117,29 @@ export class NoteService {
     const note = this.noteRepository.findById(id)
     if (!note) throw new NotFoundError('笔记不存在')
     if (note.user_id !== userId && !this.isStaff(role)) throw new AuthError('无权编辑该笔记')
-    const updated = this.noteRepository.update(id, data)
+
+    // 切换为 legacy 可见性时，也需要验证正在借阅该书
+    const newVisibility = data.visibility ?? note.visibility
+    const newBookId = data.book_id !== undefined ? data.book_id : note.book_id
+    let legacyBorrowingId: number | undefined = undefined
+
+    if (newVisibility === 'legacy') {
+      if (!newBookId) throw new BusinessError('传承笔记必须关联图书')
+      if (!this.isStaff(role)) {
+        if (!readerId) throw new BusinessError('您的账号未关联读者信息，无法设置传承笔记')
+        const borrowingId = this.getActiveBorrowingId(readerId, newBookId)
+        if (!borrowingId) throw new BusinessError('您当前未借阅该图书，无法设置传承笔记')
+        // 若之前没有记录借阅ID，则补充记录
+        if (!note.legacy_borrowing_id) {
+          legacyBorrowingId = borrowingId
+        }
+      }
+    }
+
+    const updated = this.noteRepository.update(id, {
+      ...data,
+      ...(legacyBorrowingId !== undefined ? { legacy_borrowing_id: legacyBorrowingId } : {})
+    })
     if (!updated) throw new NotFoundError('笔记不存在')
     return updated
   }

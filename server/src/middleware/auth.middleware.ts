@@ -12,6 +12,9 @@ declare global {
         username: string
         role: string
         name: string
+        reader_id?: number | null
+        email?: string
+        phone?: string
       }
     }
   }

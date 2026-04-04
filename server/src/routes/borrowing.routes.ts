@@ -7,6 +7,9 @@ const router = Router()
 
 router.use(authMiddleware)
 
+// 当前登录用户的借阅记录（无需特殊权限，仅需登录）
+router.get('/my', borrowingController.getMyBorrowings)
+
 router.get('/', requirePermission('borrowing:read'), borrowingController.getAllRecords)
 router.get('/overdue', requirePermission('borrowing:read'), borrowingController.getOverdueRecords)
 router.get('/statistics', requirePermission('borrowing:read'), borrowingController.getStatistics)

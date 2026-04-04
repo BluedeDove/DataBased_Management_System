@@ -106,22 +106,48 @@
                 <el-option label="📖 传承" value="legacy" />
               </el-select>
               <!-- Book association -->
+              <el-tooltip
+                v-if="editVisibility === 'legacy' && activeBorrowedBooks.length === 0"
+                content="传承笔记需先借阅图书"
+                placement="bottom"
+              >
+                <el-select
+                  v-model="editBookId"
+                  size="small"
+                  style="width: 160px"
+                  clearable
+                  filterable
+                  :placeholder="editVisibility === 'legacy' ? '选择借阅中的图书' : '关联图书（可选）'"
+                  :disabled="editVisibility === 'legacy' && activeBorrowedBooks.length === 0"
+                >
+                  <el-option
+                    v-for="book in currentBookOptions"
+                    :key="book.id"
+                    :label="book.title"
+                    :value="book.id"
+                  />
+                </el-select>
+              </el-tooltip>
               <el-select
+                v-else
                 v-model="editBookId"
                 size="small"
                 style="width: 160px"
                 clearable
                 filterable
-                placeholder="关联图书（可选）"
-                :disabled="editVisibility === 'legacy' && !!activeBorrowedBooks.length === false"
+                :placeholder="editVisibility === 'legacy' ? '选择借阅中的图书' : '关联图书（可选）'"
               >
                 <el-option
-                  v-for="book in bookOptions"
+                  v-for="book in currentBookOptions"
                   :key="book.id"
                   :label="book.title"
                   :value="book.id"
                 />
               </el-select>
+              <!-- Legacy hint -->
+              <span v-if="editVisibility === 'legacy' && activeBorrowedBooks.length === 0" class="legacy-hint">
+                ⚠ 请先借阅图书
+              </span>
               <!-- Preview toggle -->
               <button class="toolbar-btn" :class="{ active: showPreview }" @click="showPreview = !showPreview" title="预览">
                 <el-icon><View /></el-icon>
@@ -211,6 +237,12 @@ const isReadOnly = computed(() => {
   return selectedNote.value.user_id !== userStore.user?.id
 })
 
+// 传承模式只能选择当前借阅中的书；其他模式显示全部图书
+const currentBookOptions = computed(() => {
+  if (editVisibility.value === 'legacy') return activeBorrowedBooks.value
+  return bookOptions.value
+})
+
 const renderedContent = computed(() => {
   const src = isReadOnly.value ? (selectedNote.value?.content ?? '') : editContent.value
   if (!src) return '<p style="color:var(--text-muted);font-size:13px">预览区域</p>'
@@ -252,13 +284,17 @@ const loadNotes = async () => {
 
 const loadBookOptions = async () => {
   try {
-    // Load currently borrowed books first (for legacy notes)
-    const r = await apiClient.get('/borrowings', { params: { status: 'borrowed', page: 1, pageSize: 50 } })
+    // 获取当前用户的借阅中图书（用于传承笔记，包含借阅中和逾期）
+    const r = await apiClient.get('/borrowings/my')
     if (r.data.success) {
-      activeBorrowedBooks.value = r.data.data.items.map((b: any) => ({ id: b.book_id, title: b.book_title }))
+      activeBorrowedBooks.value = r.data.data.items
+        .filter((b: any) => b.status === 'borrowed' || b.status === 'overdue')
+        .map((b: any) => ({ id: b.book_id, title: b.book_title }))
     }
-    // Also load all books for general association
-    const r2 = await apiClient.get('/books', { params: { page: 1, pageSize: 100 } })
+  } catch {}
+  try {
+    // 获取全部图书（用于普通关联）
+    const r2 = await apiClient.get('/books', { params: { page: 1, pageSize: 200 } })
     if (r2.data.success) {
       bookOptions.value = r2.data.data.items.map((b: any) => ({ id: b.id, title: b.title }))
     }
@@ -308,6 +344,14 @@ const saveNote = async () => {
     ElMessage.warning('标题和内容不能同时为空')
     return
   }
+  if (editVisibility.value === 'legacy' && !editBookId.value) {
+    ElMessage.warning('传承笔记必须关联一本您正在借阅的图书')
+    return
+  }
+  if (editVisibility.value === 'legacy' && activeBorrowedBooks.value.length === 0) {
+    ElMessage.warning('您当前没有借阅中的图书，无法创建传承笔记')
+    return
+  }
   saving.value = true
   try {
     const payload = {
@@ -350,10 +394,17 @@ const confirmDelete = async () => {
   } catch { ElMessage.error('删除失败') }
 }
 
-// When visibility changes to legacy, pre-fill book from borrowed list
+// 切换可见性时处理图书关联逻辑
 watch(editVisibility, (v) => {
-  if (v === 'legacy' && activeBorrowedBooks.value.length && !editBookId.value) {
-    editBookId.value = activeBorrowedBooks.value[0].id
+  if (v === 'legacy') {
+    // 切换到传承：如果当前关联的书不在借阅列表中，则重置为第一本借阅中的书
+    const borrowedIds = activeBorrowedBooks.value.map(b => b.id)
+    if (editBookId.value && !borrowedIds.includes(editBookId.value)) {
+      editBookId.value = null
+    }
+    if (!editBookId.value && activeBorrowedBooks.value.length) {
+      editBookId.value = activeBorrowedBooks.value[0].id
+    }
   }
 })
 
@@ -652,6 +703,13 @@ onMounted(() => { loadNotes(); loadBookOptions() })
   transition: all 0.15s;
 }
 .delete-btn:hover { border-color: var(--danger); color: var(--danger); background: var(--danger-tint); }
+
+.legacy-hint {
+  font-size: 11px;
+  color: var(--warning);
+  white-space: nowrap;
+  font-weight: 500;
+}
 
 /* ── Editor Body ── */
 .editor-body {

@@ -91,3 +91,17 @@ export const getBookCount = asyncHandler(async (req: Request, res: Response) => 
   const count = borrowingService.getBookCount()
   res.json({ success: true, data: count })
 })
+
+export const getMyBorrowings = asyncHandler(async (req: Request, res: Response) => {
+  const user = req.user!
+  const readerId = user.reader_id
+  if (!readerId) {
+    return res.json({ success: true, data: { items: [], total: 0 } })
+  }
+  const { status } = req.query
+  const records = borrowingService.getAllRecords({
+    reader_id: readerId,
+    status: status as string | undefined
+  })
+  res.json({ success: true, data: { items: records, total: records.length } })
+})

@@ -9,7 +9,7 @@ export const createNote = asyncHandler(async (req: Request, res: Response) => {
   const { title, content, book_id, visibility } = req.body
   const note = noteService.createNote(
     user.id,
-    (user as any).reader_id ?? null,
+    user.reader_id ?? null,
     user.role,
     { title, content, book_id: book_id ?? null, visibility }
   )
@@ -19,7 +19,7 @@ export const createNote = asyncHandler(async (req: Request, res: Response) => {
 export const getNoteById = asyncHandler(async (req: Request, res: Response) => {
   const user = req.user!
   const id = parseInt(req.params.id)
-  const note = noteService.getNoteById(id, user.id, user.role, (user as any).reader_id ?? null)
+  const note = noteService.getNoteById(id, user.id, user.role, user.reader_id ?? null)
   res.json({ success: true, data: note })
 })
 
@@ -49,7 +49,7 @@ export const getPlazaNotes = asyncHandler(async (req: Request, res: Response) =>
 export const getLegacyNote = asyncHandler(async (req: Request, res: Response) => {
   const user = req.user!
   const bookId = parseInt(req.params.bookId)
-  const note = noteService.getLegacyNote(bookId, user.id, user.role, (user as any).reader_id ?? null)
+  const note = noteService.getLegacyNote(bookId, user.id, user.role, user.reader_id ?? null)
   res.json({ success: true, data: note })
 })
 
@@ -57,7 +57,7 @@ export const updateNote = asyncHandler(async (req: Request, res: Response) => {
   const user = req.user!
   const id = parseInt(req.params.id)
   const { title, content, book_id, visibility } = req.body
-  const note = noteService.updateNote(id, user.id, user.role, { title, content, book_id, visibility })
+  const note = noteService.updateNote(id, user.id, user.role, user.reader_id ?? null, { title, content, book_id, visibility })
   res.json({ success: true, data: note })
 })
 

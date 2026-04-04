@@ -129,13 +129,15 @@ export class NoteRepository {
     content?: string
     book_id?: number | null
     visibility?: 'private' | 'public' | 'legacy'
+    legacy_borrowing_id?: number | null
   }): NoteWithDetails | undefined {
     const fields: string[] = []
     const args: any[] = []
-    if (data.title !== undefined)      { fields.push('title = ?');      args.push(data.title) }
-    if (data.content !== undefined)    { fields.push('content = ?');    args.push(data.content) }
-    if (data.book_id !== undefined)    { fields.push('book_id = ?');    args.push(data.book_id) }
-    if (data.visibility !== undefined) { fields.push('visibility = ?'); args.push(data.visibility) }
+    if (data.title !== undefined)               { fields.push('title = ?');               args.push(data.title) }
+    if (data.content !== undefined)             { fields.push('content = ?');             args.push(data.content) }
+    if (data.book_id !== undefined)             { fields.push('book_id = ?');             args.push(data.book_id) }
+    if (data.visibility !== undefined)          { fields.push('visibility = ?');          args.push(data.visibility) }
+    if (data.legacy_borrowing_id !== undefined) { fields.push('legacy_borrowing_id = ?'); args.push(data.legacy_borrowing_id) }
     if (!fields.length) return this.findById(id)
     fields.push('updated_at = CURRENT_TIMESTAMP', 'version = version + 1')
     args.push(id)
