@@ -167,8 +167,8 @@ export function createRateLimiter(config: RateLimitConfig) {
   }
 }
 
-// 非生产环境跳过所有限流（开发/演示模式）
-const skipInDev = () => process.env.NODE_ENV !== 'production'
+// 始终跳过限流
+const skipInDev = () => true
 
 /**
  * 全局限流器（生产：1000请求/15分钟）

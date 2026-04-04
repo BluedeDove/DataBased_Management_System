@@ -18,7 +18,7 @@
           <span class="dot yellow" />
           <span class="dot green" />
         </div>
-        <span class="top-bar-text">广东工业大学 · 智能图书管理系统 · GDUT LMS v2.0</span>
+        <span class="top-bar-text">智能图书管理系统 · LMS v2.0</span>
         <div class="top-bar-tags">
           <span class="mini-tag">DATABASE</span>
           <span class="mini-tag blue">VUE3</span>
@@ -50,10 +50,9 @@
         </div>
 
         <h1 class="brand-title">
-          <span class="brand-sub">GDUT</span>
           加入我们
         </h1>
-        <p class="brand-desc">广东工业大学 · Library Management System</p>
+        <p class="brand-desc">Library Management System</p>
 
         <!-- 装饰分割线 -->
         <div class="brand-divider">
@@ -246,10 +245,6 @@
           </div>
         </div>
 
-        <!-- 底部版权 -->
-        <p class="copyright">
-          &copy; 2026 广东工业大学 计算机学院 &middot; 数据库课程设计
-        </p>
       </div>
     </div>
   </div>

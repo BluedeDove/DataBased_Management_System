@@ -24,7 +24,6 @@
         </div>
 
         <h1 class="brand-title">
-          广东工业大学<br />
           <span class="brand-highlight">智能图书馆管理系统</span>
         </h1>
 
@@ -183,8 +182,6 @@
 
       </div>
 
-      <!-- 底部版权 -->
-      <p class="copyright">&copy; 2026 广东工业大学 计算机学院 &middot; 数据库课程设计</p>
     </div>
   </div>
 </template>
