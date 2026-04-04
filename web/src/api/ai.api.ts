@@ -1,4 +1,4 @@
-import { request, ApiResponse } from './index'
+import { request, ApiResponse, default as apiClient } from './index'
 
 export interface Conversation {
   id: number
@@ -25,8 +25,8 @@ export const aiApi = {
   createBookEmbedding: (bookId: number): Promise<ApiResponse<void>> =>
     request.post(`/ai/embeddings/${bookId}`),
 
-  batchCreateEmbeddings: (bookIds: number[]): Promise<ApiResponse<void>> =>
-    request.post('/ai/embeddings/batch', { bookIds }),
+  batchCreateEmbeddings: (bookIds: number[]): Promise<ApiResponse<{ generated: number; skipped: number }>> =>
+    apiClient.post('/ai/embeddings/batch', { bookIds }, { timeout: 600000 }).then(res => res.data),
 
   // Semantic search
   semanticSearch: (query: string, topK?: number): Promise<ApiResponse<any[]>> =>

@@ -312,7 +312,7 @@ const handleBorrow = async (book: any) => {
 }
 
 const viewInBooks = (book: any) => {
-  router.push({ path: '/books', query: { keyword: book.title } })
+  router.push({ path: '/books', query: { search: book.title } })
 }
 
 // ── AI Recommendation (fallback) ──
@@ -448,12 +448,20 @@ const exportConversation = () => {
   a.click(); URL.revokeObjectURL(url); ElMessage.success('对话已导出')
 }
 
-const loadChatHistory = (item: Conversation) => {
-  currentConversationId.value = item.id
-  chatHistory.value = item.messages
-  scrollToBottom()
-  const lastUser = [...item.messages].reverse().find(m => m.role === 'user')
-  if (lastUser) fetchRecommendations(lastUser.content)
+const loadChatHistory = async (item: Conversation) => {
+  try {
+    const result = await aiApi.getConversation(item.id)
+    if (result.success && result.data) {
+      currentConversationId.value = item.id
+      const msgs = typeof result.data.messages === 'string' ? JSON.parse(result.data.messages) : (result.data.messages || [])
+      chatHistory.value = msgs
+      scrollToBottom()
+      const lastUser = [...msgs].reverse().find(m => m.role === 'user')
+      if (lastUser) fetchRecommendations(lastUser.content)
+    }
+  } catch {
+    ElMessage.error('加载对话失败')
+  }
 }
 
 const deleteConversation = async (item: Conversation) => {

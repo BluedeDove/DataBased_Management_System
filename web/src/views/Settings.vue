@@ -117,9 +117,16 @@
       </div>
       <div class="vector-action-box">
         <button class="gradient-btn" :disabled="vectorLoading" @click="handleBatchCreateVectors">
-          <el-icon><Upload /></el-icon> 批量生成向量
+          <el-icon><Upload /></el-icon> {{ vectorLoading ? '生成中…' : '批量生成向量' }}
         </button>
         <span class="vector-hint">将为所有未向量化的图书生成向量（需要 API 密钥）</span>
+      </div>
+      <!-- Progress bar -->
+      <div v-if="vectorLoading" class="vector-progress">
+        <div class="vp-bar-track">
+          <div class="vp-bar-fill" :style="{ width: vectorProgress.percent + '%' }" />
+        </div>
+        <div class="vp-text">{{ vectorProgress.current }} / {{ vectorProgress.total }} — {{ vectorProgress.book }}</div>
       </div>
     </div>
 
@@ -256,6 +263,7 @@ const handleSaveAIConfig = async () => {
 // Vector
 const vectorStats = reactive({ totalVectors: 0, coverageRate: 0 })
 const vectorLoading = ref(false)
+const vectorProgress = reactive({ percent: 0, current: 0, total: 0, book: '' })
 
 const loadVectorStats = async () => {
   const result = await aiApi.getStatistics()
@@ -266,13 +274,52 @@ const handleBatchCreateVectors = async () => {
   try {
     await ElMessageBox.confirm('批量生成向量需要调用 AI API，可能需要较长时间并产生费用，确定继续吗？', '提示', { type: 'warning' })
     vectorLoading.value = true
+    vectorProgress.percent = 0; vectorProgress.current = 0; vectorProgress.total = 0; vectorProgress.book = ''
     const booksResult = await bookApi.getAll()
     if (!booksResult.success) { ElMessage.error('获取图书列表失败'); return }
     const bookIds = booksResult.data.map((b: any) => b.id)
     if (!bookIds.length) { ElMessage.warning('没有图书可以生成向量'); return }
-    const result = await aiApi.batchCreateEmbeddings(bookIds)
-    if (result.success) { ElMessage.success(`成功为 ${bookIds.length} 本图书生成向量`); loadVectorStats() }
-    else ElMessage.error(result.error?.message || '生成失败')
+
+    // Use SSE for progress tracking
+    const token = localStorage.getItem('token')
+    const baseURL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+    const resp = await fetch(`${baseURL}/ai/embeddings/batch`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : '',
+        'Accept': 'text/event-stream'
+      },
+      body: JSON.stringify({ bookIds })
+    })
+
+    const reader = resp.body?.getReader()
+    if (!reader) { ElMessage.error('无法获取响应流'); return }
+    const decoder = new TextDecoder()
+    let generated = 0, skipped = 0
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      const text = decoder.decode(value)
+      for (const line of text.split('\n')) {
+        if (!line.startsWith('data: ')) continue
+        try {
+          const data = JSON.parse(line.slice(6))
+          if (data.done) {
+            generated = data.generated; skipped = data.skipped
+          } else if (data.progress !== undefined) {
+            vectorProgress.current = data.progress
+            vectorProgress.total = data.total
+            vectorProgress.book = data.current || ''
+            vectorProgress.percent = Math.round(data.progress / data.total * 100)
+          }
+        } catch { /* ignore parse errors */ }
+      }
+    }
+
+    ElMessage.success(`向量生成完成：成功 ${generated} 本，跳过 ${skipped} 本`)
+    loadVectorStats()
   } catch (e: any) {
     if (e !== 'cancel' && e !== 'close') ElMessage.error(e.message || '生成向量失败')
   } finally { vectorLoading.value = false }
@@ -315,6 +362,10 @@ onMounted(() => { loadCategories(); loadAISettings(); loadVectorStats() })
   display: flex; align-items: center; gap: 16px;
 }
 .vector-hint { font-size: 13px; color: var(--text-secondary); }
+.vector-progress { margin-top: 16px; }
+.vp-bar-track { height: 8px; border-radius: 4px; background: rgba(124, 58, 237, 0.12); overflow: hidden; }
+.vp-bar-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, #7C3AED, #C8102E); transition: width 0.3s ease; }
+.vp-text { font-size: 13px; color: var(--text-secondary); margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .about-card { text-align: center; padding: 48px 32px; }
 .about-logo-wrap { margin-bottom: 24px; }
