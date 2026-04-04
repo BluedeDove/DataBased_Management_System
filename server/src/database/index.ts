@@ -502,10 +502,38 @@ export function initDatabase() {
   // 插入默认AI设置
   db.exec(`
     INSERT OR IGNORE INTO system_settings (setting_key, setting_value, setting_type, category, description) VALUES
-      ('ai.openai.apiKey', '', 'string', 'ai', 'OpenAI API Key'),
-      ('ai.openai.baseURL', 'https://api.siliconflow.cn/v1', 'string', 'ai', 'OpenAI Base URL'),
-      ('ai.openai.embeddingModel', 'Qwen/Qwen3-Embedding-8B', 'string', 'ai', 'Embedding Model'),
-      ('ai.openai.chatModel', 'Pro/MiniMaxAI/MiniMax-M2.5', 'string', 'ai', 'Chat Model')
+      ('ai.openai.apiKey', '', 'string', 'ai', 'AI API Key'),
+      ('ai.openai.baseURL', 'https://api.siliconflow.cn/v1', 'string', 'ai', 'AI Base URL'),
+      ('ai.openai.embeddingModel', 'BAAI/bge-large-zh-v1.5', 'string', 'ai', 'Embedding Model'),
+      ('ai.openai.chatModel', 'Pro/zai-org/GLM-4.7', 'string', 'ai', 'Chat Model')
+  `)
+
+  // 将历史 OpenAI 默认值迁移为当前硅基流动默认值，避免旧库继续显示过期默认配置
+  db.exec(`
+    UPDATE system_settings
+    SET setting_value = 'https://api.siliconflow.cn/v1', updated_at = CURRENT_TIMESTAMP
+    WHERE setting_key = 'ai.openai.baseURL'
+      AND setting_value = 'https://api.openai.com/v1';
+
+    UPDATE system_settings
+    SET setting_value = 'BAAI/bge-large-zh-v1.5', updated_at = CURRENT_TIMESTAMP
+    WHERE setting_key = 'ai.openai.embeddingModel'
+      AND setting_value IN ('text-embedding-3-small', 'Qwen/Qwen3-Embedding-8B');
+
+    UPDATE system_settings
+    SET setting_value = 'Pro/zai-org/GLM-4.7', updated_at = CURRENT_TIMESTAMP
+    WHERE setting_key = 'ai.openai.chatModel'
+      AND setting_value IN ('gpt-4-turbo-preview', 'Pro/MiniMaxAI/MiniMax-M2.5');
+
+    UPDATE system_settings
+    SET description = 'AI API Key', updated_at = CURRENT_TIMESTAMP
+    WHERE setting_key = 'ai.openai.apiKey'
+      AND description = 'OpenAI API Key';
+
+    UPDATE system_settings
+    SET description = 'AI Base URL', updated_at = CURRENT_TIMESTAMP
+    WHERE setting_key = 'ai.openai.baseURL'
+      AND description = 'OpenAI Base URL';
   `)
 
   // 创建索引以提高查询性能

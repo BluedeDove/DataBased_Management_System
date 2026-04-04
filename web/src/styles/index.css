@@ -3,8 +3,6 @@
    磨砂质感 + 悬浮侧边栏 + 微循环动画
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-
 /* ── CSS 变量 ── */
 :root {
   /* 背景 — 带暖色调渐变底色 */
@@ -103,14 +101,13 @@ body::before {
   z-index: -2;
   background-image:
     linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.08)),
-    url('https://library.gdut.edu.cn/images/bannar2401.png'),
     radial-gradient(circle at top right, rgba(200, 16, 46, 0.16), transparent 36%),
     radial-gradient(circle at bottom left, rgba(124, 58, 237, 0.14), transparent 40%),
     url('../assets/images/gdut-logo.jpg');
-  background-position: center center, center center, top right, bottom left, center center;
-  background-size: cover, cover, auto, auto, clamp(260px, 34vw, 520px) auto;
-  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, no-repeat;
-  background-attachment: fixed, fixed, fixed, fixed, fixed;
+  background-position: center center, top right, bottom left, center center;
+  background-size: cover, auto, auto, clamp(260px, 34vw, 520px) auto;
+  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat;
+  background-attachment: fixed, fixed, fixed, fixed;
 }
 body::after {
   content: '';

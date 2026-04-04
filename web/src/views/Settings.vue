@@ -75,7 +75,7 @@
         </div>
         <div>
           <div class="section-title" style="margin-bottom: 2px">AI 服务配置</div>
-          <div class="section-desc">配置 OpenAI API 以启用智能推荐和语义搜索功能</div>
+          <div class="section-desc">配置硅基流动兼容接口，以启用智能推荐和语义搜索功能</div>
         </div>
       </div>
       <el-form :model="aiConfigForm" label-width="140px" style="max-width: 600px">
@@ -85,11 +85,11 @@
         <el-form-item label="API Key">
           <el-input v-model="aiConfigForm.apiKey" type="password" placeholder="请输入 API 密钥" show-password />
         </el-form-item>
-        <el-form-item label="Embedding 模型">
-          <el-input v-model="aiConfigForm.embeddingModel" placeholder="Qwen/Qwen3-Embedding-8B" />
+          <el-form-item label="Embedding 模型">
+          <el-input v-model="aiConfigForm.embeddingModel" placeholder="BAAI/bge-large-zh-v1.5" />
         </el-form-item>
         <el-form-item label="Chat 模型">
-          <el-input v-model="aiConfigForm.chatModel" placeholder="Pro/MiniMaxAI/MiniMax-M2.5" />
+          <el-input v-model="aiConfigForm.chatModel" placeholder="Pro/zai-org/GLM-4.7" />
         </el-form-item>
         <el-form-item>
           <el-button :loading="testingConnection" :disabled="testingConnection || savingConfig" @click="handleTestConnection">
@@ -217,7 +217,7 @@ const handleDeleteCategory = async (row: any) => {
 // AI Config
 const testingConnection = ref(false)
 const savingConfig = ref(false)
-const aiConfigForm = reactive({ apiUrl: 'https://api.siliconflow.cn/v1', apiKey: '', embeddingModel: 'Qwen/Qwen3-Embedding-8B', chatModel: 'Pro/MiniMaxAI/MiniMax-M2.5' })
+const aiConfigForm = reactive({ apiUrl: 'https://api.siliconflow.cn/v1', apiKey: '', embeddingModel: 'BAAI/bge-large-zh-v1.5', chatModel: 'Pro/zai-org/GLM-4.7' })
 
 const loadAISettings = async () => {
   try {
