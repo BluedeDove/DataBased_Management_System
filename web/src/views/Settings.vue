@@ -329,7 +329,7 @@ onMounted(() => { loadCategories(); loadAISettings(); loadVectorStats() })
 </script>
 
 <style scoped>
-.settings-page { max-width: 960px; }
+.settings-page { max-width: 960px; margin: 0 auto; }
 
 .section-header { display: flex; align-items: center; justify-content: space-between; }
 .section-title { font-size: 16px; font-weight: 600; color: var(--text-primary); margin-bottom: 16px; }
