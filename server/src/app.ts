@@ -17,6 +17,7 @@ import { aiRoutes } from './routes/ai.routes'
 import { exportRoutes } from './routes/export.routes'
 import { configRoutes } from './routes/config.routes'
 import { searchRoutes } from './routes/search.routes'
+import { notificationRoutes } from './routes/notification.routes'
 import { noteRoutes } from './domains/note/note.routes'
 
 /**
@@ -125,6 +126,7 @@ export function createApp() {
   app.use('/api/v1/export', exportRoutes)
   app.use('/api/v1/config', configRoutes)
   app.use('/api/v1/search', searchRoutes)
+  app.use('/api/v1/notifications', notificationRoutes)
   app.use('/api/v1/notes', noteRoutes)
 
   // 读者类别路由 (别名)

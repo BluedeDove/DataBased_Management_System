@@ -98,7 +98,7 @@
     <!-- 借阅统计 -->
     <template v-if="activeTab === 'borrowing'">
       <div class="kpi-grid animate-fade-in-delay-2">
-        <div v-for="kpi in borrowKpis" :key="kpi.label" class="stat-card kpi-card">
+        <div v-for="kpi in borrowKpis" :key="kpi.label" class="light-card stat-card kpi-card">
           <div class="kpi-icon-wrap" :style="{ background: kpi.tint }">
             <el-icon :style="{ color: kpi.color, fontSize: '20px' }"><component :is="kpi.icon" /></el-icon>
           </div>
@@ -280,7 +280,7 @@ onMounted(() => loadStatistics())
 </script>
 
 <style scoped>
-.stats-page { display: flex; flex-direction: column; gap: 0; max-width: 1400px; }
+.stats-page { display: flex; flex-direction: column; gap: 0; width: 100%; max-width: 1400px; margin: 0 auto; }
 
 /* Glass cards for stats */
 .light-card {
@@ -316,10 +316,20 @@ onMounted(() => loadStatistics())
 .rank-num.top { background: var(--gdut-red-tint); color: var(--gdut-red); }
 
 .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+.stat-card { position: relative; min-width: 0; overflow: hidden; }
 .kpi-card { display: flex; align-items: center; gap: 16px; }
 .kpi-icon-wrap {
   width: 48px; height: 48px; border-radius: 14px;
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.stat-decor {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  margin-left: auto;
+  opacity: 0.10;
+  filter: blur(2px);
+  flex-shrink: 0;
 }
 .kpi-val { font-size: 28px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.5px; line-height: 1; }
 .kpi-lbl { font-size: 13px; color: var(--text-muted); margin-top: 4px; }

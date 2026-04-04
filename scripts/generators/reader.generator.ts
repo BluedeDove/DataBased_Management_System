@@ -147,18 +147,45 @@ function generateSingleReader(params: {
     ? randomChoice(STAFF_DEPARTMENTS)
     : getRandomDepartment(true)
 
-  // 生成联系方式
-  const phone = generatePhoneNumber()
-  const email = randomEmail(username)
-  const address = randomAddress()
+  // 生成联系方式（含可选字段缺失）
+  const phone = rng.next() < 0.03 ? '' : generatePhoneNumber()
+  const email = rng.next() < 0.05 ? '' : randomEmail(username)
+  const address = rng.next() < 0.08 ? '' : randomAddress()
 
-  // 生成日期
+  // 生成日期（注册日期分散）
   const registrationDate = new Date()
-  const expiryDate = new Date()
-  expiryDate.setFullYear(expiryDate.getFullYear() + 1)
+  const dateRand = rng.next()
+  if (dateRand < 0.70) {
+    // 70% → 最近 365 天
+    registrationDate.setDate(registrationDate.getDate() - rng.nextInt(0, 365))
+  } else if (dateRand < 0.90) {
+    // 20% → 1-2 年前
+    registrationDate.setDate(registrationDate.getDate() - rng.nextInt(366, 730))
+  } else {
+    // 10% → 2-4 年前
+    registrationDate.setDate(registrationDate.getDate() - rng.nextInt(731, 1460))
+  }
 
-  // 备注
-  const notes = `${category.name}读者`
+  // 过期日期 = 注册日期 + validity_days（教师365天，学生365天）
+  const validityDays = isTeacher ? 365 : 365
+  const expiryDate = new Date(registrationDate)
+  expiryDate.setDate(expiryDate.getDate() + validityDays)
+
+  // 状态分布：85% active | 5% suspended | 7% expired | 3% pending
+  let status: string
+  const statusRand = rng.next()
+  if (statusRand < 0.85) {
+    status = 'active'
+  } else if (statusRand < 0.90) {
+    status = 'suspended'
+  } else if (statusRand < 0.97) {
+    status = 'expired'
+  } else {
+    status = 'pending'
+  }
+
+  // 备注（12% 概率为空）
+  const notes = rng.next() < 0.12 ? '' : `${category.name}读者`
 
   // 密码加密
   const hashedPassword = bcrypt.hashSync(defaultPassword, 10)
@@ -174,7 +201,7 @@ function generateSingleReader(params: {
     phone,
     email,
     address,
-    status: 'active',
+    status,
     registration_date: registrationDate.toISOString().split('T')[0],
     expiry_date: expiryDate.toISOString().split('T')[0],
     notes

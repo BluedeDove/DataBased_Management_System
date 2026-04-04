@@ -5,30 +5,13 @@ import { requirePermission } from '../middleware/permission.middleware'
 import { asyncHandler } from '../middleware/error.middleware'
 import { db } from '../database'
 import { logger } from '../lib/logger'
-
-function getAIConfig() {
-  const rows = db.prepare(`SELECT setting_key, setting_value FROM system_settings WHERE category = 'ai'`).all() as { setting_key: string; setting_value: string }[]
-  const map: Record<string, string> = {}
-  rows.forEach(r => { map[r.setting_key] = r.setting_value })
-  return {
-    apiKey: map['ai.openai.apiKey'] || '',
-    baseURL: map['ai.openai.baseURL'] || 'https://api.openai.com/v1',
-    chatModel: map['ai.openai.chatModel'] || 'gpt-4o-mini',
-    embeddingModel: map['ai.openai.embeddingModel'] || 'text-embedding-3-small',
-  }
-}
-
-function cosineSimilarity(a: number[], b: number[]): number {
-  let dot = 0, normA = 0, normB = 0
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * (b[i] || 0)
-    normA += a[i] * a[i]
-    normB += (b[i] || 0) * (b[i] || 0)
-  }
-  return normA > 0 && normB > 0 ? dot / (Math.sqrt(normA) * Math.sqrt(normB)) : 0
-}
+import { getAIConfig, cosineSimilarity, SYSTEM_PROMPT } from '../domains/ai/ai.service'
+import { toolDefinitions, executeTool } from '../domains/ai/tools'
 
 const router = Router()
+
+// ── SSE helper ──
+const sse = (res: Response, data: object) => res.write(`data: ${JSON.stringify(data)}\n\n`)
 
 // AI服务状态检查
 router.get('/available', authMiddleware, asyncHandler(async (_req: Request, res: Response) => {
@@ -95,7 +78,6 @@ router.post('/semantic-search', authMiddleware, asyncHandler(async (req: Request
 
   const { apiKey, baseURL, embeddingModel } = getAIConfig()
 
-  // Try vector-based search
   if (apiKey) {
     try {
       const rows = db.prepare(`
@@ -160,7 +142,7 @@ router.post('/chat', authMiddleware, asyncHandler(async (req: Request, res: Resp
   const completion = await client.chat.completions.create({
     model: chatModel,
     messages: [
-      { role: 'system', content: '你是一个图书馆智能助手，帮助用户查询图书信息、推荐书籍、解答图书馆相关问题。回答简洁友好，使用中文。' },
+      { role: 'system', content: SYSTEM_PROMPT },
       ...history,
       { role: 'user', content: message }
     ]
@@ -168,7 +150,7 @@ router.post('/chat', authMiddleware, asyncHandler(async (req: Request, res: Resp
   res.json({ success: true, data: completion.choices[0]?.message?.content || '' })
 }))
 
-// AI对话（流式SSE）
+// AI对话（流式SSE）— Agent 工具调用循环
 router.post('/chat/stream', authMiddleware, async (req: Request, res: Response) => {
   const { apiKey, baseURL, chatModel } = getAIConfig()
 
@@ -177,49 +159,162 @@ router.post('/chat/stream', authMiddleware, async (req: Request, res: Response) 
   res.setHeader('Connection', 'keep-alive')
 
   if (!apiKey) {
-    res.write(`data: ${JSON.stringify({ chunk: 'AI服务未配置，请管理员在系统设置中填写 API Key。' })}\n\n`)
-    res.write(`data: ${JSON.stringify({ done: true })}\n\n`)
+    sse(res, { chunk: 'AI服务未配置，请管理员在系统设置中填写 API Key。' })
+    sse(res, { done: true })
     res.end()
     return
   }
 
   const { message, history = [] } = req.body
+  const userId = req.user!.id
+  const readerId = (req.user as any).reader_id || null
   const client = new OpenAI({ apiKey, baseURL })
 
+  const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+    { role: 'system', content: SYSTEM_PROMPT },
+    ...history,
+    { role: 'user', content: message }
+  ]
+
   try {
-    const stream = await client.chat.completions.create({
-      model: chatModel,
-      stream: true,
-      messages: [
-        { role: 'system', content: '你是一个图书馆智能助手，帮助用户查询图书信息、推荐书籍、解答图书馆相关问题。回答简洁友好，使用中文。' },
-        ...history,
-        { role: 'user', content: message }
-      ]
-    })
-    for await (const chunk of stream) {
-      const text = chunk.choices[0]?.delta?.content || ''
-      if (text) res.write(`data: ${JSON.stringify({ chunk: text })}\n\n`)
-    }
-    res.write(`data: ${JSON.stringify({ done: true })}\n\n`)
+    await runAgentLoop(client, chatModel, messages, { userId, readerId }, res)
   } catch (err: any) {
     logger.error('AI stream error:', err)
-    res.write(`data: ${JSON.stringify({ chunk: `AI请求失败: ${err?.message || '未知错误'}` })}\n\n`)
-    res.write(`data: ${JSON.stringify({ done: true })}\n\n`)
+    sse(res, { chunk: `AI请求失败: ${err?.message || '未知错误'}` })
   }
+  sse(res, { done: true })
   res.end()
 })
+
+// ── Agent tool-call loop ──
+async function runAgentLoop(
+  client: OpenAI,
+  model: string,
+  messages: OpenAI.Chat.ChatCompletionMessageParam[],
+  context: { userId: number; readerId: number | null },
+  res: Response
+) {
+  const MAX_ITERATIONS = 5
+
+  for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
+    // Send keepalive to prevent timeout
+    res.write(': keepalive\n\n')
+
+    let stream: AsyncIterable<OpenAI.Chat.ChatCompletionChunk>
+    try {
+      stream = await client.chat.completions.create({
+        model,
+        messages,
+        stream: true,
+        tools: toolDefinitions,
+        tool_choice: 'auto'
+      })
+    } catch (err: any) {
+      // If model doesn't support tools, retry without tools
+      if (err?.status === 400 || err?.message?.includes('tool')) {
+        logger.warn('Model does not support tools, falling back to plain stream')
+        const fallbackStream = await client.chat.completions.create({
+          model, messages, stream: true
+        })
+        for await (const chunk of fallbackStream) {
+          const text = chunk.choices[0]?.delta?.content || ''
+          if (text) sse(res, { chunk: text })
+        }
+        return
+      }
+      throw err
+    }
+
+    // Accumulate content and tool calls from stream
+    let contentBuffer = ''
+    const toolCallAccum: Map<number, { id: string; name: string; arguments: string }> = new Map()
+
+    for await (const chunk of stream) {
+      const choice = chunk.choices[0]
+      if (!choice) continue
+
+      // Text content
+      const text = choice.delta?.content || ''
+      if (text) {
+        contentBuffer += text
+        sse(res, { chunk: text })
+      }
+
+      // Tool call deltas
+      const tcDeltas = choice.delta?.tool_calls
+      if (tcDeltas) {
+        for (const tc of tcDeltas) {
+          const idx = tc.index ?? 0
+          if (!toolCallAccum.has(idx)) {
+            toolCallAccum.set(idx, { id: tc.id || '', name: tc.function?.name || '', arguments: '' })
+          }
+          const acc = toolCallAccum.get(idx)!
+          if (tc.id) acc.id = tc.id
+          if (tc.function?.name) acc.name = tc.function.name
+          if (tc.function?.arguments) acc.arguments += tc.function.arguments
+        }
+      }
+    }
+
+    // If no tool calls, we're done
+    if (toolCallAccum.size === 0) return
+
+    // Build assistant message with tool_calls for conversation history
+    const assistantToolCalls = Array.from(toolCallAccum.values()).map(tc => ({
+      id: tc.id,
+      type: 'function' as const,
+      function: { name: tc.name, arguments: tc.arguments }
+    }))
+
+    messages.push({
+      role: 'assistant',
+      content: contentBuffer || null,
+      tool_calls: assistantToolCalls
+    } as OpenAI.Chat.ChatCompletionAssistantMessageParam)
+
+    // Execute each tool call
+    for (const tc of assistantToolCalls) {
+      // Notify frontend: tool started
+      sse(res, { tool_call: { id: tc.id, name: tc.function.name, status: 'started' } })
+
+      let parsedArgs: Record<string, any> = {}
+      try {
+        parsedArgs = JSON.parse(tc.function.arguments)
+      } catch {
+        parsedArgs = {}
+      }
+
+      const { result, sideEffect } = await executeTool(tc.function.name, parsedArgs, context)
+
+      // Notify frontend: tool completed
+      sse(res, { tool_call: { id: tc.id, name: tc.function.name, status: 'completed', result } })
+
+      // Side effect: trigger recommend panel
+      if (sideEffect?.type === 'recommend') {
+        sse(res, { recommend: { books: sideEffect.books, ai_powered: true } })
+      }
+
+      // Append tool result to conversation
+      messages.push({
+        role: 'tool',
+        tool_call_id: tc.id,
+        content: JSON.stringify(result)
+      } as OpenAI.Chat.ChatCompletionToolMessageParam)
+    }
+
+    // Continue loop — LLM will generate text response based on tool results
+  }
+}
 
 // 取消流式对话
 router.post('/chat/cancel', authMiddleware, (_req: Request, res: Response) => {
   res.json({ success: true })
 })
 
-// ── AI 智能书籍推荐（核心功能）──────────────────────────────
-// 根据对话上下文，让 AI 从图书目录中选出最相关的书籍并返回完整图书数据
+// ── AI 智能书籍推荐 ──
 router.post('/chat-recommend', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const { messages = [], userQuery = '' } = req.body
 
-  // 从数据库获取全部可用图书（最多100本，按可用数量优先）
   const allBooks = db.prepare(`
     SELECT b.id, b.title, b.author, b.description, b.keywords,
            bc.name as category_name, b.available_quantity, b.total_quantity, b.status
@@ -233,7 +328,6 @@ router.post('/chat-recommend', authMiddleware, asyncHandler(async (req: Request,
   const { apiKey, baseURL, chatModel } = getAIConfig()
 
   if (!apiKey) {
-    // 无 AI：基于关键词评分回退
     const q = (userQuery || '').toLowerCase()
     let candidates = allBooks
     if (q.length >= 2) {
@@ -254,12 +348,10 @@ router.post('/chat-recommend', authMiddleware, asyncHandler(async (req: Request,
     return
   }
 
-  // 构建给 AI 的图书目录（紧凑格式）
   const catalog = allBooks.map(b =>
     `${b.id}|${b.title}|${b.author}|${b.category_name}|${[b.keywords, b.description].filter(Boolean).join(' ').slice(0, 60)}`
   ).join('\n')
 
-  // 取最近 8 条对话作为上下文
   const context = (messages as any[])
     .filter((m: any) => m.role && m.content && !m.loading)
     .slice(-8)
@@ -287,7 +379,6 @@ ${catalog}
     })
 
     const raw = (completion.choices[0]?.message?.content || '').trim()
-    // 提取 JSON（防止 AI 在 JSON 外面加了说明文字或代码块）
     const jsonMatch = raw.match(/\{[\s\S]*?\}/)
     let bookIds: number[] = []
     if (jsonMatch) {
@@ -298,7 +389,6 @@ ${catalog}
     }
 
     if (bookIds.length === 0) {
-      // AI didn't return valid JSON — fallback to keyword search
       const q = (userQuery || '').toLowerCase()
       const fallback = q.length >= 2
         ? allBooks.filter(b => (b.title || '').toLowerCase().includes(q) || (b.author || '').toLowerCase().includes(q))
@@ -306,7 +396,6 @@ ${catalog}
       bookIds = fallback.slice(0, 5).map((b: any) => b.id)
     }
 
-    // 获取完整图书数据（保持 AI 推荐的顺序）
     const placeholders = bookIds.map(() => '?').join(',')
     const bookMap = new Map<number, any>()
     if (bookIds.length > 0) {
@@ -323,7 +412,6 @@ ${catalog}
     res.json({ success: true, data: { books: ordered, ai_powered: true } })
   } catch (err: any) {
     logger.error('chat-recommend error:', err)
-    // 完全回退到热门图书
     const fallback = db.prepare(`
       SELECT b.*, bc.name as category_name FROM books b
       JOIN book_categories bc ON b.category_id = bc.id

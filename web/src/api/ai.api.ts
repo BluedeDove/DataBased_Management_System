@@ -9,6 +9,13 @@ export interface Conversation {
   updated_at: string
 }
 
+export interface ToolCallEvent {
+  id: string
+  name: string
+  status: 'started' | 'completed'
+  result?: any
+}
+
 export const aiApi = {
   // AI availability
   isAvailable: (): Promise<ApiResponse<boolean>> =>
@@ -29,14 +36,16 @@ export const aiApi = {
   chat: (message: string, history?: any[], context?: string): Promise<ApiResponse<string>> =>
     request.post('/ai/chat', { message, history, context }),
 
-  // Stream chat
+  // Stream chat (Agent-enhanced)
   chatStream: (
     message: string,
     history: any[],
     context: string | undefined,
     onChunk: (chunk: string) => void,
     onError: (error: string) => void,
-    onComplete: () => void
+    onComplete: () => void,
+    onToolCall?: (tc: ToolCallEvent) => void,
+    onRecommend?: (data: { books: any[]; ai_powered: boolean }) => void
   ): (() => void) => {
     const controller = new AbortController()
     const token = localStorage.getItem('token')
@@ -66,6 +75,8 @@ export const aiApi = {
               if (data.chunk) onChunk(data.chunk)
               if (data.done) onComplete()
               if (data.error) onError(data.error)
+              if (data.tool_call && onToolCall) onToolCall(data.tool_call)
+              if (data.recommend && onRecommend) onRecommend(data.recommend)
             } catch (e) { /* ignore parse errors */ }
           }
         }

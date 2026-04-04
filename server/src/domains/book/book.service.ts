@@ -107,5 +107,5 @@ export class BookService {
   restoreBook(id: number): Book { const book = this.bookRepository.restore(id); logger.info('恢复图书', { id, title: book.title }); return book }
   getDeletedBooks(limit: number = 50, offset: number = 0): BookWithCategory[] { return this.bookRepository.getDeletedBooks(limit, offset) }
   hardDeleteBook(id: number): void { const book = this.bookRepository.findById(id, true); this.bookRepository.hardDelete(id); if (book) logger.warn('硬删除图书', { id, title: book.title }) }
-  getAllBooksForExport(): Array<BookWithCategory> { return db.prepare(`SELECT b.*, bc.name as category_name, bc.code as category_code FROM books b JOIN book_categories bc ON b.category_id = bc.id ORDER BY b.registration_date DESC`).all() as Array<BookWithCategory> }
+  getAllBooksForExport(): Array<BookWithCategory> { return this.bookRepository.findAll() }
 }

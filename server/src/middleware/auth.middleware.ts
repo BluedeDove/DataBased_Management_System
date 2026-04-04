@@ -25,7 +25,7 @@ export interface User {
   username: string
   name: string
   role: string
-  reader_id?: number
+  reader_id?: number | null
   email?: string
   phone?: string
 }

@@ -75,8 +75,8 @@ export function generateBorrowings(options: BorrowingGeneratorOptions): Generate
     const readerCategory = readerCategories.find(c => c.id === (reader as any).category_id)
     const borrowDays = readerCategory?.max_borrow_days || 30
 
-    // 生成借阅日期（最近90天内）
-    const daysAgo = randomInt(1, 90, rng)
+    // 生成借阅日期（最近180天内）
+    const daysAgo = randomInt(1, 180, rng)
     const borrowDate = new Date()
     borrowDate.setDate(borrowDate.getDate() - daysAgo)
     const borrowDateStr = borrowDate.toISOString().split('T')[0]

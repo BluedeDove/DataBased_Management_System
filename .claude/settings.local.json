@@ -32,7 +32,8 @@
       "Bash(cmd.exe:*)",
       "Read(//e/个人项目/数据库期末课设作业/$APPDATA/ngrok/**)",
       "Read(//e/个人项目/数据库期末课设作业/$HOME/.config/ngrok/**)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "WebSearch"
     ]
   }
 }

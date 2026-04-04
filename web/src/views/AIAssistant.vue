@@ -70,8 +70,20 @@
             <el-icon v-else><User /></el-icon>
           </div>
           <div class="msg-bubble" :class="msg.role">
+            <!-- Tool calls cards -->
+            <div v-if="msg.toolCalls && msg.toolCalls.length > 0" class="tool-calls-container">
+              <div v-for="tc in msg.toolCalls" :key="tc.id" class="tool-call-card" :class="tc.status">
+                <span class="tc-icon">
+                  <span v-if="tc.status === 'started'" class="tc-spinner" />
+                  <span v-else-if="tc.status === 'completed'">&#10003;</span>
+                  <span v-else>&#10007;</span>
+                </span>
+                <span class="tc-label">{{ tc.displayName }}</span>
+                <span class="tc-status">{{ tc.status === 'started' ? '执行中...' : '完成' }}</span>
+              </div>
+            </div>
             <div v-if="msg.loading" class="typing-dots"><span /><span /><span /></div>
-            <div v-else v-html="formatContent(msg.content)" />
+            <div v-else-if="msg.content" v-html="formatContent(msg.content)" />
             <div v-if="msg.timestamp && !msg.loading" class="msg-time">{{ formatTime(msg.timestamp) }}</div>
           </div>
         </div>
@@ -189,11 +201,35 @@ import { ElMessage } from 'element-plus'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { useUserStore } from '@/store/user'
-import { aiApi } from '../api/ai.api'
+import { aiApi, ToolCallEvent } from '../api/ai.api'
 import { borrowingApi } from '../api/borrowing.api'
 
-interface Message { id?: string; role: 'user' | 'assistant'; content: string; loading?: boolean; timestamp?: number }
+interface ToolCallInfo {
+  id: string
+  name: string
+  status: 'started' | 'completed' | 'error'
+  result?: any
+  displayName: string
+}
+
+interface Message {
+  id?: string
+  role: 'user' | 'assistant'
+  content: string
+  loading?: boolean
+  timestamp?: number
+  toolCalls?: ToolCallInfo[]
+}
+
 interface Conversation { id: number; title: string; messages: Message[]; created_at: string }
+
+const TOOL_DISPLAY_NAMES: Record<string, string> = {
+  search_books: '搜索图书',
+  recommend_books: '推荐图书',
+  get_book_details: '查看图书详情',
+  get_borrowing_status: '查询借阅状态',
+  borrow_book: '借阅图书'
+}
 
 const userStore = useUserStore()
 const router = useRouter()
@@ -225,11 +261,9 @@ const filteredHistory = computed(() => {
   return chatHistoryList.value.filter(c => c.title.toLowerCase().includes(historySearch.value.toLowerCase()))
 })
 
-// 读者可以直接借阅（role=reader 且有 reader_id）
 const canBorrow = computed(() => {
   const u = userStore.user
   if (!u) return false
-  // Both reader and staff with reader_id can borrow
   return !!(u.reader_id)
 })
 
@@ -267,7 +301,6 @@ const handleBorrow = async (book: any) => {
     const result = await borrowingApi.borrow(readerId, book.id)
     if (result.success) {
       ElMessage.success(`《${book.title}》借阅成功！`)
-      // Update local availability
       const idx = recommendedBooks.value.findIndex(b => b.id === book.id)
       if (idx > -1) recommendedBooks.value[idx].available_quantity = Math.max(0, availOf(book) - 1)
     }
@@ -278,12 +311,11 @@ const handleBorrow = async (book: any) => {
   }
 }
 
-// Navigate to Books page pre-filtered by this book's title
 const viewInBooks = (book: any) => {
   router.push({ path: '/books', query: { keyword: book.title } })
 }
 
-// ── AI Recommendation ──
+// ── AI Recommendation (fallback) ──
 const fetchRecommendations = async (lastUserMessage: string) => {
   recLoading.value = true
   try {
@@ -313,10 +345,12 @@ const sendMessage = async () => {
   scrollToBottom()
 
   const aiMessageId = `ai-${Date.now()}`
-  chatHistory.value.push({ id: aiMessageId, role: 'assistant', content: '', loading: true })
+  chatHistory.value.push({ id: aiMessageId, role: 'assistant', content: '', loading: true, toolCalls: [] })
   loading.value = true
-  recLoading.value = true // pre-show loading in rec panel
+  recLoading.value = true
   scrollToBottom()
+
+  let receivedToolRecommendation = false
 
   try {
     const history = chatHistory.value
@@ -327,23 +361,61 @@ const sendMessage = async () => {
     let fullContent = ''
     const cleanup = aiApi.chatStream(
       userMessage, history as any, undefined,
+      // onChunk
       (chunk) => {
         fullContent += chunk
         const mi = chatHistory.value.findIndex(m => m.id === aiMessageId)
         if (mi > -1) { chatHistory.value[mi].content = fullContent; chatHistory.value[mi].loading = false; scrollToBottom() }
       },
+      // onError
       (error) => {
         const mi = chatHistory.value.findIndex(m => m.id === aiMessageId)
         if (mi > -1) { chatHistory.value[mi].content = `发生错误: ${error}`; chatHistory.value[mi].loading = false }
         loading.value = false; recLoading.value = false; ElMessage.error('AI响应失败')
       },
+      // onComplete
       () => {
         const mi = chatHistory.value.findIndex(m => m.id === aiMessageId)
         if (mi > -1) chatHistory.value[mi].timestamp = Date.now()
         loading.value = false
         saveCurrentConversation()
-        // Trigger recommendation after response is done
-        fetchRecommendations(userMessage)
+        // Fallback: only fetch recommendations if no tool-based recommendation was received
+        if (!receivedToolRecommendation) {
+          fetchRecommendations(userMessage)
+        } else {
+          recLoading.value = false
+        }
+      },
+      // onToolCall
+      (tc: ToolCallEvent) => {
+        const mi = chatHistory.value.findIndex(m => m.id === aiMessageId)
+        if (mi === -1) return
+        const msg = chatHistory.value[mi]
+        if (!msg.toolCalls) msg.toolCalls = []
+
+        const existing = msg.toolCalls.find(t => t.id === tc.id)
+        if (existing) {
+          existing.status = tc.status as any
+          if (tc.result !== undefined) existing.result = tc.result
+        } else {
+          msg.toolCalls.push({
+            id: tc.id,
+            name: tc.name,
+            status: tc.status as any,
+            result: tc.result,
+            displayName: TOOL_DISPLAY_NAMES[tc.name] || tc.name
+          })
+        }
+        msg.loading = false
+        scrollToBottom()
+      },
+      // onRecommend
+      (data: { books: any[]; ai_powered: boolean }) => {
+        receivedToolRecommendation = true
+        recommendedBooks.value = data.books || []
+        recAiPowered.value = data.ai_powered
+        recLoading.value = false
+        if (!showRecommend.value) showRecommend.value = true
       }
     )
     streamCleanup.value = cleanup
@@ -380,7 +452,6 @@ const loadChatHistory = (item: Conversation) => {
   currentConversationId.value = item.id
   chatHistory.value = item.messages
   scrollToBottom()
-  // Reload recommendations for this conversation
   const lastUser = [...item.messages].reverse().find(m => m.role === 'user')
   if (lastUser) fetchRecommendations(lastUser.content)
 }
@@ -554,6 +625,38 @@ onUnmounted(() => { if (streamCleanup.value) streamCleanup.value() })
 .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
 .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
 @keyframes typing { 0%, 100% { opacity: 0.3; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-4px); } }
+
+/* ── Tool Call Cards ── */
+.tool-calls-container {
+  display: flex; flex-direction: column; gap: 6px;
+  margin-bottom: 10px;
+}
+.tool-call-card {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border-radius: 10px;
+  background: rgba(124, 58, 237, 0.06);
+  border: 1px solid rgba(124, 58, 237, 0.15);
+  font-size: 13px; transition: all 0.3s;
+}
+.tool-call-card.completed {
+  background: rgba(5, 150, 105, 0.06);
+  border-color: rgba(5, 150, 105, 0.20);
+}
+.tool-call-card.error {
+  background: rgba(239, 68, 68, 0.06);
+  border-color: rgba(239, 68, 68, 0.20);
+}
+.tc-icon { font-size: 14px; display: flex; align-items: center; justify-content: center; width: 18px; }
+.tc-spinner {
+  width: 14px; height: 14px; border: 2px solid rgba(124, 58, 237, 0.25);
+  border-top-color: var(--gdut-purple); border-radius: 50%;
+  animation: tc-spin 0.7s linear infinite;
+}
+@keyframes tc-spin { to { transform: rotate(360deg); } }
+.tool-call-card.completed .tc-icon { color: #059669; }
+.tool-call-card.error .tc-icon { color: #EF4444; }
+.tc-label { font-weight: 600; color: var(--text-primary); }
+.tc-status { color: var(--text-muted); font-size: 12px; }
 
 .chat-input-area {
   padding: 16px 24px;

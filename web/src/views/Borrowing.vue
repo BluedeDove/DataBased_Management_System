@@ -296,13 +296,14 @@
                     {{ returningBooks.has(row.id) ? '还书中' : '还书' }}
                   </button>
                   <button
+                    v-if="!canViewAllRecords"
                     class="action-btn action-primary"
-                    :disabled="isOverdue(row.due_date) || renewingBooks.has(row.id)"
+                    :disabled="isOverdue(row.due_date) || renewingBooks.has(row.id) || row.renewal_request_status === 'pending'"
                     :class="{ loading: renewingBooks.has(row.id) }"
                     @click="handleRenew(row)"
                   >
                     <span v-if="renewingBooks.has(row.id)" class="spinner small" />
-                    {{ renewingBooks.has(row.id) ? '续借中' : '续借' }}
+                    {{ row.renewal_request_status === 'pending' ? '待审批' : (renewingBooks.has(row.id) ? '申请中' : '申请续借') }}
                   </button>
                 </td>
               </tr>
@@ -448,7 +449,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { User, Reading } from '@element-plus/icons-vue'
 import { useUserStore } from '@/store/user'
@@ -659,39 +660,47 @@ const handleRenew = async (row: any) => {
   renewingBooks.value.add(bookId)
 
   try {
-    const result = await borrowingApi.renew(bookId)
+    const result = await borrowingApi.requestRenewal(bookId)
     if (result.success) {
-      ElMessage.success('续借成功！')
-      searchBorrowedBooks()
+      window.dispatchEvent(new Event('notifications:refresh'))
+      ElMessage.success('续借申请已提交，等待管理员审批')
+      await searchBorrowedBooks()
     } else {
-      ElMessage.error(result.error?.message || '续借失败')
+      ElMessage.error(result.error?.message || '续借申请失败')
     }
   } catch (error) {
-    console.error('续借操作失败:', error)
+    console.error('续借申请失败:', error)
   } finally {
     renewingBooks.value.delete(bookId)
   }
 }
 
-// Search borrowed books (return tab)
-const searchBorrowedBooks = async () => {
-  const searchParams: any = {
-    status: 'borrowed'
-  }
+const buildSearchParams = (status?: string) => {
+  const searchParams: Record<string, string> = {}
 
+  if (status) {
+    searchParams.status = status
+  }
   if (returnSearchKeyword.value) {
     searchParams.keyword = returnSearchKeyword.value
   }
-
   if (dateRange.value && dateRange.value.length === 2) {
     searchParams.borrow_date_from = dateRange.value[0].toISOString().split('T')[0]
     searchParams.borrow_date_to = dateRange.value[1].toISOString().split('T')[0]
   }
 
-  const result = await borrowingApi.getAll(searchParams)
-  if (result.success) {
-    borrowedBooks.value = filterRecordsByUser(result.data)
+  return searchParams
+}
 
+// Search borrowed books (return tab)
+const searchBorrowedBooks = async () => {
+  const searchParams = buildSearchParams('borrowed')
+  const result = canViewAllRecords.value
+    ? await borrowingApi.getAll(searchParams)
+    : await borrowingApi.getMy(searchParams)
+
+  if (result.success) {
+    borrowedBooks.value = canViewAllRecords.value ? result.data : result.data.items
     if (!canViewAllRecords.value) {
       overdueCount.value = borrowedBooks.value.filter((r: any) => isOverdue(r.due_date)).length
     }
@@ -705,20 +714,13 @@ const isOverdue = (dueDate: string) => {
 
 // Load all records (history tab)
 const loadAllRecords = async () => {
-  const searchParams: any = {}
+  const searchParams = buildSearchParams()
+  const result = canViewAllRecords.value
+    ? await borrowingApi.getAll(searchParams)
+    : await borrowingApi.getMy(searchParams)
 
-  if (returnSearchKeyword.value) {
-    searchParams.keyword = returnSearchKeyword.value
-  }
-
-  if (dateRange.value && dateRange.value.length === 2) {
-    searchParams.borrow_date_from = dateRange.value[0].toISOString().split('T')[0]
-    searchParams.borrow_date_to = dateRange.value[1].toISOString().split('T')[0]
-  }
-
-  const result = await borrowingApi.getAll(searchParams)
   if (result.success) {
-    allRecords.value = filterRecordsByUser(result.data)
+    allRecords.value = canViewAllRecords.value ? result.data : result.data.items
   }
 }
 
@@ -763,8 +765,18 @@ const handleDeleteRecord = async (row: any) => {
   }
 }
 
+const handleNotificationRefresh = () => {
+  searchBorrowedBooks()
+  loadAllRecords()
+}
+
 onMounted(() => {
   searchBorrowedBooks()
+  window.addEventListener('notifications:refresh', handleNotificationRefresh)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('notifications:refresh', handleNotificationRefresh)
 })
 </script>
 

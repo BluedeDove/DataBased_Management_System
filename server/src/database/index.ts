@@ -442,6 +442,46 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_notes_deleted    ON notes(is_deleted);
   `)
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS renewal_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      borrowing_record_id INTEGER NOT NULL,
+      request_user_id INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'rejected', 'cancelled')),
+      request_note TEXT,
+      review_note TEXT,
+      reviewed_by INTEGER,
+      requested_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      reviewed_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (borrowing_record_id) REFERENCES borrowing_records(id) ON DELETE CASCADE,
+      FOREIGN KEY (request_user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL
+    )
+  `)
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      recipient_user_id INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      type TEXT NOT NULL CHECK(type IN ('system', 'broadcast', 'renewal_request', 'renewal_result', 'due_soon')),
+      level TEXT NOT NULL DEFAULT 'info' CHECK(level IN ('info', 'success', 'warning', 'error')),
+      is_read INTEGER NOT NULL DEFAULT 0,
+      dedupe_key TEXT UNIQUE,
+      metadata TEXT,
+      created_by INTEGER,
+      related_record_id INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (recipient_user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+      FOREIGN KEY (related_record_id) REFERENCES borrowing_records(id) ON DELETE SET NULL
+    )
+  `)
+
   // 插入默认权限
   db.exec(`
     INSERT OR IGNORE INTO role_permissions (role, permission) VALUES
@@ -463,9 +503,9 @@ export function initDatabase() {
   db.exec(`
     INSERT OR IGNORE INTO system_settings (setting_key, setting_value, setting_type, category, description) VALUES
       ('ai.openai.apiKey', '', 'string', 'ai', 'OpenAI API Key'),
-      ('ai.openai.baseURL', 'https://api.openai.com/v1', 'string', 'ai', 'OpenAI Base URL'),
-      ('ai.openai.embeddingModel', 'text-embedding-3-small', 'string', 'ai', 'Embedding Model'),
-      ('ai.openai.chatModel', 'gpt-4-turbo-preview', 'string', 'ai', 'Chat Model')
+      ('ai.openai.baseURL', 'https://api.siliconflow.cn/v1', 'string', 'ai', 'OpenAI Base URL'),
+      ('ai.openai.embeddingModel', 'Qwen/Qwen3-Embedding-8B', 'string', 'ai', 'Embedding Model'),
+      ('ai.openai.chatModel', 'Pro/MiniMaxAI/MiniMax-M2.5', 'string', 'ai', 'Chat Model')
   `)
 
   // 创建索引以提高查询性能
@@ -490,6 +530,13 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_audit_logs_table_name ON audit_logs(table_name);
     CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
     CREATE INDEX IF NOT EXISTS idx_book_vectors_book_id ON book_vectors(book_id);
+    CREATE INDEX IF NOT EXISTS idx_renewal_requests_record ON renewal_requests(borrowing_record_id);
+    CREATE INDEX IF NOT EXISTS idx_renewal_requests_status ON renewal_requests(status);
+    CREATE INDEX IF NOT EXISTS idx_renewal_requests_request_user ON renewal_requests(request_user_id);
+    CREATE INDEX IF NOT EXISTS idx_notifications_recipient ON notifications(recipient_user_id);
+    CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(recipient_user_id, is_read);
+    CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_notifications_related_record ON notifications(related_record_id);
   `)
 
   console.log('✅ 数据库表结构初始化完成')

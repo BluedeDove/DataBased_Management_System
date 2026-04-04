@@ -80,16 +80,16 @@
       </div>
       <el-form :model="aiConfigForm" label-width="140px" style="max-width: 600px">
         <el-form-item label="API URL">
-          <el-input v-model="aiConfigForm.apiUrl" placeholder="https://api.openai.com/v1" />
+          <el-input v-model="aiConfigForm.apiUrl" placeholder="https://api.siliconflow.cn/v1" />
         </el-form-item>
         <el-form-item label="API Key">
           <el-input v-model="aiConfigForm.apiKey" type="password" placeholder="请输入 API 密钥" show-password />
         </el-form-item>
         <el-form-item label="Embedding 模型">
-          <el-input v-model="aiConfigForm.embeddingModel" placeholder="text-embedding-3-small" />
+          <el-input v-model="aiConfigForm.embeddingModel" placeholder="Qwen/Qwen3-Embedding-8B" />
         </el-form-item>
         <el-form-item label="Chat 模型">
-          <el-input v-model="aiConfigForm.chatModel" placeholder="gpt-4-turbo-preview" />
+          <el-input v-model="aiConfigForm.chatModel" placeholder="Pro/MiniMaxAI/MiniMax-M2.5" />
         </el-form-item>
         <el-form-item>
           <el-button :loading="testingConnection" :disabled="testingConnection || savingConfig" @click="handleTestConnection">
@@ -217,7 +217,7 @@ const handleDeleteCategory = async (row: any) => {
 // AI Config
 const testingConnection = ref(false)
 const savingConfig = ref(false)
-const aiConfigForm = reactive({ apiUrl: 'https://api.openai.com/v1', apiKey: '', embeddingModel: 'text-embedding-3-small', chatModel: 'gpt-4-turbo-preview' })
+const aiConfigForm = reactive({ apiUrl: 'https://api.siliconflow.cn/v1', apiKey: '', embeddingModel: 'Qwen/Qwen3-Embedding-8B', chatModel: 'Pro/MiniMaxAI/MiniMax-M2.5' })
 
 const loadAISettings = async () => {
   try {

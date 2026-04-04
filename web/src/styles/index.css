@@ -1,5 +1,5 @@
 /* ============================================================
-   GDUT 图书馆管理系统 — 设计系统 v3.0 Glassmorphism
+   书脉图书知识链路平台 — 设计系统 v3.0 Glassmorphism
    磨砂质感 + 悬浮侧边栏 + 微循环动画
    ============================================================ */
 
@@ -95,20 +95,29 @@ body {
   font-size: 14px;
   position: relative;
 }
-/* GDUT 图书馆全景图 + 半透明白色遮罩 */
+/* 书脉背景图层 + 半透明白色遮罩 */
 body::before {
   content: '';
   position: fixed;
   inset: 0;
   z-index: -2;
-  background: url('https://library.gdut.edu.cn/images/bannar2401.png') center center / cover no-repeat;
+  background-image:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.08)),
+    url('https://library.gdut.edu.cn/images/bannar2401.png'),
+    radial-gradient(circle at top right, rgba(200, 16, 46, 0.16), transparent 36%),
+    radial-gradient(circle at bottom left, rgba(124, 58, 237, 0.14), transparent 40%),
+    url('../assets/images/gdut-logo.jpg');
+  background-position: center center, center center, top right, bottom left, center center;
+  background-size: cover, cover, auto, auto, clamp(260px, 34vw, 520px) auto;
+  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, no-repeat;
+  background-attachment: fixed, fixed, fixed, fixed, fixed;
 }
 body::after {
   content: '';
   position: fixed;
   inset: 0;
   z-index: -1;
-  background: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.74);
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px);
 }

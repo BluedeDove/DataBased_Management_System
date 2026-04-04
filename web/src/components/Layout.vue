@@ -56,9 +56,7 @@
             <el-icon class="search-icon-h"><Search /></el-icon>
             <input v-model="globalSearch" placeholder="搜索图书、读者…" @keydown.enter="handleGlobalSearch" />
           </div>
-          <el-badge :value="notifCount > 0 ? notifCount : ''" :hidden="notifCount === 0">
-            <button class="icon-btn header-icon-btn"><el-icon><Bell /></el-icon></button>
-          </el-badge>
+          <NotificationCenter />
           <el-dropdown trigger="click" placement="bottom-end">
             <div class="header-avatar">
               <div class="header-avatar-circle">{{ userInitial }}</div>
@@ -96,9 +94,10 @@
 import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/store/user'
+import NotificationCenter from './NotificationCenter.vue'
 import {
   Odometer, Collection, Tickets, User, DataAnalysis,
-  ChatDotRound, Setting, SwitchButton, Search, Bell, ArrowDown, EditPen
+  ChatDotRound, Setting, SwitchButton, Search, ArrowDown, EditPen
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
@@ -161,7 +160,6 @@ const handleGlobalSearch = () => {
   }
 }
 
-const notifCount = ref(0)
 const goSettings  = () => router.push('/settings')
 const handleLogout = () => { userStore.logout(); router.push('/login') }
 </script>

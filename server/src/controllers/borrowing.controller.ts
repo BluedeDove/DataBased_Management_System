@@ -22,6 +22,34 @@ export const renewBook = asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data: record })
 })
 
+export const requestRenewal = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params
+  const { note } = req.body
+  const request = await borrowingService.requestRenewal(Number(id), req.user!, note)
+  res.json({ success: true, data: request })
+})
+
+export const getPendingRenewalRequests = asyncHandler(async (_req: Request, res: Response) => {
+  const requests = borrowingService.getPendingRenewalRequests()
+  res.json({ success: true, data: requests })
+})
+
+export const reviewRenewalRequest = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params
+  const { action, note } = req.body
+
+  if (action !== 'approve' && action !== 'reject') {
+    res.status(400).json({
+      success: false,
+      error: { message: '审批动作必须为 approve 或 reject' }
+    })
+    return
+  }
+
+  const result = await borrowingService.reviewRenewalRequest(Number(id), req.user!, action, note)
+  res.json({ success: true, data: result })
+})
+
 export const markAsLost = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params
   await borrowingService.markBookAsLost(Number(id))
@@ -96,12 +124,16 @@ export const getMyBorrowings = asyncHandler(async (req: Request, res: Response) 
   const user = req.user!
   const readerId = user.reader_id
   if (!readerId) {
-    return res.json({ success: true, data: { items: [], total: 0 } })
+    res.json({ success: true, data: { items: [], total: 0 } })
+    return
   }
-  const { status } = req.query
+  const { status, keyword, borrow_date_from, borrow_date_to } = req.query
   const records = borrowingService.getAllRecords({
     reader_id: readerId,
-    status: status as string | undefined
+    status: status as string | undefined,
+    keyword: keyword as string | undefined,
+    borrow_date_from: borrow_date_from as string | undefined,
+    borrow_date_to: borrow_date_to as string | undefined
   })
   res.json({ success: true, data: { items: records, total: records.length } })
 })

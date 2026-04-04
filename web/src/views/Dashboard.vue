@@ -7,7 +7,7 @@
         <div class="hero-text">
           <h1 class="hero-greeting">
             Hi, {{ userName }}!
-            <span class="hero-brand">广工 · 智能图书馆</span>
+            <span class="hero-brand">书脉——基于传承笔记的图书知识链路平台</span>
           </h1>
           <p class="hero-date">{{ currentDate }}</p>
         </div>
@@ -381,14 +381,16 @@ onUnmounted(() => {
   letter-spacing: -0.3px;
 }
 .hero-brand {
-  display: inline-block;
-  margin-left: 12px;
+  display: inline-flex;
+  margin: 10px 0 0;
   padding: 3px 14px;
   background: rgba(255, 255, 255, 0.15);
-  border-radius: 20px;
+  border-radius: 16px;
   font-size: 13px;
   font-weight: 600;
-  vertical-align: middle;
+  max-width: min(100%, 520px);
+  line-height: 1.45;
+  white-space: normal;
   backdrop-filter: blur(4px);
 }
 .hero-date {

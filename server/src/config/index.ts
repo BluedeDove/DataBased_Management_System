@@ -61,9 +61,9 @@ export const config = {
   ai: {
     openai: {
       apiKey: process.env.OPENAI_API_KEY || '',
-      baseURL: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
-      embeddingModel: process.env.EMBEDDING_MODEL || 'text-embedding-3-small',
-      chatModel: process.env.CHAT_MODEL || 'gpt-4-turbo-preview'
+      baseURL: process.env.OPENAI_BASE_URL || 'https://api.siliconflow.cn/v1',
+      embeddingModel: process.env.EMBEDDING_MODEL || 'Qwen/Qwen3-Embedding-8B',
+      chatModel: process.env.CHAT_MODEL || 'Pro/MiniMaxAI/MiniMax-M2.5'
     },
     enabled: !!process.env.OPENAI_API_KEY
   },

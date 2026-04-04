@@ -42,7 +42,9 @@ const REQUIRED_TABLES: Record<string, string[]> = {
   reader_categories: ['version', 'is_deleted'],
   role_permissions: [],
   system_settings: [],
-  ai_conversations: []
+  ai_conversations: [],
+  renewal_requests: [],
+  notifications: []
 }
 
 /**
@@ -68,7 +70,11 @@ const REQUIRED_INDEXES: string[] = [
   'idx_borrowing_status',
   'idx_borrowing_dates',
   'idx_ai_conversations_user',
-  'idx_ai_conversations_created'
+  'idx_ai_conversations_created',
+  'idx_renewal_requests_record',
+  'idx_renewal_requests_status',
+  'idx_notifications_recipient',
+  'idx_notifications_unread'
 ]
 
 /**

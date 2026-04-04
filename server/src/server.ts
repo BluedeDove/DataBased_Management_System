@@ -2,7 +2,7 @@ import 'dotenv/config'
 import { createApp } from './app'
 import { setupDatabase, db } from './database'
 import { config } from './config'
-import { AIService } from './domains/ai/ai.service'
+import { getAIConfig } from './domains/ai/ai.service'
 import { autoSeedIfEmpty } from './lib/autoSeed'
 
 // 初始化数据库
@@ -11,9 +11,13 @@ setupDatabase()
 // 自动填充种子数据（生产环境空库时触发）
 autoSeedIfEmpty(db).catch(err => console.error('自动种子数据失败:', err))
 
-// 初始化 AI 服务
-const aiService = new AIService()
-aiService.init()
+// 检查 AI 服务状态
+const aiCfg = getAIConfig()
+if (aiCfg.apiKey) {
+  console.log(`🤖 AI服务已配置，模型: ${aiCfg.chatModel}`)
+} else {
+  console.log('⚠️  AI服务未配置：未设置 API Key')
+}
 
 // 创建 Express 应用
 const app = createApp()

@@ -233,7 +233,7 @@ onMounted(() => { loadReaders(); loadCategories() })
 </script>
 
 <style scoped>
-.readers-page { display: flex; flex-direction: column; gap: 20px; max-width: 1400px; }
+.readers-page { display: flex; flex-direction: column; gap: 20px; width: 100%; max-width: 1400px; margin: 0 auto; }
 
 .filter-card {
   background: rgba(255,255,255,0.42); backdrop-filter: blur(18px) saturate(180%);
@@ -250,6 +250,7 @@ onMounted(() => { loadReaders(); loadCategories() })
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-glass); border: 1px solid rgba(255,255,255,0.40); overflow: hidden;
   transition: all 0.3s ease;
+  width: 100%;
 }
 
 .reader-cell { display: flex; align-items: center; gap: 12px; }

@@ -417,15 +417,30 @@ const handleDelete = async (book: any) => {
   } catch {}
 }
 
+const triggerFileDownload = (blob: Blob, filename: string) => {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.style.display = 'none'
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 const handleExport = async () => {
   exportLoading.value = true
   try {
-    const blob = exportFormat.value === 'csv' ? await exportApi.booksToCSV() : await exportApi.booksToJSON()
-    const url = URL.createObjectURL(blob)
-    const a = Object.assign(document.createElement('a'), { href: url, download: `books.${exportFormat.value}` })
-    a.click(); URL.revokeObjectURL(url); ElMessage.success('导出成功！'); exportVisible.value = false
-  } catch { ElMessage.error('导出失败') }
-  finally { exportLoading.value = false }
+    const file = exportFormat.value === 'csv'
+      ? await exportApi.booksToCSV()
+      : await exportApi.booksToJSON()
+    triggerFileDownload(file.blob, file.filename)
+    ElMessage.success(`导出成功：${file.filename}`)
+    exportVisible.value = false
+  } catch {
+    ElMessage.error('导出失败')
+  } finally { exportLoading.value = false }
 }
 
 const handleUserBorrow = async (book: any) => {
@@ -458,7 +473,7 @@ watch(() => route.query.search, (val) => {
 </script>
 
 <style scoped>
-.books-page { display: flex; flex-direction: column; gap: 20px; max-width: 1400px; }
+.books-page { display: flex; flex-direction: column; gap: 20px; width: 100%; max-width: 1400px; margin: 0 auto; }
 
 .filter-card { background: rgba(255,255,255,0.42); backdrop-filter: blur(18px) saturate(180%); -webkit-backdrop-filter: blur(18px) saturate(180%); border-radius: var(--radius-card); padding: 16px 20px; border: 1px solid rgba(255,255,255,0.40); box-shadow: var(--shadow-glass); transition: all 0.3s ease; }
 .filter-card:hover { box-shadow: 0 6px 24px rgba(28,16,51,0.08); }
@@ -474,7 +489,7 @@ watch(() => route.query.search, (val) => {
 .cat-chip.active { background: var(--gdut-red); color: #fff; border-color: var(--gdut-red); }
 .cat-chip:hover:not(.active) { border-color: var(--gdut-red); color: var(--gdut-red); }
 
-.table-card { background: rgba(255,255,255,0.42); backdrop-filter: blur(18px) saturate(180%); -webkit-backdrop-filter: blur(18px) saturate(180%); border-radius: var(--radius-card); box-shadow: var(--shadow-glass); border: 1px solid rgba(255,255,255,0.40); overflow: hidden; }
+.table-card { background: rgba(255,255,255,0.42); backdrop-filter: blur(18px) saturate(180%); -webkit-backdrop-filter: blur(18px) saturate(180%); border-radius: var(--radius-card); box-shadow: var(--shadow-glass); border: 1px solid rgba(255,255,255,0.40); overflow: hidden; width: 100%; }
 
 .book-cell { display: flex; align-items: center; gap: 12px; }
 .book-spine {
@@ -527,7 +542,7 @@ watch(() => route.query.search, (val) => {
 .action-btn.secondary:hover { border-color: var(--gdut-red); color: var(--gdut-red); background: var(--gdut-red-tint); }
 
 .pagination-wrap {
-  padding: 14px 20px; display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
   border-top: 1px solid var(--border-light);
 }
 .pagination-info { font-size: 13px; color: var(--text-muted); }
