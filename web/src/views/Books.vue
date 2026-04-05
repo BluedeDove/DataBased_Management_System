@@ -46,13 +46,13 @@
     <div class="table-card animate-fade-in-delay-2">
       <el-table v-loading="loading" :data="bookList" style="width: 100%">
         <el-table-column label="图书" min-width="260">
-          <template #default="{ row }">
+          <template #default="{ row, $index }">
             <div class="book-cell">
               <div class="book-spine" :style="getSpineStyle(row)">{{ (row.book_title || row.title || '?')[0] }}</div>
               <div class="book-meta">
                 <div class="book-title" v-html="highlightText(row.book_title || row.title)" />
                 <div class="book-isbn">ISBN: {{ row.isbn || '—' }}</div>
-                <div v-if="row.similarity != null && searchType === 'vector'" class="similarity-badge" :style="getSimilarityStyle(row.similarity)">
+                <div v-if="row.similarity != null && searchType === 'vector'" class="similarity-badge" :style="getSimilarityStyle($index)">
                   {{ getSimilarityLabel(row.similarity) }} {{ Math.round(row.similarity * 100) }}%
                 </div>
               </div>
@@ -305,12 +305,19 @@ const getSimilarityLabel = (s: number) => {
   if (s >= 0.35) return '低'
   return '很低'
 }
-const getSimilarityStyle = (s: number) => {
-  if (s >= 0.90) return { background: 'rgba(5,150,105,0.15)', color: '#059669', borderColor: 'rgba(5,150,105,0.30)' }
-  if (s >= 0.75) return { background: 'rgba(14,165,233,0.12)', color: '#0284C7', borderColor: 'rgba(14,165,233,0.25)' }
-  if (s >= 0.55) return { background: 'rgba(124,58,237,0.10)', color: '#7C3AED', borderColor: 'rgba(124,58,237,0.20)' }
-  if (s >= 0.35) return { background: 'rgba(217,119,6,0.10)',  color: '#D97706', borderColor: 'rgba(217,119,6,0.20)' }
-  return { background: 'rgba(148,163,184,0.12)', color: '#94A3B8', borderColor: 'rgba(148,163,184,0.20)' }
+const getSimilarityStyle = (index: number) => {
+  const totalResults = bookList.value.length
+  const ratio = totalResults <= 1 ? 1 : 1 - index / (totalResults - 1)
+  const saturation = 8 + ratio * 68
+  const textLightness = 46 - ratio * 12
+  const backgroundAlpha = 0.06 + ratio * 0.14
+  const borderAlpha = 0.10 + ratio * 0.22
+
+  return {
+    background: `hsla(145, ${saturation.toFixed(1)}%, 42%, ${backgroundAlpha.toFixed(2)})`,
+    color: `hsl(145, ${saturation.toFixed(1)}%, ${textLightness.toFixed(1)}%)`,
+    borderColor: `hsla(145, ${saturation.toFixed(1)}%, 36%, ${borderAlpha.toFixed(2)})`
+  }
 }
 
 // Stock helpers

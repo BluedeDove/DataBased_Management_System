@@ -33,7 +33,8 @@
       "Read(//e/个人项目/数据库期末课设作业/$APPDATA/ngrok/**)",
       "Read(//e/个人项目/数据库期末课设作业/$HOME/.config/ngrok/**)",
       "Bash(python3:*)",
-      "WebSearch"
+      "WebSearch",
+      "mcp__zai-mcp-server__diagnose_error_screenshot"
     ]
   }
 }

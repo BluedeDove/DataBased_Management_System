@@ -249,3 +249,6 @@ build/
 # Project Documentation (Local only)
 docs/
 TEST_ACCOUNTS.txt
+
+# Office documents (local only)
+*.docx
