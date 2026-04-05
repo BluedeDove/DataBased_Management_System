@@ -19,29 +19,7 @@ router.get('/available', authMiddleware, asyncHandler(async (_req: Request, res:
   res.json({ success: true, data: !!apiKey })
 }))
 
-// 创建图书向量嵌入（单本）
-router.post('/embeddings/:bookId', authMiddleware, requirePermission('books:write'), asyncHandler(async (req: Request, res: Response) => {
-  const bookId = parseInt(req.params.bookId)
-  const book = db.prepare('SELECT * FROM books WHERE id = ? AND is_deleted = 0').get(bookId) as any
-  if (!book) { res.status(404).json({ success: false, error: { message: '图书不存在' } }); return }
-
-  const text = [book.title, book.author, book.description, book.keywords].filter(Boolean).join(' ')
-  const { apiKey, baseURL, embeddingModel } = getAIConfig()
-
-  if (!apiKey) {
-    db.prepare(`INSERT OR REPLACE INTO book_vectors (book_id, vector, text) VALUES (?, '[]', ?)`).run(bookId, text)
-    res.json({ success: true, data: { generated: false, reason: '未配置 API Key，已标记索引位但无向量' } })
-    return
-  }
-
-  const client = new OpenAI({ apiKey, baseURL })
-  const resp = await client.embeddings.create({ model: embeddingModel, input: text })
-  const vector = JSON.stringify(resp.data[0].embedding)
-  db.prepare(`INSERT OR REPLACE INTO book_vectors (book_id, vector, text) VALUES (?, ?, ?)`).run(bookId, vector, text)
-  res.json({ success: true, data: { generated: true } })
-}))
-
-// 批量创建向量嵌入（SSE 流式进度）
+// 批量创建向量嵌入（SSE 流式进度）—— 必须在 /:bookId 之前注册
 router.post('/embeddings/batch', authMiddleware, requirePermission('books:write'), asyncHandler(async (req: Request, res: Response) => {
   const { bookIds } = req.body
   if (!Array.isArray(bookIds) || bookIds.length === 0) {
@@ -92,6 +70,28 @@ router.post('/embeddings/batch', authMiddleware, requirePermission('books:write'
   } else {
     res.json({ success: true, data: { generated, skipped } })
   }
+}))
+
+// 创建图书向量嵌入（单本）
+router.post('/embeddings/:bookId', authMiddleware, requirePermission('books:write'), asyncHandler(async (req: Request, res: Response) => {
+  const bookId = parseInt(req.params.bookId)
+  const book = db.prepare('SELECT * FROM books WHERE id = ? AND is_deleted = 0').get(bookId) as any
+  if (!book) { res.status(404).json({ success: false, error: { message: '图书不存在' } }); return }
+
+  const text = [book.title, book.author, book.description, book.keywords].filter(Boolean).join(' ')
+  const { apiKey, baseURL, embeddingModel } = getAIConfig()
+
+  if (!apiKey) {
+    db.prepare(`INSERT OR REPLACE INTO book_vectors (book_id, vector, text) VALUES (?, '[]', ?)`).run(bookId, text)
+    res.json({ success: true, data: { generated: false, reason: '未配置 API Key，已标记索引位但无向量' } })
+    return
+  }
+
+  const client = new OpenAI({ apiKey, baseURL })
+  const resp = await client.embeddings.create({ model: embeddingModel, input: text })
+  const vector = JSON.stringify(resp.data[0].embedding)
+  db.prepare(`INSERT OR REPLACE INTO book_vectors (book_id, vector, text) VALUES (?, ?, ?)`).run(bookId, vector, text)
+  res.json({ success: true, data: { generated: true } })
 }))
 
 // 语义搜索：优先使用向量余弦相似度，回退到关键词匹配
