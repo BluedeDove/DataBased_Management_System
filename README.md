@@ -97,9 +97,11 @@ npm run db:generate -- --seed 12345              # 固定随机种子，可复�
 ### 清空数据库
 
 ```bash
-npm run db:clear          # 保留 admin 账号
-npm run db:clear:all      # 删除全部数据
+npm run db:clear          # 清空业务数据，保留 admin/librarian、系统设置和基础分类
+npm run db:clear:all      # 原地清空全部表数据，不删除数据库文件
 ```
+
+脚本执行完成后直接刷新页面即可，无需重启应用。
 
 ## 数据库设计
 

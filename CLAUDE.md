@@ -77,8 +77,8 @@ npm run db:generate -- --dry-run                 # Preview without inserting
 npm run db:generate -- --seed 12345              # Reproducible results
 
 # Clear database
-npm run db:clear          # Keep admin account
-npm run db:clear:all      # Remove all data
+npm run db:clear          # Keep admin/librarian, system settings and base categories
+npm run db:clear:all      # Clear all table data in place without deleting the DB file
 ```
 
 ## Frontend Structure

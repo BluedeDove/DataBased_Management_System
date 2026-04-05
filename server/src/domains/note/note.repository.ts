@@ -73,7 +73,7 @@ export class NoteRepository {
     }
     const countSql = sql.replace(/SELECT n\.\*.+?FROM notes n/s, 'SELECT COUNT(*) as count FROM notes n')
     const total = (db.prepare(countSql).get(...args) as { count: number }).count
-    sql += ' ORDER BY n.updated_at DESC LIMIT ? OFFSET ?'
+    sql += ' ORDER BY n.created_at DESC, n.updated_at DESC LIMIT ? OFFSET ?'
     args.push(params.pageSize, (params.page - 1) * params.pageSize)
     return { items: db.prepare(sql).all(...args) as NoteWithDetails[], total }
   }

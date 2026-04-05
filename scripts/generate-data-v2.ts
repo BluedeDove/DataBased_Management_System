@@ -641,7 +641,7 @@ if (!config.dryRun && db) {
 
 console.log('━'.repeat(50))
 console.log('\n✅ 测试数据生成完成!')
-console.log('💡 提示: 现在可以重启应用查看生成的数据')
+console.log('💡 提示: 若应用正在运行，直接刷新页面即可查看生成的数据，无需重启')
 console.log('📝 默认账号:')
 console.log('   - 管理员: admin / admin123')
 console.log('   - 图书管理员: librarian / lib123')

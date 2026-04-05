@@ -65,7 +65,7 @@
             <div class="legacy-card-title">{{ note.title || '无标题' }}</div>
             <div class="legacy-card-meta">
               <span class="legacy-author">{{ note.author_name }}</span>
-              <span class="legacy-time">{{ formatDate(note.updated_at) }}</span>
+              <span class="legacy-time">{{ formatDate(note.created_at) }}</span>
             </div>
             <div class="legacy-card-excerpt">{{ stripMarkdown(note.content) }}</div>
           </div>
@@ -87,7 +87,7 @@
             <div class="note-meta">
               <span v-if="activeTab === 'plaza'" class="note-author">{{ note.author_name }}</span>
               <span v-if="note.book_title" class="note-book">📖 {{ note.book_title }}</span>
-              <span class="note-time">{{ formatDate(note.updated_at) }}</span>
+              <span class="note-time">{{ formatDate(note.created_at) }}</span>
             </div>
             <div class="note-excerpt">{{ stripMarkdown(note.content) }}</div>
             <div v-if="activeTab === 'plaza'" class="note-views">
@@ -141,7 +141,7 @@
             <div class="legacy-banner-meta">
               <span class="legacy-banner-author">前借阅者&nbsp;·&nbsp;{{ selectedNote?.author_name }}</span>
               <span class="legacy-banner-dot">·</span>
-              <span>{{ formatDateFull(selectedNote?.updated_at ?? '') }}</span>
+              <span>{{ formatDateFull(selectedNote?.created_at ?? '') }}</span>
               <span class="legacy-banner-dot">·</span>
               <span class="legacy-banner-views"><el-icon><View /></el-icon>&nbsp;{{ selectedNote?.view_count }}</span>
             </div>
@@ -333,8 +333,20 @@ const renderedContent = computed(() => {
 // ── Helpers ────────────────────────────────────────────────────
 const visLabel = (v?: string) => ({ private: '私有', public: '公开', legacy: '传承' }[v ?? ''] ?? v ?? '')
 
+const parseTimestamp = (value: string) => {
+  if (!value) return null
+  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)
+    ? `${value.replace(' ', 'T')}Z`
+    : value
+  const date = new Date(normalized)
+  if (!Number.isNaN(date.getTime())) return date
+  const fallback = new Date(value)
+  return Number.isNaN(fallback.getTime()) ? null : fallback
+}
+
 const formatDate = (s: string) => {
-  const d = new Date(s)
+  const d = parseTimestamp(s)
+  if (!d) return s
   const now = new Date()
   const diff = (now.getTime() - d.getTime()) / 1000
   if (diff < 60) return '刚刚'
@@ -345,8 +357,15 @@ const formatDate = (s: string) => {
 
 const formatDateFull = (s: string) => {
   if (!s) return ''
-  const d = new Date(s)
-  return d.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })
+  const d = parseTimestamp(s)
+  if (!d) return s
+  return d.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
 }
 
 const stripMarkdown = (s: string) => s.replace(/[#*`_~>\[\]!]/g, '').slice(0, 60)

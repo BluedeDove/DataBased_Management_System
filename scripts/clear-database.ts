@@ -8,12 +8,13 @@
 
 import Database from 'better-sqlite3'
 import path from 'path'
-import { existsSync, unlinkSync } from 'fs'
+import { existsSync } from 'fs'
 
 type TableRow = { name: string }
 type CountRow = { count: number }
 
 const PRESERVED_USERNAMES = ['admin', 'librarian'] as const
+const PRESERVED_TABLES = ['system_settings', 'book_categories', 'reader_categories'] as const
 
 function resolveDatabasePath(): string {
   const rawPath = process.env.DATABASE_PATH || path.join('data', 'library.db')
@@ -37,16 +38,7 @@ if (!existsSync(dbPath)) {
 }
 
 if (deleteAll) {
-  console.log('\nDeleting database file...')
-  try {
-    unlinkSync(dbPath)
-    console.log('Database file deleted.')
-    console.log('It will be recreated on next app startup.')
-    process.exit(0)
-  } catch (error) {
-    console.error('Failed to delete database file:', error)
-    process.exit(1)
-  }
+  console.log('\nRunning full in-place clear (--all)...')
 }
 
 const db = new Database(dbPath)
@@ -67,7 +59,12 @@ try {
     const tableName = table.name
     const quotedTableName = quoteIdentifier(tableName)
 
-    if (tableName === 'users') {
+    if (!deleteAll && PRESERVED_TABLES.includes(tableName as typeof PRESERVED_TABLES[number])) {
+      console.log(`${tableName}: preserved`)
+      continue
+    }
+
+    if (tableName === 'users' && !deleteAll) {
       const placeholders = PRESERVED_USERNAMES.map(() => '?').join(', ')
       const removableCount = db.prepare(`
         SELECT COUNT(*) AS count
@@ -116,8 +113,9 @@ try {
     console.log(`  - ${tableName}: ${rowCount.count}`)
   }
 
-  console.log('\nDatabase clear completed.')
-  console.log('Next step: run npm run db:generate')
+  console.log(deleteAll ? '\nFull database clear completed.' : '\nDatabase clear completed.')
+  console.log('Next step: run npm run db:generate if you need fresh mock data.')
+  console.log('No app restart is required. If the app is already running, refresh the page after the script finishes.')
 } catch (error) {
   console.error('Failed to clear database:', error)
   process.exitCode = 1
