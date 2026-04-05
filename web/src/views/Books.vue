@@ -37,6 +37,9 @@
           {{ cat.name }}
         </button>
       </div>
+      <div v-if="searchType === 'vector' && currentVectorModel" class="vector-model-note">
+        当前语义检索模型：{{ currentVectorModel }}
+      </div>
     </div>
 
     <!-- Table -->
@@ -139,6 +142,9 @@
 
       <div v-if="searchType === 'vector'">
         <el-form label-width="80px">
+          <div v-if="currentVectorModel" class="vector-model-note">
+            Vector model: {{ currentVectorModel }}
+          </div>
           <el-form-item label="描述">
             <el-input v-model="advancedForm.vectorQuery" type="textarea" :rows="3" placeholder="用自然语言描述你想找的书" />
           </el-form-item>
@@ -254,6 +260,7 @@ const categories = ref<any[]>([])
 // Advanced Search
 const advancedSearchVisible = ref(false)
 const searchType = ref('regex')
+const currentVectorModel = ref('')
 const advTabs = [{ key: 'regex', label: '正则匹配' }, { key: 'vector', label: '语义检索' }, { key: 'sql', label: 'SQL 查询' }]
 const regexError = ref('')
 const advancedForm = reactive({
@@ -360,6 +367,13 @@ const fetchCategories = async () => {
   try { const r = await bookCategoryApi.getAll(); if (r.success) categories.value = r.data } catch {}
 }
 
+const loadVectorModel = async () => {
+  try {
+    const result = await aiApi.getStatistics()
+    if (result.success) currentVectorModel.value = result.data.currentModel || ''
+  } catch {}
+}
+
 // Advanced search
 const handleAdvancedSearch = async () => {
   loading.value = true; advancedSearchVisible.value = false
@@ -374,6 +388,7 @@ const handleAdvancedSearch = async () => {
     } else if (searchType.value === 'sql') {
       result = await searchApi.executeSql(advancedForm.sql)
     } else if (searchType.value === 'vector') {
+      await loadVectorModel()
       result = await aiApi.semanticSearch(advancedForm.vectorQuery, 20)
     }
     if (result?.success) {
@@ -465,6 +480,7 @@ onMounted(() => {
   if (route.query.search) searchQuery.value = String(route.query.search)
   fetchData()
   fetchCategories()
+  loadVectorModel()
 })
 
 watch(() => route.query.search, (val) => {
@@ -488,6 +504,7 @@ watch(() => route.query.search, (val) => {
 }
 .cat-chip.active { background: var(--gdut-red); color: #fff; border-color: var(--gdut-red); }
 .cat-chip:hover:not(.active) { border-color: var(--gdut-red); color: var(--gdut-red); }
+.vector-model-note { margin-top: 12px; font-size: 12px; color: var(--text-muted); word-break: break-all; }
 
 .table-card { background: rgba(255,255,255,0.42); backdrop-filter: blur(18px) saturate(180%); -webkit-backdrop-filter: blur(18px) saturate(180%); border-radius: var(--radius-card); box-shadow: var(--shadow-glass); border: 1px solid rgba(255,255,255,0.40); overflow: hidden; width: 100%; }
 

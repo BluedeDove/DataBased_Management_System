@@ -70,6 +70,18 @@ function normalizeConversationRecord(conversation: any) {
 // ── SSE helper ──
 const sse = (res: Response, data: object) => res.write(`data: ${JSON.stringify(data)}\n\n`)
 
+function saveBookVector(bookId: number, embeddingModel: string, vector: string, text: string) {
+  db.prepare(`
+    INSERT INTO book_vectors (book_id, embedding_model, vector, text, created_at, updated_at)
+    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    ON CONFLICT(book_id, embedding_model)
+    DO UPDATE SET
+      vector = excluded.vector,
+      text = excluded.text,
+      updated_at = CURRENT_TIMESTAMP
+  `).run(bookId, embeddingModel, vector, text)
+}
+
 // AI服务状态检查
 router.get('/available', authMiddleware, asyncHandler(async (_req: Request, res: Response) => {
   const { apiKey } = getAIConfig()
@@ -79,8 +91,9 @@ router.get('/available', authMiddleware, asyncHandler(async (_req: Request, res:
 // 批量创建向量嵌入（SSE 流式进度）—— 必须在 /:bookId 之前注册
 router.post('/embeddings/batch', authMiddleware, requirePermission('books:write'), asyncHandler(async (req: Request, res: Response) => {
   const { bookIds } = req.body
+  const { apiKey, baseURL, embeddingModel } = getAIConfig()
   if (!Array.isArray(bookIds) || bookIds.length === 0) {
-    res.json({ success: true, data: { generated: 0, skipped: 0 } }); return
+    res.json({ success: true, data: { generated: 0, skipped: 0, model: embeddingModel } }); return
   }
 
   // Detect SSE request via Accept header
@@ -92,7 +105,6 @@ router.post('/embeddings/batch', authMiddleware, requirePermission('books:write'
     res.flushHeaders()
   }
 
-  const { apiKey, baseURL, embeddingModel } = getAIConfig()
   let generated = 0, skipped = 0
   const total = bookIds.length
 
@@ -103,29 +115,29 @@ router.post('/embeddings/batch', authMiddleware, requirePermission('books:write'
     else {
       const text = [book.title, book.author, book.description, book.keywords].filter(Boolean).join(' ')
       if (!apiKey) {
-        db.prepare(`INSERT OR REPLACE INTO book_vectors (book_id, vector, text) VALUES (?, '[]', ?)`).run(bookId, text)
+        saveBookVector(bookId, embeddingModel, '[]', text)
         skipped++
       } else {
         try {
           const client = new OpenAI({ apiKey, baseURL })
           const resp = await client.embeddings.create({ model: embeddingModel, input: text })
           const vector = JSON.stringify(resp.data[0].embedding)
-          db.prepare(`INSERT OR REPLACE INTO book_vectors (book_id, vector, text) VALUES (?, ?, ?)`).run(bookId, vector, text)
+          saveBookVector(bookId, embeddingModel, vector, text)
           generated++
         } catch (e) { logger.error(`嵌入生成失败 bookId=${bookId}`, e); skipped++ }
       }
     }
 
     if (acceptSSE) {
-      sse(res, { progress: i + 1, total, generated, skipped, current: book?.title || `ID:${bookId}` })
+      sse(res, { progress: i + 1, total, generated, skipped, current: book?.title || `ID:${bookId}`, model: embeddingModel })
     }
   }
 
   if (acceptSSE) {
-    sse(res, { done: true, generated, skipped, total })
+    sse(res, { done: true, generated, skipped, total, model: embeddingModel })
     res.end()
   } else {
-    res.json({ success: true, data: { generated, skipped } })
+    res.json({ success: true, data: { generated, skipped, model: embeddingModel } })
   }
 }))
 
@@ -139,7 +151,7 @@ router.post('/embeddings/:bookId', authMiddleware, requirePermission('books:writ
   const { apiKey, baseURL, embeddingModel } = getAIConfig()
 
   if (!apiKey) {
-    db.prepare(`INSERT OR REPLACE INTO book_vectors (book_id, vector, text) VALUES (?, '[]', ?)`).run(bookId, text)
+    saveBookVector(bookId, embeddingModel, '[]', text)
     res.json({ success: true, data: { generated: false, reason: '未配置 API Key，已标记索引位但无向量' } })
     return
   }
@@ -147,8 +159,8 @@ router.post('/embeddings/:bookId', authMiddleware, requirePermission('books:writ
   const client = new OpenAI({ apiKey, baseURL })
   const resp = await client.embeddings.create({ model: embeddingModel, input: text })
   const vector = JSON.stringify(resp.data[0].embedding)
-  db.prepare(`INSERT OR REPLACE INTO book_vectors (book_id, vector, text) VALUES (?, ?, ?)`).run(bookId, vector, text)
-  res.json({ success: true, data: { generated: true } })
+  saveBookVector(bookId, embeddingModel, vector, text)
+  res.json({ success: true, data: { generated: true, model: embeddingModel } })
 }))
 
 // 语义搜索：优先使用向量余弦相似度，回退到关键词匹配
@@ -165,8 +177,8 @@ router.post('/semantic-search', authMiddleware, asyncHandler(async (req: Request
         FROM book_vectors bv
         JOIN books b ON bv.book_id = b.id
         JOIN book_categories bc ON b.category_id = bc.id
-        WHERE bv.vector != '[]' AND b.is_deleted = 0
-      `).all() as any[]
+        WHERE bv.embedding_model = ? AND bv.vector != '[]' AND b.is_deleted = 0
+      `).all(embeddingModel) as any[]
 
       if (rows.length > 0) {
         const client = new OpenAI({ apiKey, baseURL })
@@ -525,10 +537,15 @@ router.post('/recommend/cancel', authMiddleware, (_req: Request, res: Response) 
 
 // 获取向量统计（含覆盖率）
 router.get('/statistics', authMiddleware, asyncHandler(async (_req: Request, res: Response) => {
-  const vectorCount = (db.prepare(`SELECT COUNT(*) as count FROM book_vectors WHERE vector != '[]'`).get() as { count: number }).count
+  const { embeddingModel } = getAIConfig()
+  const vectorCount = (db.prepare(`
+    SELECT COUNT(DISTINCT book_id) as count
+    FROM book_vectors
+    WHERE embedding_model = ? AND vector != '[]'
+  `).get(embeddingModel) as { count: number }).count
   const totalBooks = (db.prepare(`SELECT COUNT(*) as count FROM books WHERE is_deleted = 0`).get() as { count: number }).count
   const coverageRate = totalBooks > 0 ? Math.round(vectorCount / totalBooks * 100) : 0
-  res.json({ success: true, data: { vectorCount, totalVectors: vectorCount, totalBooks, coverageRate } })
+  res.json({ success: true, data: { vectorCount, totalVectors: vectorCount, totalBooks, coverageRate, currentModel: embeddingModel } })
 }))
 
 // 保存对话

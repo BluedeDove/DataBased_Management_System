@@ -48,6 +48,98 @@ export interface RepairResult {
   timestamp: Date
 }
 
+const DEFAULT_EMBEDDING_MODEL = 'Qwen/Qwen3-Embedding-8B'
+
+function createBookVectorsTable(tableName: string) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ${tableName} (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      book_id INTEGER NOT NULL,
+      embedding_model TEXT NOT NULL,
+      vector TEXT NOT NULL,
+      text TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(book_id, embedding_model),
+      FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
+    )
+  `)
+}
+
+function getEmbeddingModelForMigration() {
+  try {
+    const row = db.prepare(`
+      SELECT setting_value
+      FROM system_settings
+      WHERE setting_key = 'ai.openai.embeddingModel'
+      LIMIT 1
+    `).get() as { setting_value?: string } | undefined
+
+    return row?.setting_value || DEFAULT_EMBEDDING_MODEL
+  } catch {
+    return DEFAULT_EMBEDDING_MODEL
+  }
+}
+
+function ensureBookVectorsSchema() {
+  const tableInfo = db.prepare(`
+    SELECT sql
+    FROM sqlite_master
+    WHERE type = 'table' AND name = 'book_vectors'
+  `).get() as { sql?: string } | undefined
+
+  if (!tableInfo) {
+    createBookVectorsTable('book_vectors')
+    return
+  }
+
+  const createSql = (tableInfo.sql || '').toLowerCase()
+  const hasEmbeddingModel = createSql.includes('embedding_model')
+  const hasUpdatedAt = createSql.includes('updated_at')
+  const usesLegacyUniqueBookId = createSql.includes('book_id integer not null unique')
+
+  if (hasEmbeddingModel && hasUpdatedAt && !usesLegacyUniqueBookId) {
+    return
+  }
+
+  const migrationEmbeddingModel = getEmbeddingModelForMigration()
+  const columns = db.prepare(`PRAGMA table_info(book_vectors)`).all() as Array<{ name: string }>
+  const hasCreatedAtColumn = columns.some(column => column.name === 'created_at')
+  const hasUpdatedAtColumn = columns.some(column => column.name === 'updated_at')
+  const hasEmbeddingModelColumn = columns.some(column => column.name === 'embedding_model')
+
+  createBookVectorsTable('book_vectors_new')
+
+  if (hasEmbeddingModelColumn) {
+    db.prepare(`
+      INSERT INTO book_vectors_new (book_id, embedding_model, vector, text, created_at, updated_at)
+      SELECT
+        book_id,
+        COALESCE(NULLIF(embedding_model, ''), ?),
+        vector,
+        text,
+        ${hasCreatedAtColumn ? 'COALESCE(created_at, CURRENT_TIMESTAMP)' : 'CURRENT_TIMESTAMP'},
+        ${hasUpdatedAtColumn ? 'COALESCE(updated_at, created_at, CURRENT_TIMESTAMP)' : hasCreatedAtColumn ? 'COALESCE(created_at, CURRENT_TIMESTAMP)' : 'CURRENT_TIMESTAMP'}
+      FROM book_vectors
+    `).run(migrationEmbeddingModel)
+  } else {
+    db.prepare(`
+      INSERT INTO book_vectors_new (book_id, embedding_model, vector, text, created_at, updated_at)
+      SELECT
+        book_id,
+        ?,
+        vector,
+        text,
+        ${hasCreatedAtColumn ? 'COALESCE(created_at, CURRENT_TIMESTAMP)' : 'CURRENT_TIMESTAMP'},
+        ${hasCreatedAtColumn ? 'COALESCE(created_at, CURRENT_TIMESTAMP)' : 'CURRENT_TIMESTAMP'}
+      FROM book_vectors
+    `).run(migrationEmbeddingModel)
+  }
+
+  db.exec('DROP TABLE book_vectors')
+  db.exec('ALTER TABLE book_vectors_new RENAME TO book_vectors')
+}
+
 /**
  * 初始化数据库表结构
  */
@@ -405,16 +497,7 @@ export function initDatabase() {
   `)
 
   // 12. 图书向量表
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS book_vectors (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      book_id INTEGER NOT NULL UNIQUE,
-      vector TEXT NOT NULL,
-      text TEXT NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
-    )
-  `)
+  createBookVectorsTable('book_vectors')
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS notes (
@@ -504,8 +587,8 @@ export function initDatabase() {
     INSERT OR IGNORE INTO system_settings (setting_key, setting_value, setting_type, category, description) VALUES
       ('ai.openai.apiKey', '', 'string', 'ai', 'AI API Key'),
       ('ai.openai.baseURL', 'https://api.siliconflow.cn/v1', 'string', 'ai', 'AI Base URL'),
-      ('ai.openai.embeddingModel', 'BAAI/bge-large-zh-v1.5', 'string', 'ai', 'Embedding Model'),
-      ('ai.openai.chatModel', 'Pro/zai-org/GLM-4.7', 'string', 'ai', 'Chat Model')
+      ('ai.openai.embeddingModel', '${DEFAULT_EMBEDDING_MODEL}', 'string', 'ai', 'Embedding Model'),
+      ('ai.openai.chatModel', 'Pro/MiniMaxAI/MiniMax-M2.5', 'string', 'ai', 'Chat Model')
   `)
 
   // 将历史 OpenAI 默认值迁移为当前硅基流动默认值，避免旧库继续显示过期默认配置
@@ -516,14 +599,14 @@ export function initDatabase() {
       AND setting_value = 'https://api.openai.com/v1';
 
     UPDATE system_settings
-    SET setting_value = 'BAAI/bge-large-zh-v1.5', updated_at = CURRENT_TIMESTAMP
+    SET setting_value = '${DEFAULT_EMBEDDING_MODEL}', updated_at = CURRENT_TIMESTAMP
     WHERE setting_key = 'ai.openai.embeddingModel'
       AND setting_value IN ('text-embedding-3-small', 'Qwen/Qwen3-Embedding-8B');
 
     UPDATE system_settings
-    SET setting_value = 'Pro/zai-org/GLM-4.7', updated_at = CURRENT_TIMESTAMP
+    SET setting_value = 'Pro/MiniMaxAI/MiniMax-M2.5', updated_at = CURRENT_TIMESTAMP
     WHERE setting_key = 'ai.openai.chatModel'
-      AND setting_value IN ('gpt-4-turbo-preview', 'Pro/MiniMaxAI/MiniMax-M2.5');
+      AND setting_value IN ('gpt-4-turbo-preview', 'Pro/zai-org/GLM-4.7');
 
     UPDATE system_settings
     SET description = 'AI API Key', updated_at = CURRENT_TIMESTAMP
@@ -537,6 +620,8 @@ export function initDatabase() {
   `)
 
   // 创建索引以提高查询性能
+  ensureBookVectorsSchema()
+
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_readers_category ON readers(category_id);
     CREATE INDEX IF NOT EXISTS idx_readers_status ON readers(status);
@@ -558,6 +643,8 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_audit_logs_table_name ON audit_logs(table_name);
     CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
     CREATE INDEX IF NOT EXISTS idx_book_vectors_book_id ON book_vectors(book_id);
+    CREATE INDEX IF NOT EXISTS idx_book_vectors_model ON book_vectors(embedding_model);
+    CREATE INDEX IF NOT EXISTS idx_book_vectors_model_book ON book_vectors(embedding_model, book_id);
     CREATE INDEX IF NOT EXISTS idx_renewal_requests_record ON renewal_requests(borrowing_record_id);
     CREATE INDEX IF NOT EXISTS idx_renewal_requests_status ON renewal_requests(status);
     CREATE INDEX IF NOT EXISTS idx_renewal_requests_request_user ON renewal_requests(request_user_id);

@@ -103,12 +103,15 @@
             :rows="2"
             placeholder="输入您的问题，按 Enter 发送…"
             :disabled="loading"
-            @keydown.enter.prevent="sendMessage"
+            @keydown.enter.prevent="sendMessageV2"
           />
-          <button v-if="loading" class="stop-btn" @click="stopGeneration">
+          <button v-if="canRegenerate && !loading" class="regen-btn" @click="regenerateResponse">
+            <el-icon><RefreshRight /></el-icon> 重新输出
+          </button>
+          <button v-if="loading" class="stop-btn" @click="stopGenerationV2">
             <el-icon><VideoPause /></el-icon> 停止
           </button>
-          <button v-else class="send-btn" @click="sendMessage">
+          <button v-else class="send-btn" @click="sendMessageV2">
             <el-icon><Promotion /></el-icon>
           </button>
         </div>
@@ -195,7 +198,7 @@ import { useRouter } from 'vue-router'
 import {
   MagicStick, User, Service, Reading, Search, ChatDotRound,
   Clock, Promotion, Document, Close, Delete, Plus,
-  VideoPause, Download
+  VideoPause, Download, RefreshRight
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { marked } from 'marked'
@@ -310,6 +313,8 @@ const recommendedBooks = ref<any[]>([])
 const recLoading = ref(false)
 const recAiPowered = ref(false)
 const borrowingSet = ref<Set<number>>(new Set())
+const activeAssistantMessageId = ref<string | null>(null)
+const lastUserPrompt = ref('')
 
 // ── Computed ──
 const filteredHistory = computed(() => {
@@ -322,6 +327,10 @@ const canBorrow = computed(() => {
   if (!u) return false
   return !!(u.reader_id)
 })
+
+const canRegenerate = computed(() =>
+  !loading.value && chatHistory.value.some(message => message.role === 'user' && !!message.content.trim())
+)
 
 // ── Helpers ──
 const availOf = (book: any) => book.available_quantity ?? 0
@@ -487,11 +496,193 @@ const stopGeneration = () => {
   loading.value = false; recLoading.value = false
 }
 
+const buildChatContext = (source: Message[]) =>
+  source
+    .filter(message => !message.loading && message.id !== 'init')
+    .slice(-10)
+    .map(message => ({ role: message.role, content: message.content }))
+
+const generateAssistantReply = async (
+  userMessage: string,
+  history: Array<{ role: 'user' | 'assistant'; content: string }>
+) => {
+  const aiMessageId = `ai-${Date.now()}`
+  activeAssistantMessageId.value = aiMessageId
+  lastUserPrompt.value = userMessage
+  chatHistory.value.push({ id: aiMessageId, role: 'assistant', content: '', loading: true, toolCalls: [] })
+  loading.value = true
+  recLoading.value = true
+  scrollToBottom()
+
+  let receivedToolRecommendation = false
+
+  try {
+    let fullContent = ''
+    const cleanup = aiApi.chatStream(
+      userMessage,
+      history as any,
+      undefined,
+      (chunk) => {
+        fullContent += chunk
+        const message = chatHistory.value.find(item => item.id === aiMessageId)
+        if (!message) return
+        message.content = fullContent
+        message.loading = false
+        scrollToBottom()
+      },
+      (error) => {
+        const message = chatHistory.value.find(item => item.id === aiMessageId)
+        if (message) {
+          message.content = `发生错误: ${error}`
+          message.loading = false
+          message.timestamp = Date.now()
+        }
+        activeAssistantMessageId.value = null
+        streamCleanup.value = null
+        loading.value = false
+        recLoading.value = false
+        ElMessage.error('AI 响应失败')
+      },
+      () => {
+        const message = chatHistory.value.find(item => item.id === aiMessageId)
+        if (message) {
+          message.loading = false
+          message.timestamp = Date.now()
+        }
+        activeAssistantMessageId.value = null
+        streamCleanup.value = null
+        loading.value = false
+        saveCurrentConversation()
+        if (!receivedToolRecommendation) {
+          fetchRecommendations(userMessage)
+        } else {
+          recLoading.value = false
+        }
+      },
+      (tc: ToolCallEvent) => {
+        const message = chatHistory.value.find(item => item.id === aiMessageId)
+        if (!message) return
+        if (!message.toolCalls) message.toolCalls = []
+
+        const existing = message.toolCalls.find(toolCall => toolCall.id === tc.id)
+        if (existing) {
+          existing.status = tc.status as any
+          if (tc.result !== undefined) existing.result = tc.result
+        } else {
+          message.toolCalls.push({
+            id: tc.id,
+            name: tc.name,
+            status: tc.status as any,
+            result: tc.result,
+            displayName: TOOL_DISPLAY_NAMES[tc.name] || tc.name
+          })
+        }
+
+        message.loading = false
+        scrollToBottom()
+      },
+      (data: { books: any[]; ai_powered: boolean }) => {
+        receivedToolRecommendation = true
+        recommendedBooks.value = data.books || []
+        recAiPowered.value = data.ai_powered
+        recLoading.value = false
+        if (!showRecommend.value) showRecommend.value = true
+      }
+    )
+
+    streamCleanup.value = cleanup
+  } catch {
+    const message = chatHistory.value.find(item => item.id === aiMessageId)
+    if (message) {
+      message.content = 'AI 服务暂时不可用，请稍后再试。'
+      message.loading = false
+      message.timestamp = Date.now()
+    }
+    activeAssistantMessageId.value = null
+    streamCleanup.value = null
+    loading.value = false
+    recLoading.value = false
+  }
+}
+
+const sendMessageV2 = async () => {
+  if (!inputMessage.value.trim() || loading.value) return
+
+  const userMessage = inputMessage.value.trim()
+  const history = buildChatContext(chatHistory.value)
+  inputMessage.value = ''
+
+  chatHistory.value.push({
+    id: `user-${Date.now()}`,
+    role: 'user',
+    content: userMessage,
+    timestamp: Date.now()
+  })
+  scrollToBottom()
+
+  await generateAssistantReply(userMessage, history)
+}
+
+const regenerateResponse = async () => {
+  if (loading.value) return
+
+  const lastUserEntry = [...chatHistory.value]
+    .map((message, index) => ({ message, index }))
+    .reverse()
+    .find(item => item.message.role === 'user' && !!item.message.content.trim())
+
+  if (!lastUserEntry) return
+
+  const userMessage = lastUserEntry.message.content.trim()
+  const history = buildChatContext(chatHistory.value.slice(0, lastUserEntry.index))
+
+  chatHistory.value = chatHistory.value.slice(0, lastUserEntry.index + 1)
+  recommendedBooks.value = []
+  recAiPowered.value = false
+  recLoading.value = false
+  scrollToBottom()
+
+  await generateAssistantReply(userMessage, history)
+}
+
+const stopGenerationV2 = () => {
+  if (streamCleanup.value) {
+    streamCleanup.value()
+    streamCleanup.value = null
+  }
+
+  if (activeAssistantMessageId.value) {
+    const message = chatHistory.value.find(item => item.id === activeAssistantMessageId.value)
+    if (message) {
+      message.loading = false
+      message.timestamp = Date.now()
+      if (!message.content) {
+        message.content = '已停止输出。'
+      }
+    }
+  }
+
+  activeAssistantMessageId.value = null
+  loading.value = false
+  recLoading.value = false
+  saveCurrentConversation()
+}
+
 const setInput = (text: string) => { inputMessage.value = text }
 
 const startNewChat = () => {
+  if (streamCleanup.value) {
+    streamCleanup.value()
+    streamCleanup.value = null
+  }
+  chatHistory.value = [createInitialMessage()]
   chatHistory.value = [{ id: 'init', role: 'assistant', content: '你好！我是图书馆智能助手。你可以问我关于馆藏图书的问题，或者让我为你推荐书籍。', timestamp: Date.now() }]
+  chatHistory.value = [createInitialMessage()]
   currentConversationId.value = null
+  activeAssistantMessageId.value = null
+  lastUserPrompt.value = ''
+  loading.value = false
+  recLoading.value = false
   recommendedBooks.value = []
   recAiPowered.value = false
 }
@@ -506,6 +697,12 @@ const exportConversation = () => {
 
 const loadChatHistory = async (item: Conversation) => {
   const cachedMessages = normalizeConversationMessages(item.messages)
+  const hasCachedMessages = cachedMessages.length > 0
+
+  recommendedBooks.value = []
+  recAiPowered.value = false
+  recLoading.value = false
+
   if (cachedMessages.length > 0) {
     currentConversationId.value = item.id
     chatHistory.value = cachedMessages
@@ -543,7 +740,12 @@ const saveCurrentConversation = async () => {
   if (!userStore.user?.id || chatHistory.value.length <= 1 || isSaving.value) return
   isSaving.value = true
   const title = chatHistory.value.find(m => m.role === 'user')?.content.slice(0, 30) || '新对话'
-  const messages = chatHistory.value.map(m => ({ role: m.role, content: m.content, timestamp: m.timestamp }))
+  const messages = chatHistory.value.map(m => ({
+    role: m.role,
+    content: m.content,
+    timestamp: m.timestamp,
+    ...(m.toolCalls?.length ? { toolCalls: m.toolCalls } : {})
+  }))
   try {
     if (currentConversationId.value) {
       await aiApi.updateConversation(currentConversationId.value, title, messages as any)

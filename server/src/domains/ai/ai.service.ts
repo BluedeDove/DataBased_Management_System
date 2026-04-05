@@ -10,8 +10,8 @@ export function getAIConfig() {
   return {
     apiKey: map['ai.openai.apiKey'] || '',
     baseURL: map['ai.openai.baseURL'] || 'https://api.siliconflow.cn/v1',
-    chatModel: map['ai.openai.chatModel'] || 'Pro/zai-org/GLM-4.7',
-    embeddingModel: map['ai.openai.embeddingModel'] || 'BAAI/bge-large-zh-v1.5',
+    chatModel: map['ai.openai.chatModel'] || 'Pro/MiniMaxAI/MiniMax-M2.5',
+    embeddingModel: map['ai.openai.embeddingModel'] || 'Qwen/Qwen3-Embedding-8B',
   }
 }
 

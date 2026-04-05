@@ -114,6 +114,10 @@
           <div class="info-label">覆盖率</div>
           <div class="info-value">{{ vectorStats.coverageRate.toFixed(1) }}%</div>
         </div>
+        <div class="info-item">
+          <div class="info-label">当前向量模型</div>
+          <div class="info-value vector-model-value">{{ vectorStats.currentModel || aiConfigForm.embeddingModel }}</div>
+        </div>
       </div>
       <div class="vector-action-box">
         <button class="gradient-btn" :disabled="vectorLoading" @click="handleBatchCreateVectors">
@@ -254,6 +258,7 @@ const handleSaveAIConfig = async () => {
   savingConfig.value = true
   try {
     const result = await configApi.updateAISettings({ baseURL: aiConfigForm.apiUrl, apiKey: aiConfigForm.apiKey, embeddingModel: aiConfigForm.embeddingModel, chatModel: aiConfigForm.chatModel })
+    if (result.success) loadVectorStats()
     if (result.success) ElMessage.success('保存成功')
     else ElMessage.error(result.error?.message || '保存失败')
   } catch { ElMessage.error('保存失败') }
@@ -261,7 +266,7 @@ const handleSaveAIConfig = async () => {
 }
 
 // Vector
-const vectorStats = reactive({ totalVectors: 0, coverageRate: 0 })
+const vectorStats = reactive({ totalVectors: 0, coverageRate: 0, currentModel: '' })
 const vectorLoading = ref(false)
 const vectorProgress = reactive({ percent: 0, current: 0, total: 0, book: '' })
 
@@ -293,10 +298,17 @@ const handleBatchCreateVectors = async () => {
       body: JSON.stringify({ bookIds })
     })
 
+    if (!resp.ok) {
+      const errorText = await resp.text()
+      ElMessage.error(errorText || '生成向量失败')
+      return
+    }
+
     const reader = resp.body?.getReader()
     if (!reader) { ElMessage.error('无法获取响应流'); return }
     const decoder = new TextDecoder()
     let generated = 0, skipped = 0
+    let model = vectorStats.currentModel || aiConfigForm.embeddingModel
 
     while (true) {
       const { done, value } = await reader.read()
@@ -306,6 +318,7 @@ const handleBatchCreateVectors = async () => {
         if (!line.startsWith('data: ')) continue
         try {
           const data = JSON.parse(line.slice(6))
+          if (data.model) model = data.model
           if (data.done) {
             generated = data.generated; skipped = data.skipped
           } else if (data.progress !== undefined) {
@@ -334,6 +347,7 @@ onMounted(() => { loadCategories(); loadAISettings(); loadVectorStats() })
 .section-header { display: flex; align-items: center; justify-content: space-between; }
 .section-title { font-size: 16px; font-weight: 600; color: var(--text-primary); margin-bottom: 16px; }
 .section-desc { font-size: 13px; color: var(--text-muted); }
+.vector-model-value { font-size: 14px; word-break: break-all; }
 
 /* Glassmorphism cards in settings */
 :deep(.light-card) {

@@ -190,8 +190,8 @@ async function executeSearchBooks(args: { query: string; mode?: string; limit?: 
           FROM book_vectors bv
           JOIN books b ON bv.book_id = b.id
           JOIN book_categories bc ON b.category_id = bc.id
-          WHERE bv.vector != '[]' AND b.is_deleted = 0
-        `).all() as any[]
+          WHERE bv.embedding_model = ? AND bv.vector != '[]' AND b.is_deleted = 0
+        `).all(embeddingModel) as any[]
 
         if (rows.length > 0) {
           const client = new OpenAI({ apiKey, baseURL })
@@ -453,7 +453,7 @@ function executeGetReaderInfo(context: ToolContext): any {
 
   const reader = db.prepare(`
     SELECT r.id, r.name, r.reader_no, r.status, r.expiry_date,
-           rc.name as category_name, rc.max_borrowings, rc.max_days
+           rc.name as category_name, rc.max_borrow_count, rc.max_borrow_days
     FROM readers r
     JOIN reader_categories rc ON r.category_id = rc.id
     WHERE r.id = ? AND r.is_deleted = 0
