@@ -150,8 +150,8 @@ export const aiApi = {
   saveConversation: (userId: number, title: string, messages: any[]): Promise<ApiResponse<Conversation>> =>
     request.post('/ai/conversations', { userId, title, messages }),
 
-  getConversations: (userId: number, limit?: number): Promise<ApiResponse<Conversation[]>> =>
-    request.get('/ai/conversations', { params: { userId, limit } }),
+  getConversations: (_userId: number, limit?: number): Promise<ApiResponse<Conversation[]>> =>
+    request.get('/ai/conversations', { limit }),
 
   getConversation: (conversationId: number): Promise<ApiResponse<Conversation>> =>
     request.get(`/ai/conversations/${conversationId}`),

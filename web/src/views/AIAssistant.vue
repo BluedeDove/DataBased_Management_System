@@ -223,6 +223,62 @@ interface Message {
 
 interface Conversation { id: number; title: string; messages: Message[]; created_at: string }
 
+const createInitialMessage = (): Message => ({
+  id: 'init',
+  role: 'assistant',
+  content: '你好！我是图书馆智能助手。你可以问我关于馆藏图书的问题，或者让我为你推荐书籍。',
+  timestamp: Date.now()
+})
+
+const normalizeConversationMessages = (raw: any): Message[] => {
+  let parsed = raw
+
+  if (typeof parsed === 'string') {
+    try {
+      parsed = JSON.parse(parsed)
+    } catch {
+      return []
+    }
+  }
+
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && 'messages' in parsed) {
+    parsed = parsed.messages
+  }
+
+  if (!Array.isArray(parsed)) return []
+
+  return parsed
+    .map((message: any, index: number) => {
+      if (!message || typeof message !== 'object') return null
+
+      const rawTimestamp = message.timestamp
+      const numericTimestamp = typeof rawTimestamp === 'number'
+        ? rawTimestamp
+        : typeof rawTimestamp === 'string'
+          ? Number(rawTimestamp)
+          : NaN
+      const dateTimestamp = typeof rawTimestamp === 'string' ? Date.parse(rawTimestamp) : NaN
+      const timestamp = Number.isFinite(numericTimestamp)
+        ? numericTimestamp
+        : Number.isFinite(dateTimestamp)
+          ? dateTimestamp
+          : undefined
+
+      return {
+        id: typeof message.id === 'string' ? message.id : `history-${index}`,
+        role: message.role === 'user' ? 'user' : 'assistant',
+        content: typeof message.content === 'string'
+          ? message.content
+          : message.content == null
+            ? ''
+            : String(message.content),
+        ...(timestamp !== undefined ? { timestamp } : {}),
+        ...(Array.isArray(message.toolCalls) ? { toolCalls: message.toolCalls } : {})
+      } satisfies Message
+    })
+    .filter((message): message is Message => !!message)
+}
+
 const TOOL_DISPLAY_NAMES: Record<string, string> = {
   search_books: '搜索图书',
   recommend_books: '推荐图书',
@@ -258,7 +314,7 @@ const borrowingSet = ref<Set<number>>(new Set())
 // ── Computed ──
 const filteredHistory = computed(() => {
   if (!historySearch.value) return chatHistoryList.value
-  return chatHistoryList.value.filter(c => c.title.toLowerCase().includes(historySearch.value.toLowerCase()))
+  return chatHistoryList.value.filter(c => (c.title || '').toLowerCase().includes(historySearch.value.toLowerCase()))
 })
 
 const canBorrow = computed(() => {
@@ -449,15 +505,22 @@ const exportConversation = () => {
 }
 
 const loadChatHistory = async (item: Conversation) => {
+  const cachedMessages = normalizeConversationMessages(item.messages)
+  if (cachedMessages.length > 0) {
+    currentConversationId.value = item.id
+    chatHistory.value = cachedMessages
+    scrollToBottom()
+  }
+
   try {
     const result = await aiApi.getConversation(item.id)
     if (result.success && result.data) {
       currentConversationId.value = item.id
-      const msgs = typeof result.data.messages === 'string' ? JSON.parse(result.data.messages) : (result.data.messages || [])
-      chatHistory.value = msgs
+      const msgs = normalizeConversationMessages(result.data.messages)
+      chatHistory.value = msgs.length > 0 ? msgs : [createInitialMessage()]
       scrollToBottom()
-      const lastUser = [...msgs].reverse().find(m => m.role === 'user')
-      if (lastUser) fetchRecommendations(lastUser.content)
+      const lastUser = [...chatHistory.value].reverse().find(m => m.role === 'user' && !!m.content)
+      if (lastUser?.content) fetchRecommendations(lastUser.content)
     }
   } catch {
     ElMessage.error('加载对话失败')
@@ -497,9 +560,10 @@ const loadConversations = async () => {
   try {
     const result = await aiApi.getConversations(userStore.user.id, 20)
     if (result.success) {
-      chatHistoryList.value = result.data.map((c: any) => ({
+      const conversations = Array.isArray(result.data) ? result.data : []
+      chatHistoryList.value = conversations.map((c: any) => ({
         ...c,
-        messages: typeof c.messages === 'string' ? JSON.parse(c.messages) : c.messages
+        messages: normalizeConversationMessages(c.messages)
       }))
     }
   } catch {}

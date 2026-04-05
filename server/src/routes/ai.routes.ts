@@ -10,6 +10,63 @@ import { toolDefinitions, executeTool } from '../domains/ai/tools'
 
 const router = Router()
 
+function parseConversationMessages(raw: unknown): any[] {
+  let parsed = raw
+
+  if (typeof parsed === 'string') {
+    try {
+      parsed = JSON.parse(parsed)
+    } catch {
+      return []
+    }
+  }
+
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && 'messages' in parsed) {
+    return parseConversationMessages((parsed as any).messages)
+  }
+
+  if (!Array.isArray(parsed)) return []
+
+  return parsed
+    .map((message: any, index: number) => {
+      if (!message || typeof message !== 'object') return null
+
+      const rawTimestamp = message.timestamp
+      const numericTimestamp = typeof rawTimestamp === 'number'
+        ? rawTimestamp
+        : typeof rawTimestamp === 'string'
+          ? Number(rawTimestamp)
+          : NaN
+      const dateTimestamp = typeof rawTimestamp === 'string' ? Date.parse(rawTimestamp) : NaN
+      const timestamp = Number.isFinite(numericTimestamp)
+        ? numericTimestamp
+        : Number.isFinite(dateTimestamp)
+          ? dateTimestamp
+          : undefined
+
+      return {
+        id: typeof message.id === 'string' ? message.id : `history-${index}`,
+        role: message.role === 'user' ? 'user' : 'assistant',
+        content: typeof message.content === 'string'
+          ? message.content
+          : message.content == null
+            ? ''
+            : String(message.content),
+        ...(timestamp !== undefined ? { timestamp } : {}),
+        ...(Array.isArray(message.toolCalls) ? { toolCalls: message.toolCalls } : {})
+      }
+    })
+    .filter(Boolean)
+}
+
+function normalizeConversationRecord(conversation: any) {
+  if (!conversation) return null
+  return {
+    ...conversation,
+    messages: parseConversationMessages(conversation.messages)
+  }
+}
+
 // ── SSE helper ──
 const sse = (res: Response, data: object) => res.write(`data: ${JSON.stringify(data)}\n\n`)
 
@@ -74,7 +131,7 @@ router.post('/embeddings/batch', authMiddleware, requirePermission('books:write'
 
 // 创建图书向量嵌入（单本）
 router.post('/embeddings/:bookId', authMiddleware, requirePermission('books:write'), asyncHandler(async (req: Request, res: Response) => {
-  const bookId = parseInt(req.params.bookId)
+  const bookId = parseInt(String(req.params.bookId), 10)
   const book = db.prepare('SELECT * FROM books WHERE id = ? AND is_deleted = 0').get(bookId) as any
   if (!book) { res.status(404).json({ success: false, error: { message: '图书不存在' } }); return }
 
@@ -478,37 +535,65 @@ router.get('/statistics', authMiddleware, asyncHandler(async (_req: Request, res
 router.post('/conversations', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const { title, messages } = req.body
   const userId = req.user!.id
-  const result = db.prepare(`INSERT INTO ai_conversations (user_id, title, messages) VALUES (?, ?, ?)`).run(userId, title, JSON.stringify(messages))
-  res.json({ success: true, data: { id: result.lastInsertRowid, title, messages } })
+  const normalizedMessages = parseConversationMessages(messages)
+  const result = db.prepare(`INSERT INTO ai_conversations (user_id, title, messages) VALUES (?, ?, ?)`).run(userId, title, JSON.stringify(normalizedMessages))
+  res.json({ success: true, data: { id: result.lastInsertRowid, title, messages: normalizedMessages } })
 }))
 
 // 获取对话列表
 router.get('/conversations', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user!.id
   const { limit = 20 } = req.query
-  const conversations = db.prepare(`SELECT id, title, created_at, updated_at FROM ai_conversations WHERE user_id = ? ORDER BY updated_at DESC LIMIT ?`).all(userId, limit)
-  res.json({ success: true, data: conversations })
+  const normalizedLimit = Math.min(Math.max(parseInt(String(limit), 10) || 20, 1), 100)
+  const conversations = db.prepare(`
+    SELECT id, title, messages, created_at, updated_at
+    FROM ai_conversations
+    WHERE user_id = ?
+    ORDER BY updated_at DESC
+    LIMIT ?
+  `).all(userId, normalizedLimit) as any[]
+  res.json({ success: true, data: conversations.map(normalizeConversationRecord) })
 }))
 
 // 获取单个对话
 router.get('/conversations/:id', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params
-  const conversation = db.prepare(`SELECT * FROM ai_conversations WHERE id = ?`).get(id)
-  res.json({ success: true, data: conversation })
+  const userId = req.user!.id
+  const conversation = db.prepare(`SELECT * FROM ai_conversations WHERE id = ? AND user_id = ?`).get(id, userId) as any
+  if (!conversation) {
+    res.status(404).json({ success: false, error: { message: '对话不存在' } })
+    return
+  }
+  res.json({ success: true, data: normalizeConversationRecord(conversation) })
 }))
 
 // 更新对话
 router.put('/conversations/:id', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params
   const { title, messages } = req.body
-  db.prepare(`UPDATE ai_conversations SET title = ?, messages = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(title, JSON.stringify(messages), id)
-  res.json({ success: true, data: { id, title, messages } })
+  const userId = req.user!.id
+  const normalizedMessages = parseConversationMessages(messages)
+  const result = db.prepare(`
+    UPDATE ai_conversations
+    SET title = ?, messages = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ? AND user_id = ?
+  `).run(title, JSON.stringify(normalizedMessages), id, userId)
+  if (result.changes === 0) {
+    res.status(404).json({ success: false, error: { message: '对话不存在' } })
+    return
+  }
+  res.json({ success: true, data: { id, title, messages: normalizedMessages } })
 }))
 
 // 删除对话
 router.delete('/conversations/:id', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params
-  db.prepare(`DELETE FROM ai_conversations WHERE id = ?`).run(id)
+  const userId = req.user!.id
+  const result = db.prepare(`DELETE FROM ai_conversations WHERE id = ? AND user_id = ?`).run(id, userId)
+  if (result.changes === 0) {
+    res.status(404).json({ success: false, error: { message: '对话不存在' } })
+    return
+  }
   res.json({ success: true })
 }))
 
