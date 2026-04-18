@@ -1,4 +1,4 @@
-import { request, ApiResponse, default as apiClient } from './index'
+import apiClient, { request, ApiResponse } from './index'
 
 export interface Conversation {
   id: number
@@ -19,26 +19,21 @@ export interface ToolCallEvent {
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
 export const aiApi = {
-  // AI availability
   isAvailable: (): Promise<ApiResponse<boolean>> =>
     request.get('/ai/available'),
 
-  // Embeddings
   createBookEmbedding: (bookId: number): Promise<ApiResponse<{ generated: boolean; model?: string; reason?: string }>> =>
     request.post(`/ai/embeddings/${bookId}`),
 
   batchCreateEmbeddings: (bookIds: number[]): Promise<ApiResponse<{ generated: number; skipped: number; model?: string }>> =>
-    apiClient.post('/ai/embeddings/batch', { bookIds }, { timeout: 600000 }).then(res => res.data),
+    apiClient.post('/ai/embeddings/batch', { bookIds }, { timeout: 600000 }).then(response => response.data),
 
-  // Semantic search
   semanticSearch: (query: string, topK?: number): Promise<ApiResponse<any[]>> =>
     request.post('/ai/semantic-search', { query, topK }),
 
-  // Chat
   chat: (message: string, history?: any[], context?: string): Promise<ApiResponse<string>> =>
     request.post('/ai/chat', { message, history, context }),
 
-  // Stream chat (Agent-enhanced)
   chatStream: (
     message: string,
     history: any[],
@@ -46,7 +41,7 @@ export const aiApi = {
     onChunk: (chunk: string) => void,
     onError: (error: string) => void,
     onComplete: () => void,
-    onToolCall?: (tc: ToolCallEvent) => void,
+    onToolCall?: (toolCall: ToolCallEvent) => void,
     onRecommend?: (data: { books: any[]; ai_powered: boolean }) => void
   ): (() => void) => {
     const controller = new AbortController()
@@ -66,9 +61,7 @@ export const aiApi = {
       onError(error)
     }
 
-    const handleData = (payload: any) => {
-      if (finished) return
-
+    const handlePayload = (payload: any) => {
       if (payload.chunk) onChunk(payload.chunk)
       if (payload.tool_call && onToolCall) onToolCall(payload.tool_call)
       if (payload.recommend && onRecommend) onRecommend(payload.recommend)
@@ -78,7 +71,9 @@ export const aiApi = {
         return
       }
 
-      if (payload.done) finishOnce()
+      if (payload.done) {
+        finishOnce()
+      }
     }
 
     const flushBuffer = () => {
@@ -94,9 +89,8 @@ export const aiApi = {
         if (!dataLines.length) continue
 
         try {
-          handleData(JSON.parse(dataLines.join('\n')))
+          handlePayload(JSON.parse(dataLines.join('\n')))
         } catch {
-          // ignore partial or malformed SSE payloads
         }
       }
     }
@@ -107,25 +101,25 @@ export const aiApi = {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': token ? `Bearer ${token}` : ''
+            Authorization: token ? `Bearer ${token}` : ''
           },
           body: JSON.stringify({ message, history, context }),
           signal: controller.signal
         })
 
         if (!response.ok) {
-          const errorText = await response.text()
-          failOnce(errorText || `请求失败 (${response.status})`)
+          failOnce((await response.text()) || `请求失败（${response.status}）`)
           return
         }
 
         const reader = response.body?.getReader()
         if (!reader) {
-          failOnce('无法获取响应流')
+          failOnce('无法建立流式会话。')
           return
         }
 
         const decoder = new TextDecoder()
+
         while (true) {
           const { done, value } = await reader.read()
           if (done) break
@@ -135,20 +129,10 @@ export const aiApi = {
 
         buffer += decoder.decode()
         flushBuffer()
-
-        const remaining = buffer.trim()
-        if (remaining.startsWith('data: ')) {
-          try {
-            handleData(JSON.parse(remaining.replace(/^data:\s*/, '')))
-          } catch {
-            // ignore trailing partial payload
-          }
-        }
-
         finishOnce()
-      } catch (err: any) {
-        if (err?.name === 'AbortError') return
-        failOnce(err?.message || '请求失败')
+      } catch (error: any) {
+        if (error?.name === 'AbortError') return
+        failOnce(error?.message || '请求失败。')
       }
     })()
 
@@ -158,7 +142,6 @@ export const aiApi = {
     }
   },
 
-  // Book recommendations
   recommendBooks: (query: string, limit?: number): Promise<ApiResponse<any>> =>
     request.post('/ai/recommend', { query, limit }),
 
@@ -176,14 +159,14 @@ export const aiApi = {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': token ? `Bearer ${token}` : ''
+        Authorization: token ? `Bearer ${token}` : ''
       },
       body: JSON.stringify({ query, limit }),
       signal: controller.signal
     }).then(async response => {
       const reader = response.body?.getReader()
       if (!reader) {
-        onError('无法获取响应流')
+        onError('无法建立推荐流。')
         return
       }
 
@@ -194,37 +177,35 @@ export const aiApi = {
           onComplete()
           break
         }
+
         const text = decoder.decode(value)
         const lines = text.split('\n')
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6))
-              if (data.chunk) onChunk(data.chunk)
-              if (data.done) onComplete()
-              if (data.error) onError(data.error)
-            } catch {
-              // ignore parse errors
-            }
+          if (!line.startsWith('data: ')) continue
+          try {
+            const payload = JSON.parse(line.slice(6))
+            if (payload.chunk) onChunk(payload.chunk)
+            if (payload.done) onComplete()
+            if (payload.error) onError(payload.error)
+          } catch {
           }
         }
       }
-    }).catch(err => {
-      if (err.name !== 'AbortError') onError(err.message)
+    }).catch(error => {
+      if (error?.name !== 'AbortError') {
+        onError(error?.message || '请求失败。')
+      }
     })
 
     return () => controller.abort()
   },
 
-  // AI 智能书籍推荐（根据对话上下文，AI 返回 book_ids JSON）
   chatRecommend: (messages: any[], userQuery: string): Promise<ApiResponse<{ books: any[]; ai_powered: boolean }>> =>
     request.post('/ai/chat-recommend', { messages, userQuery }),
 
-  // Statistics
   getStatistics: (): Promise<ApiResponse<{ totalVectors: number; coverageRate: number; totalBooks?: number; currentModel?: string }>> =>
     request.get('/ai/statistics'),
 
-  // Conversations
   saveConversation: (userId: number, title: string, messages: any[]): Promise<ApiResponse<Conversation>> =>
     request.post('/ai/conversations', { userId, title, messages }),
 

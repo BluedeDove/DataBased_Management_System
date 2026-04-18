@@ -1,573 +1,619 @@
 <template>
   <div class="books-page">
-    <!-- Header -->
-    <div class="page-header animate-fade-in">
-      <div class="page-header-left">
-        <div class="page-title">图书管理</div>
-        <div class="page-subtitle">共 {{ total }} 册图书 · {{ categories.length }} 个分类</div>
+    <section class="hero-card">
+      <div>
+        <h1>{{ canManage ? '图书管理' : '找书预约' }}</h1>
+        <p>
+          {{
+            canManage
+              ? '馆员维护馆藏信息与库存副本。'
+              : '线上只做检索与预约；实体书请到馆在自助终端扫码取书。'
+          }}
+        </p>
       </div>
-      <div class="header-actions">
-        <button v-if="canManage" class="action-btn secondary" @click="exportVisible = true">
-          <el-icon><Download /></el-icon> 导出
+      <div class="hero-actions">
+        <button class="ghost-btn" @click="resetFilters">
+          <el-icon><Refresh /></el-icon>
+          <span>重置筛选</span>
         </button>
-        <button v-if="canManage" class="gradient-btn" @click="openAddDialog">
-          <el-icon><Plus /></el-icon> 新增图书
+        <button v-if="canManage" class="primary-btn" @click="openCreateDialog">
+          <el-icon><Plus /></el-icon>
+          <span>新增图书</span>
         </button>
       </div>
-    </div>
+    </section>
 
-    <!-- Filter -->
-    <div class="filter-card animate-fade-in-delay-1">
-      <div class="filter-row">
-        <div class="search-bar" style="flex: 1; max-width: 400px">
-          <el-icon class="search-icon"><Search /></el-icon>
-          <input v-model="searchQuery" placeholder="搜索书名、作者、ISBN…" @keydown.enter="fetchData" @input="debounceFetch" />
+    <section v-if="!canManage" class="reservation-card">
+      <div class="section-title">我的预约提醒</div>
+      <div v-if="myReservations.length === 0" class="empty-inline">你还没有预约记录。</div>
+      <div v-else class="reservation-list">
+        <div v-for="reservation in myReservations.slice(0, 3)" :key="reservation.id" class="reservation-item">
+          <div>
+            <div class="reservation-title">{{ reservation.book_title }}</div>
+            <div class="reservation-meta">
+              {{ reservation.status === 'pending' ? '待到馆取书' : reservation.status }} · 取书码：{{ reservation.pickup_code || '—' }}
+            </div>
+          </div>
+          <div class="reservation-expire">{{ reservation.expires_at || '长期有效' }}</div>
         </div>
-        <button class="action-btn secondary" @click="advancedSearchVisible = true">
-          <el-icon><Operation /></el-icon> 高级搜索
-        </button>
-        <button class="action-btn secondary" @click="resetFilters">
-          <el-icon><Refresh /></el-icon> 重置
-        </button>
       </div>
-      <div class="cat-chips">
-        <button v-for="cat in [{ id: '', name: '全部' }, ...categories]" :key="cat.id ?? 'all'"
-          class="cat-chip" :class="{ active: selectedCategory === cat.id }"
-          @click="selectedCategory = cat.id; fetchData()">
-          {{ cat.name }}
-        </button>
-      </div>
-      <div v-if="searchType === 'vector' && currentVectorModel" class="vector-model-note">
-        当前语义检索模型：{{ currentVectorModel }}
-      </div>
-    </div>
+    </section>
 
-    <!-- Table -->
-    <div class="table-card animate-fade-in-delay-2">
-      <el-table v-loading="loading" :data="bookList" style="width: 100%">
-        <el-table-column label="图书" min-width="260">
-          <template #default="{ row, $index }">
-            <div class="book-cell">
-              <div class="book-spine" :style="getSpineStyle(row)">{{ (row.book_title || row.title || '?')[0] }}</div>
-              <div class="book-meta">
-                <div class="book-title" v-html="highlightText(row.book_title || row.title)" />
-                <div class="book-isbn">ISBN: {{ row.isbn || '—' }}</div>
-                <div v-if="row.similarity != null && searchType === 'vector'" class="similarity-badge" :style="getSimilarityStyle($index)">
-                  {{ getSimilarityLabel(row.similarity) }} {{ Math.round(row.similarity * 100) }}%
-                </div>
+    <section class="filter-card">
+      <div class="filter-row">
+        <div class="search-box">
+          <el-icon><Search /></el-icon>
+          <el-autocomplete
+            v-model="searchKeyword"
+            :fetch-suggestions="queryBookSuggestions"
+            :debounce="140"
+            clearable
+            placeholder="搜索书名、作者、ISBN"
+            @select="handleSuggestionSelect"
+            @keydown.enter="fetchBooks"
+          >
+            <template #default="{ item }">
+              <div class="suggestion-item">
+                <div class="suggestion-title">{{ item.title }}</div>
+                <div class="suggestion-meta">{{ item.author }} · {{ item.isbn }} · 可用 {{ item.availableQuantity }}</div>
               </div>
-            </div>
+            </template>
+          </el-autocomplete>
+        </div>
+
+        <el-select v-model="selectedCategory" clearable placeholder="选择分类" style="width: 220px" @change="fetchBooks">
+          <el-option v-for="category in categories" :key="category.id" :label="category.name" :value="category.id" />
+        </el-select>
+
+        <button class="ghost-btn" @click="fetchBooks">
+          <el-icon><Search /></el-icon>
+          <span>搜索</span>
+        </button>
+      </div>
+    </section>
+
+    <section class="table-card">
+      <el-table v-loading="loading" :data="books" style="width: 100%">
+        <el-table-column prop="title" label="书名" min-width="240" />
+        <el-table-column prop="author" label="作者" min-width="140" />
+        <el-table-column prop="category_name" label="分类" width="150" />
+        <el-table-column prop="publisher" label="出版社" min-width="160" />
+        <el-table-column label="馆藏状态" width="130">
+          <template #default="{ row }">
+            <span class="pill-badge" :class="bookMeta(row).badgeClass">{{ bookMeta(row).label }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="author" label="作者" width="140">
+        <el-table-column label="库存" width="130">
           <template #default="{ row }">
-            <span v-html="highlightText(row.author)" />
+            <span :class="{ empty: row.available_quantity === 0 }">{{ row.available_quantity }} / {{ row.total_quantity }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="分类" width="120">
+        <el-table-column prop="isbn" label="ISBN" min-width="180" />
+        <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
-            <span class="pill-badge purple">{{ row.category || row.category_name || '未分类' }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="publisher" label="出版社" width="150">
-          <template #default="{ row }">
-            <span class="text-secondary-small">{{ row.publisher || '—' }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="库存" width="140" align="center">
-          <template #default="{ row }">
-            <div class="stock-cell">
-              <el-progress
-                :percentage="stockPercent(row)"
-                :stroke-width="5" :show-text="false"
-                :status="stockStatus(row)"
-              />
-              <div class="stock-text">
-                <span class="stock-avail" :class="{ empty: availOf(row) === 0 }">{{ availOf(row) }}</span>
-                <span class="stock-total">/ {{ totalOf(row) }}</span>
-              </div>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="160" align="right" fixed="right">
-          <template #default="{ row }">
-            <div class="action-cell">
+            <div class="action-group">
               <template v-if="canManage">
-                <button class="icon-btn" @click="openEditDialog(row)"><el-icon><Edit /></el-icon></button>
-                <button class="icon-btn danger" @click="handleDelete(row)"><el-icon><Delete /></el-icon></button>
+                <button class="small-btn" @click="openEditDialog(row)">
+                  <el-icon><Edit /></el-icon>
+                  <span>编辑</span>
+                </button>
+                <button class="small-btn danger" @click="handleDelete(row)">
+                  <el-icon><Delete /></el-icon>
+                  <span>删除</span>
+                </button>
               </template>
               <template v-else>
-                <button class="action-btn-sm primary" :disabled="availOf(row) <= 0 || borrowing.has(row.id)" @click="handleUserBorrow(row)">
-                  <el-icon><Tickets /></el-icon> 借阅
+                <button
+                  class="small-btn primary"
+                  :title="reservationButtonHint(row)"
+                  :disabled="!canReserveBook(row)"
+                  @click="handleReserve(row)"
+                >
+                  <el-icon><Tickets /></el-icon>
+                  <span>{{ reservationButtonLabel(row) }}</span>
                 </button>
               </template>
             </div>
           </template>
         </el-table-column>
       </el-table>
-      <div class="pagination-wrap">
-        <span class="pagination-info">共 {{ total }} 条</span>
-        <el-pagination background layout="prev, pager, next" :total="total" :page-size="20" v-model:current-page="page" @current-change="fetchData" />
-      </div>
-    </div>
+    </section>
 
-    <!-- Advanced Search Dialog -->
-    <el-dialog v-model="advancedSearchVisible" title="高级搜索" width="680px" align-center>
-      <div class="pill-tabs" style="margin-bottom: 20px">
-        <button v-for="t in advTabs" :key="t.key" class="pill-tab" :class="{ active: searchType === t.key }" @click="searchType = t.key">{{ t.label }}</button>
-      </div>
-
-      <div v-if="searchType === 'regex'">
-        <el-form label-width="80px">
-          <el-form-item label="搜索模式">
-            <el-select v-model="advancedForm.searchMode" style="width: 200px">
-              <el-option label="包含匹配" value="contains" /><el-option label="精确匹配" value="exact" />
-              <el-option label="前缀匹配" value="startsWith" /><el-option label="后缀匹配" value="endsWith" />
-              <el-option label="正则表达式" value="regex" />
+    <el-dialog v-model="editorVisible" :title="editingId ? '编辑图书' : '新增图书'" width="640px">
+      <el-form :model="editorForm" label-width="90px">
+        <el-form-item label="书名">
+          <el-input v-model="editorForm.title" />
+        </el-form-item>
+        <el-form-item label="作者">
+          <el-input v-model="editorForm.author" />
+        </el-form-item>
+        <div class="grid-two">
+          <el-form-item label="出版社">
+            <el-input v-model="editorForm.publisher" />
+          </el-form-item>
+          <el-form-item label="ISBN">
+            <el-input v-model="editorForm.isbn" placeholder="留空可由后端生成" />
+          </el-form-item>
+        </div>
+        <div class="grid-two">
+          <el-form-item label="分类">
+            <el-select v-model="editorForm.category_id" style="width: 100%">
+              <el-option v-for="category in categories" :key="category.id" :label="category.name" :value="category.id" />
             </el-select>
           </el-form-item>
-          <el-form-item label="搜索内容">
-            <el-input v-model="advancedForm.pattern" :placeholder="getSearchPlaceholder()" @input="validateRegex" />
-            <div v-if="regexError" style="color: var(--danger); font-size: 12px; margin-top: 4px">{{ regexError }}</div>
+          <el-form-item label="库存">
+            <el-input-number v-model="editorForm.total_quantity" :min="1" style="width: 100%" />
           </el-form-item>
-          <el-form-item label="匹配字段">
-            <el-checkbox-group v-model="advancedForm.fields">
-              <el-checkbox label="title">书名</el-checkbox>
-              <el-checkbox label="author">作者</el-checkbox>
-              <el-checkbox label="isbn">ISBN</el-checkbox>
-            </el-checkbox-group>
-          </el-form-item>
-        </el-form>
-      </div>
-
-      <div v-if="searchType === 'vector'">
-        <el-form label-width="80px">
-          <div v-if="currentVectorModel" class="vector-model-note">
-            Vector model: {{ currentVectorModel }}
-          </div>
-          <el-form-item label="描述">
-            <el-input v-model="advancedForm.vectorQuery" type="textarea" :rows="3" placeholder="用自然语言描述你想找的书" />
-          </el-form-item>
-        </el-form>
-      </div>
-
-      <div v-if="searchType === 'sql'">
-        <el-form label-width="80px">
-          <el-form-item label="SQL 条件">
-            <el-input v-model="advancedForm.sql" type="textarea" :rows="4" placeholder="如：category = '计算机' AND available_quantity > 0" style="font-family: 'Courier New', monospace" />
-          </el-form-item>
-        </el-form>
-        <div style="display:flex;align-items:center;gap:6px;padding:10px 14px;background:var(--warning-tint);border-radius:10px;font-size:13px;color:var(--warning)">
-          <el-icon><Warning /></el-icon> 仅支持 SELECT 查询，禁止写入/删除操作
         </div>
-      </div>
-
-      <template #footer>
-        <el-button @click="advancedSearchVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleAdvancedSearch"><el-icon><Search /></el-icon> 执行搜索</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- Add Dialog -->
-    <el-dialog v-model="addVisible" title="新增图书" width="560px" align-center>
-      <el-form :model="addForm" label-width="80px">
-        <el-form-item label="书名" required><el-input v-model="addForm.title" placeholder="图书标题" /></el-form-item>
-        <el-form-item label="作者" required><el-input v-model="addForm.author" placeholder="作者姓名" /></el-form-item>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
-          <el-form-item label="出版社" required><el-input v-model="addForm.publisher" /></el-form-item>
-          <el-form-item label="ISBN"><el-input v-model="addForm.isbn" placeholder="留空自动生成" /></el-form-item>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
-          <el-form-item label="分类" required>
-            <el-select v-model="addForm.category_id" style="width:100%">
-              <el-option v-for="cat in categories" :key="cat.id" :label="cat.name" :value="cat.id" />
+        <div class="grid-two">
+          <el-form-item label="价格">
+            <el-input-number v-model="editorForm.price" :min="0" :precision="2" style="width: 100%" />
+          </el-form-item>
+          <el-form-item label="状态">
+            <el-select v-model="editorForm.status" style="width: 100%">
+              <el-option label="正常" value="normal" />
+              <el-option label="损坏" value="damaged" />
+              <el-option label="遗失" value="lost" />
+              <el-option label="注销" value="destroyed" />
             </el-select>
           </el-form-item>
-          <el-form-item label="定价"><el-input-number v-model="addForm.price" :precision="2" :min="0" style="width:100%" /></el-form-item>
         </div>
-        <el-form-item label="库存" required><el-input-number v-model="addForm.total_quantity" :min="1" style="width:100%" /></el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="addVisible = false">取消</el-button>
-        <el-button type="primary" :loading="addLoading" @click="handleAddSubmit">添加</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- Edit Dialog -->
-    <el-dialog v-model="editVisible" title="编辑图书" width="500px" align-center>
-      <el-form :model="currentBook" label-width="80px">
-        <el-form-item label="书名"><el-input v-model="currentBook.title" /></el-form-item>
-        <el-form-item label="作者"><el-input v-model="currentBook.author" /></el-form-item>
-        <el-form-item label="出版社"><el-input v-model="currentBook.publisher" /></el-form-item>
-        <el-form-item label="定价"><el-input-number v-model="currentBook.price" :precision="2" :step="0.1" /></el-form-item>
-        <el-form-item label="总库存"><el-input-number v-model="currentBook.total_quantity" :min="1" /></el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="editVisible = false">取消</el-button>
-        <el-button type="primary" @click="saveEdit">保存</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- Export Dialog -->
-    <el-dialog v-model="exportVisible" title="导出图书数据" width="400px" align-center>
-      <el-form label-position="top">
-        <el-form-item label="选择导出格式">
-          <el-radio-group v-model="exportFormat">
-            <el-radio value="csv">CSV 格式</el-radio>
-            <el-radio value="json">JSON 格式</el-radio>
-          </el-radio-group>
+        <el-form-item label="简介">
+          <el-input v-model="editorForm.description" type="textarea" :rows="4" />
         </el-form-item>
       </el-form>
+
       <template #footer>
-        <el-button @click="exportVisible = false">取消</el-button>
-        <el-button type="primary" :loading="exportLoading" @click="handleExport">导出</el-button>
+        <el-button @click="editorVisible = false">取消</el-button>
+        <el-button type="primary" :loading="saving" @click="submitEditor">保存</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { Search, Plus, Download, Operation, Refresh, Edit, Delete, Tickets, Warning } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Search, Plus, Refresh, Edit, Delete, Tickets } from '@element-plus/icons-vue'
 import { useUserStore } from '@/store/user'
-import { bookApi, bookCategoryApi } from '../api/book.api'
-import { borrowingApi } from '../api/borrowing.api'
-import { aiApi } from '../api/ai.api'
-import { searchApi, exportApi } from '../api/other.api'
+import { bookApi, bookCategoryApi } from '@/api/book.api'
+import { reservationApi, type ReservationRecord } from '@/api/reservation.api'
+import { getBookStatusMeta } from '@/utils/libraryStatus'
+import { fetchBookSuggestions, type BookSuggestionItem } from '@/utils/searchSuggestions'
 
 const route = useRoute()
 const userStore = useUserStore()
+
 const canManage = computed(() => ['admin', 'librarian'].includes(userStore.user?.role || ''))
-
-const bookList = ref<any[]>([])
-const total = ref(0)
 const loading = ref(false)
-const borrowing = ref<Set<number>>(new Set())
-const page = ref(1)
-
-// Search
-const searchQuery = ref('')
-const selectedCategory = ref<number | ''>('')
-let debounceTimer: any
-const debounceFetch = () => { clearTimeout(debounceTimer); debounceTimer = setTimeout(fetchData, 500) }
-const resetFilters = () => { searchQuery.value = ''; selectedCategory.value = ''; page.value = 1; fetchData() }
-
-// Categories
+const saving = ref(false)
+const books = ref<any[]>([])
 const categories = ref<any[]>([])
+const myReservations = ref<ReservationRecord[]>([])
+const reservingIds = ref<Set<number>>(new Set())
 
-// Advanced Search
-const advancedSearchVisible = ref(false)
-const searchType = ref('regex')
-const currentVectorModel = ref('')
-const advTabs = [{ key: 'regex', label: '正则匹配' }, { key: 'vector', label: '语义检索' }, { key: 'sql', label: 'SQL 查询' }]
-const regexError = ref('')
-const advancedForm = reactive({
-  category_id: null as number | null,
-  pattern: '',
-  searchMode: 'contains' as string,
-  fields: ['title', 'author'],
-  sql: '',
-  vectorQuery: ''
+const searchKeyword = ref('')
+const selectedCategory = ref<number | undefined>()
+
+const editorVisible = ref(false)
+const editingId = ref<number | null>(null)
+const editorForm = reactive({
+  title: '',
+  author: '',
+  publisher: '',
+  isbn: '',
+  category_id: undefined as number | undefined,
+  total_quantity: 1,
+  price: 0,
+  status: 'normal',
+  description: ''
 })
 
-const getSearchPlaceholder = () => {
-  const map: Record<string, string> = { contains: '输入要包含的文本', exact: '精确匹配文本', startsWith: '输入开头文本', endsWith: '输入结尾文本', regex: '输入正则表达式' }
-  return map[advancedForm.searchMode] || '输入搜索内容'
+const reservedBookIds = computed(() => {
+  const pending = myReservations.value
+    .filter(item => item.status === 'pending')
+    .map(item => item.book_id)
+  return new Set(pending)
+})
+
+const bookMeta = (book: any) => getBookStatusMeta(book.status, book.available_quantity)
+
+const canReserveBook = (book: any) =>
+  !!userStore.user?.reader_id &&
+  bookMeta(book).canReserve &&
+  !reservingIds.value.has(book.id) &&
+  !reservedBookIds.value.has(book.id)
+
+const reservationButtonLabel = (book: any) => {
+  if (reservedBookIds.value.has(book.id)) return '已预约'
+  if (reservingIds.value.has(book.id)) return '预约中…'
+  if (!userStore.user?.reader_id) return '未绑定读者'
+  return bookMeta(book).reserveLabel
 }
 
-const validateRegex = () => {
-  if (advancedForm.searchMode === 'regex' && advancedForm.pattern) {
-    try { new RegExp(advancedForm.pattern); regexError.value = '' }
-    catch (e: any) { regexError.value = `无效的正则: ${e.message}` }
-  } else regexError.value = ''
+const reservationButtonHint = (book: any) => {
+  if (reservedBookIds.value.has(book.id)) return '已加入到馆取书列表'
+  if (!userStore.user?.reader_id) return '当前账号未绑定读者信息'
+  return bookMeta(book).hint
 }
 
-const escapeRegex = (p: string) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
-// Spine colors
-const SPINE_COLORS = ['#C8102E','#7C3AED','#0EA5E9','#059669','#D97706','#EC4899','#6366F1','#14B8A6']
-const getSpineStyle = (row: any) => {
-  const base = SPINE_COLORS[((row.category_id || 0) + (row.book_title || row.title || '').charCodeAt(0)) % SPINE_COLORS.length]
-  if (row.similarity != null && searchType.value === 'vector') {
-    const opacity = 0.35 + row.similarity * 0.65  // 0.35 → 1.0 based on similarity
-    return { background: base, opacity: opacity.toFixed(2) }
-  }
-  return { background: base }
+const queryBookSuggestions = async (
+  queryString: string,
+  callback: (items: BookSuggestionItem[]) => void
+) => {
+  callback(await fetchBookSuggestions(queryString))
 }
 
-// Similarity badge helpers
-const getSimilarityLabel = (s: number) => {
-  if (s >= 0.90) return '极高'
-  if (s >= 0.75) return '高'
-  if (s >= 0.55) return '中'
-  if (s >= 0.35) return '低'
-  return '很低'
-}
-const getSimilarityStyle = (index: number) => {
-  const totalResults = bookList.value.length
-  const ratio = totalResults <= 1 ? 1 : 1 - index / (totalResults - 1)
-  const saturation = 8 + ratio * 68
-  const textLightness = 46 - ratio * 12
-  const backgroundAlpha = 0.06 + ratio * 0.14
-  const borderAlpha = 0.10 + ratio * 0.22
-
-  return {
-    background: `hsla(145, ${saturation.toFixed(1)}%, 42%, ${backgroundAlpha.toFixed(2)})`,
-    color: `hsl(145, ${saturation.toFixed(1)}%, ${textLightness.toFixed(1)}%)`,
-    borderColor: `hsla(145, ${saturation.toFixed(1)}%, 36%, ${borderAlpha.toFixed(2)})`
-  }
+const handleSuggestionSelect = async (item: BookSuggestionItem) => {
+  searchKeyword.value = item.title
+  await fetchBooks()
 }
 
-// Stock helpers
-const availOf = (row: any) => row.available_quantity ?? row.available_copies ?? 0
-const totalOf = (row: any) => row.total_quantity ?? row.total_copies ?? row.copies ?? 0
-const stockPercent = (row: any) => { const t = totalOf(row); return t > 0 ? Math.round(availOf(row) / t * 100) : 0 }
-const stockStatus = (row: any) => availOf(row) === 0 ? 'exception' : ''
-
-// Highlight
-const highlightText = (text: string) => {
-  if (!text) return ''
-  if (searchType.value === 'regex' && advancedForm.pattern) {
-    try {
-      let p = advancedForm.pattern
-      if (advancedForm.searchMode === 'exact') p = `^${escapeRegex(p)}$`
-      else if (advancedForm.searchMode === 'startsWith') p = `^${escapeRegex(p)}`
-      else if (advancedForm.searchMode === 'endsWith') p = `${escapeRegex(p)}$`
-      else if (advancedForm.searchMode === 'contains') p = escapeRegex(p)
-      return text.replace(new RegExp(`(${p})`, 'gi'), '<span style="background:#FEF08A;color:#854D0E">$1</span>')
-    } catch { return text }
-  }
-  if (searchQuery.value) {
-    try { return text.replace(new RegExp(`(${escapeRegex(searchQuery.value)})`, 'gi'), '<span style="background:#FEF08A;color:#854D0E">$1</span>') } catch { return text }
-  }
-  return text
-}
-
-// CRUD
-const addVisible = ref(false)
-const addForm = reactive({ title: '', author: '', publisher: '', isbn: 'AUTO', category_id: null as number | null, price: null as number | null, total_quantity: 1 })
-const addLoading = ref(false)
-
-const editVisible = ref(false)
-const currentBook = ref<any>({})
-
-const exportVisible = ref(false)
-const exportFormat = ref('csv')
-const exportLoading = ref(false)
-
-// Fetch
-const fetchData = async () => {
-  loading.value = true
-  try {
-    const result = await bookApi.getAll({ keyword: searchQuery.value, category_id: selectedCategory.value || undefined })
-    if (result.success) {
-      bookList.value = result.data.map((book: any) => ({ ...book, book_title: book.title, category: book.category_name || '通用' }))
-      total.value = result.data.length
-    } else ElMessage.error(result.error?.message || '获取图书失败')
-  } catch { ElMessage.error('加载失败') }
-  finally { loading.value = false }
+const resetEditor = () => {
+  editingId.value = null
+  editorForm.title = ''
+  editorForm.author = ''
+  editorForm.publisher = ''
+  editorForm.isbn = ''
+  editorForm.category_id = categories.value[0]?.id
+  editorForm.total_quantity = 1
+  editorForm.price = 0
+  editorForm.status = 'normal'
+  editorForm.description = ''
 }
 
 const fetchCategories = async () => {
-  try { const r = await bookCategoryApi.getAll(); if (r.success) categories.value = r.data } catch {}
-}
-
-const loadVectorModel = async () => {
-  try {
-    const result = await aiApi.getStatistics()
-    if (result.success) currentVectorModel.value = result.data.currentModel || ''
-  } catch {}
-}
-
-// Advanced search
-const handleAdvancedSearch = async () => {
-  loading.value = true; advancedSearchVisible.value = false
-  try {
-    let result: any
-    if (searchType.value === 'regex') {
-      if (advancedForm.searchMode === 'regex' && advancedForm.pattern) {
-        try { new RegExp(advancedForm.pattern) } catch (e: any) { ElMessage.error(e.message); loading.value = false; return }
-      }
-      const fields = Array.isArray(advancedForm.fields) ? [...advancedForm.fields] : ['title', 'author']
-      result = await bookApi.regexSearch(advancedForm.pattern, fields, advancedForm.category_id ?? undefined, advancedForm.searchMode)
-    } else if (searchType.value === 'sql') {
-      result = await searchApi.executeSql(advancedForm.sql)
-    } else if (searchType.value === 'vector') {
-      await loadVectorModel()
-      result = await aiApi.semanticSearch(advancedForm.vectorQuery, 20)
+  const result = await bookCategoryApi.getAll()
+  if (result.success && result.data) {
+    categories.value = result.data
+    if (!editorForm.category_id && categories.value.length > 0) {
+      editorForm.category_id = categories.value[0].id
     }
-    if (result?.success) {
-      bookList.value = (result.data || []).map((b: any) => ({ ...b, book_title: b.title || b.book_title, category: b.category_name || '未知' }))
-      total.value = bookList.value.length
-      ElMessage.success(`搜索到 ${total.value} 条结果`)
-    } else ElMessage.error(result?.error?.message || '搜索失败')
-  } catch (e: any) { ElMessage.error('搜索失败: ' + (e.message || '未知错误')) }
-  finally { loading.value = false }
+  }
 }
 
-const openAddDialog = () => { addVisible.value = true }
-
-const handleAddSubmit = async () => {
-  if (!addForm.title || !addForm.author || !addForm.publisher || !addForm.category_id) { ElMessage.error('请填写所有必填字段'); return }
-  addLoading.value = true
+const fetchBooks = async () => {
+  loading.value = true
   try {
-    const result = await bookApi.create({ ...addForm, available_quantity: addForm.total_quantity, status: 'normal', registration_date: new Date().toISOString().split('T')[0] })
-    if (result.success) { ElMessage.success('图书添加成功'); addVisible.value = false; Object.assign(addForm, { title:'', author:'', publisher:'', isbn:'AUTO', category_id:null, price:null, total_quantity:1 }); fetchData() }
-    else ElMessage.error(result.error?.message || '添加失败')
-  } catch { ElMessage.error('操作失败') }
-  finally { addLoading.value = false }
+    const result = await bookApi.getAll({
+      keyword: searchKeyword.value.trim() || undefined,
+      category_id: selectedCategory.value
+    })
+
+    if (result.success && result.data) {
+      books.value = result.data
+    }
+  } finally {
+    loading.value = false
+  }
 }
 
-const openEditDialog = (row: any) => { currentBook.value = { ...row, title: row.book_title || row.title }; editVisible.value = true }
+const fetchReservations = async () => {
+  if (canManage.value || !userStore.user?.reader_id) {
+    myReservations.value = []
+    return
+  }
 
-const saveEdit = async () => {
+  const result = await reservationApi.getMy()
+  if (result.success && result.data) {
+    myReservations.value = result.data
+  }
+}
+
+const resetFilters = async () => {
+  searchKeyword.value = ''
+  selectedCategory.value = undefined
+  await fetchBooks()
+}
+
+const openCreateDialog = () => {
+  resetEditor()
+  editorVisible.value = true
+}
+
+const openEditDialog = (book: any) => {
+  editingId.value = book.id
+  editorForm.title = book.title
+  editorForm.author = book.author
+  editorForm.publisher = book.publisher
+  editorForm.isbn = book.isbn
+  editorForm.category_id = book.category_id
+  editorForm.total_quantity = book.total_quantity
+  editorForm.price = book.price || 0
+  editorForm.status = book.status || 'normal'
+  editorForm.description = book.description || ''
+  editorVisible.value = true
+}
+
+const submitEditor = async () => {
+  if (!editorForm.title.trim() || !editorForm.author.trim() || !editorForm.publisher.trim() || !editorForm.category_id) {
+    ElMessage.warning('请补全书名、作者、出版社和分类')
+    return
+  }
+
+  saving.value = true
   try {
-    const result = await bookApi.update(currentBook.value.id, { title: currentBook.value.title, author: currentBook.value.author, publisher: currentBook.value.publisher, price: currentBook.value.price, total_quantity: currentBook.value.total_quantity })
-    if (result.success) { ElMessage.success('更新成功'); editVisible.value = false; fetchData() }
-    else ElMessage.error('更新失败')
-  } catch { ElMessage.error('操作失败') }
+    const payload = {
+      title: editorForm.title.trim(),
+      author: editorForm.author.trim(),
+      publisher: editorForm.publisher.trim(),
+      isbn: editorForm.isbn.trim() || undefined,
+      category_id: editorForm.category_id,
+      total_quantity: editorForm.total_quantity,
+      available_quantity: editorForm.total_quantity,
+      price: editorForm.price,
+      status: editorForm.status,
+      description: editorForm.description.trim() || undefined,
+      registration_date: new Date().toISOString().split('T')[0]
+    }
+
+    const result = editingId.value
+      ? await bookApi.update(editingId.value, payload)
+      : await bookApi.create(payload)
+
+    if (result.success) {
+      ElMessage.success(editingId.value ? '图书已更新' : '图书已新增')
+      editorVisible.value = false
+      await fetchBooks()
+    }
+  } catch (error: any) {
+    ElMessage.error(error?.response?.data?.error?.message || error?.message || '保存失败')
+  } finally {
+    saving.value = false
+  }
 }
 
 const handleDelete = async (book: any) => {
   try {
-    await ElMessageBox.confirm('确定要下架这本图书吗？', '提示', { type: 'warning' })
+    await ElMessageBox.confirm(`确认删除《${book.title}》吗？`, '删除图书', {
+      type: 'warning'
+    })
+
     const result = await bookApi.delete(book.id)
-    if (result.success) { ElMessage.success('删除成功'); fetchData() }
-    else ElMessage.error(result.error?.message || '删除失败')
-  } catch {}
-}
-
-const triggerFileDownload = (blob: Blob, filename: string) => {
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  link.style.display = 'none'
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-}
-
-const handleExport = async () => {
-  exportLoading.value = true
-  try {
-    const file = exportFormat.value === 'csv'
-      ? await exportApi.booksToCSV()
-      : await exportApi.booksToJSON()
-    triggerFileDownload(file.blob, file.filename)
-    ElMessage.success(`导出成功：${file.filename}`)
-    exportVisible.value = false
-  } catch {
-    ElMessage.error('导出失败')
-  } finally { exportLoading.value = false }
-}
-
-const handleUserBorrow = async (book: any) => {
-  if (!userStore.user?.reader_id) { ElMessage.info('请使用借阅管理页面'); return }
-  if (borrowing.value.has(book.id)) return
-  try {
-    borrowing.value.add(book.id)
-    const result = await borrowingApi.borrow(userStore.user.reader_id, book.id)
-    if (result.success) { ElMessage.success(`借阅成功：《${book.book_title || book.title}》`); await fetchData() }
-    else {
-      const msg = result.error?.message || '借阅失败'
-      if (msg.includes('暂无可借')) ElMessage.error('该图书暂时无可借库存')
-      else if (msg.includes('最大借阅')) ElMessage.error('已达到最大借阅数量')
-      else if (msg.includes('逾期')) ElMessage.error('有图书逾期未还')
-      else ElMessage.error(msg)
+    if (result.success) {
+      ElMessage.success('图书已删除')
+      await fetchBooks()
     }
-  } catch (e: any) { ElMessage.error(e?.response?.data?.error?.message || e?.message || '借阅操作失败，请重试') }
-  finally { borrowing.value.delete(book.id) }
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      ElMessage.error(error?.response?.data?.error?.message || error?.message || '删除失败')
+    }
+  }
 }
 
-onMounted(() => {
-  if (route.query.search) searchQuery.value = String(route.query.search)
-  fetchData()
-  fetchCategories()
-  loadVectorModel()
-})
+const handleReserve = async (book: any) => {
+  if (!userStore.user?.reader_id) {
+    ElMessage.warning('当前账号未绑定读者信息，暂时无法预约')
+    return
+  }
 
-watch(() => route.query.search, (val) => {
-  if (val !== undefined) { searchQuery.value = String(val); fetchData() }
+  const meta = bookMeta(book)
+  if (!meta.canReserve) {
+    ElMessage.warning(meta.hint)
+    return
+  }
+
+  const nextIds = new Set(reservingIds.value)
+  nextIds.add(book.id)
+  reservingIds.value = nextIds
+
+  try {
+    const result = await reservationApi.create(book.id)
+    if (result.success) {
+      ElMessage.success(`预约成功，请到馆在自助终端扫码取书。取书码：${result.data?.pickup_code || '已生成'}`)
+      await fetchReservations()
+    }
+  } catch (error: any) {
+    ElMessage.error(error?.response?.data?.error?.message || error?.message || '预约失败')
+  } finally {
+    const updatedIds = new Set(reservingIds.value)
+    updatedIds.delete(book.id)
+    reservingIds.value = updatedIds
+  }
+}
+
+watch(
+  () => route.query.search,
+  value => {
+    if (typeof value === 'string') {
+      searchKeyword.value = value
+      fetchBooks()
+    }
+  },
+  { immediate: true }
+)
+
+onMounted(async () => {
+  await Promise.all([fetchCategories(), fetchBooks(), fetchReservations()])
 })
 </script>
 
 <style scoped>
-.books-page { display: flex; flex-direction: column; gap: 20px; width: 100%; max-width: 1400px; margin: 0 auto; }
-
-.filter-card { background: rgba(255,255,255,0.42); backdrop-filter: blur(18px) saturate(180%); -webkit-backdrop-filter: blur(18px) saturate(180%); border-radius: var(--radius-card); padding: 16px 20px; border: 1px solid rgba(255,255,255,0.40); box-shadow: var(--shadow-glass); transition: all 0.3s ease; }
-.filter-card:hover { box-shadow: 0 6px 24px rgba(28,16,51,0.08); }
-.filter-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-
-.cat-chips { display: flex; gap: 8px; margin-top: 12px; overflow-x: auto; padding-bottom: 4px; }
-.cat-chip {
-  padding: 6px 16px; border-radius: 99px; border: 1px solid var(--border-color);
-  background: var(--bg-page); color: var(--text-secondary); cursor: pointer;
-  font-size: 13px; font-weight: 500; font-family: var(--font-sans);
-  white-space: nowrap; transition: all 0.15s;
-}
-.cat-chip.active { background: var(--gdut-red); color: #fff; border-color: var(--gdut-red); }
-.cat-chip:hover:not(.active) { border-color: var(--gdut-red); color: var(--gdut-red); }
-.vector-model-note { margin-top: 12px; font-size: 12px; color: var(--text-muted); word-break: break-all; }
-
-.table-card { background: rgba(255,255,255,0.42); backdrop-filter: blur(18px) saturate(180%); -webkit-backdrop-filter: blur(18px) saturate(180%); border-radius: var(--radius-card); box-shadow: var(--shadow-glass); border: 1px solid rgba(255,255,255,0.40); overflow: hidden; width: 100%; }
-
-.book-cell { display: flex; align-items: center; gap: 12px; }
-.book-spine {
-  width: 40px; height: 52px; border-radius: 6px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 18px; font-weight: 800; color: rgba(255,255,255,0.9);
-  flex-shrink: 0; box-shadow: 2px 2px 8px rgba(0,0,0,0.12);
-}
-.book-meta { display: flex; flex-direction: column; min-width: 0; }
-.book-title { font-weight: 600; color: var(--text-primary); font-size: 14px; line-height: 1.3; }
-.book-isbn { font-size: 11px; color: var(--text-muted); margin-top: 3px; font-family: 'Courier New', monospace; }
-.similarity-badge {
-  display: inline-flex; align-items: center; gap: 3px;
-  margin-top: 4px; padding: 2px 8px; border-radius: 99px;
-  font-size: 11px; font-weight: 600; border: 1px solid;
-  width: fit-content;
+.books-page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
 }
 
-.text-secondary-small { font-size: 13px; color: var(--text-secondary); }
-
-.stock-cell { display: flex; flex-direction: column; gap: 4px; }
-.stock-text { font-size: 12px; display: flex; justify-content: center; gap: 2px; }
-.stock-avail { font-weight: 700; color: var(--success); }
-.stock-avail.empty { color: var(--danger); }
-.stock-total { color: var(--text-muted); }
-
-:deep(.el-progress-bar__inner) { background: var(--gradient-brand) !important; }
-:deep(.el-progress.is-exception .el-progress-bar__inner) { background: var(--danger) !important; }
-
-.action-cell { display: flex; align-items: center; gap: 4px; justify-content: flex-end; }
-.action-btn-sm {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 6px 14px; border-radius: 8px; border: none;
-  background: var(--gdut-red-tint); color: var(--gdut-red);
-  cursor: pointer; font-size: 13px; font-weight: 600; font-family: var(--font-sans);
-  transition: all 0.15s;
+.hero-card,
+.reservation-card,
+.filter-card,
+.table-card {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 24px;
+  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.06);
 }
-.action-btn-sm:hover { background: var(--gdut-red); color: #fff; }
-.action-btn-sm:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.header-actions { display: flex; gap: 10px; }
-.action-btn.secondary {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 10px 18px; border-radius: var(--radius-btn);
-  border: 1.5px solid var(--border-color); background: var(--bg-card);
-  color: var(--text-secondary); cursor: pointer;
-  font-size: 14px; font-weight: 500; font-family: var(--font-sans);
-  transition: all 0.15s;
+.hero-card {
+  padding: 24px 28px;
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: center;
 }
-.action-btn.secondary:hover { border-color: var(--gdut-red); color: var(--gdut-red); background: var(--gdut-red-tint); }
 
-.pagination-wrap {
-  padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
-  border-top: 1px solid var(--border-light);
+.hero-card h1,
+.section-title {
+  margin: 0 0 10px;
+  color: #0f172a;
 }
-.pagination-info { font-size: 13px; color: var(--text-muted); }
+
+.hero-card p {
+  margin: 0;
+  color: #64748b;
+}
+
+.hero-actions,
+.filter-row,
+.action-group {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.reservation-card,
+.filter-card,
+.table-card {
+  padding: 20px 24px;
+}
+
+.reservation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.reservation-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: #f8fafc;
+}
+
+.reservation-title {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.reservation-meta,
+.reservation-expire,
+.empty-inline {
+  color: #64748b;
+  font-size: 14px;
+}
+
+.search-box {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.search-box :deep(.el-autocomplete) {
+  flex: 1;
+}
+
+.search-box :deep(.el-input__wrapper) {
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+.ghost-btn,
+.primary-btn,
+.small-btn {
+  border: none;
+  border-radius: 14px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.ghost-btn,
+.small-btn {
+  height: 42px;
+  padding: 0 14px;
+  color: #334155;
+  background: #eef2ff;
+}
+
+.primary-btn,
+.small-btn.primary {
+  height: 44px;
+  padding: 0 16px;
+  color: #fff;
+  background: linear-gradient(135deg, #c8102e 0%, #7c3aed 100%);
+}
+
+.small-btn.danger {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.small-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.empty {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.grid-two {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
+}
+
+.suggestion-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 2px 0;
+}
+
+.suggestion-title {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.suggestion-meta {
+  font-size: 12px;
+  color: #64748b;
+}
+
+@media (max-width: 960px) {
+  .hero-card,
+  .filter-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .hero-actions,
+  .action-group {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .grid-two {
+    grid-template-columns: 1fr;
+  }
+
+  .reservation-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
 </style>

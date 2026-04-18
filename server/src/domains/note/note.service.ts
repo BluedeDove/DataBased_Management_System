@@ -1,32 +1,41 @@
 import { NoteRepository, NoteWithDetails } from './note.repository'
-import { BorrowingRepository } from '../borrowing/borrowing.repository'
 import { NotFoundError, BusinessError, AuthError } from '../../lib/errorHandler'
 import { db } from '../../database'
 
 export class NoteService {
   private noteRepository = new NoteRepository()
-  private borrowingRepository = new BorrowingRepository()
 
   private isStaff(role: string): boolean {
     return role === 'admin' || role === 'librarian'
   }
 
-  /** 获取当前用户正在借阅的图书 ID 列表 */
   private getActiveBorrowedBookIds(readerId: number): number[] {
     const rows = db.prepare(`
-      SELECT book_id FROM borrowing_records
+      SELECT book_id
+      FROM borrowing_records
       WHERE reader_id = ? AND status IN ('borrowed', 'overdue') AND is_deleted = 0
     `).all(readerId) as { book_id: number }[]
-    return rows.map(r => r.book_id)
+
+    return rows.map(row => row.book_id)
   }
 
-  /** 获取当前用户正在借阅某本书的 borrowing_record id */
-  private getActiveBorrowingId(readerId: number, bookId: number): number | null {
+  private getEligibleLegacyBorrowingId(readerId: number, bookId: number): number | null {
     const row = db.prepare(`
-      SELECT id FROM borrowing_records
-      WHERE reader_id = ? AND book_id = ? AND status IN ('borrowed', 'overdue') AND is_deleted = 0
-      ORDER BY borrow_date DESC LIMIT 1
+      SELECT br.id
+      FROM borrowing_records br
+      LEFT JOIN notes n
+        ON n.legacy_borrowing_id = br.id
+       AND n.visibility = 'legacy'
+       AND n.is_deleted = 0
+      WHERE br.reader_id = ?
+        AND br.book_id = ?
+        AND br.status = 'returned'
+        AND br.is_deleted = 0
+        AND n.id IS NULL
+      ORDER BY datetime(COALESCE(br.return_date, br.borrow_date)) DESC, br.id DESC
+      LIMIT 1
     `).get(readerId, bookId) as { id: number } | undefined
+
     return row?.id ?? null
   }
 
@@ -36,16 +45,24 @@ export class NoteService {
     book_id?: number | null
     visibility: 'private' | 'public' | 'legacy'
   }): NoteWithDetails {
-    // legacy 可见性需要关联图书，且当前用户必须正在借阅该书
     if (data.visibility === 'legacy') {
       if (!data.book_id) throw new BusinessError('传承笔记必须关联图书')
+
       if (!this.isStaff(role)) {
-        if (!readerId) throw new BusinessError('您的账号未关联读者信息，无法创建传承笔记')
-        const borrowingId = this.getActiveBorrowingId(readerId, data.book_id)
-        if (!borrowingId) throw new BusinessError('您当前未借阅该图书，无法创建传承笔记')
-        return this.noteRepository.create({ ...data, user_id: userId, legacy_borrowing_id: borrowingId })
+        if (!readerId) throw new BusinessError('当前账号未绑定读者信息，无法创建传承笔记')
+        const borrowingId = this.getEligibleLegacyBorrowingId(readerId, data.book_id)
+        if (!borrowingId) {
+          throw new BusinessError('传承笔记需在归还图书后创建，且每次借阅仅可沉淀一篇')
+        }
+
+        return this.noteRepository.create({
+          ...data,
+          user_id: userId,
+          legacy_borrowing_id: borrowingId
+        })
       }
     }
+
     return this.noteRepository.create({ ...data, user_id: userId })
   }
 
@@ -63,11 +80,11 @@ export class NoteService {
       return note
     }
 
-    // legacy: 作者、管理员/图书管理员可看；普通用户必须正在借阅该书
     if (note.user_id === userId || this.isStaff(role)) {
       this.noteRepository.incrementViewCount(id)
       return note
     }
+
     if (note.book_id && readerId) {
       const borrowedIds = this.getActiveBorrowedBookIds(readerId)
       if (borrowedIds.includes(note.book_id)) {
@@ -75,7 +92,8 @@ export class NoteService {
         return note
       }
     }
-    throw new AuthError('您需要借阅该图书才能查看此传承笔记')
+
+    throw new AuthError('您需要先借阅该图书，才能查看传承笔记')
   }
 
   getUserNotes(userId: number, params: {
@@ -96,7 +114,6 @@ export class NoteService {
     return this.noteRepository.findPlaza(params)
   }
 
-  /** 获取某本书的传承笔记（当前借阅者 or staff 可见） */
   getLegacyNote(bookId: number, userId: number, role: string, readerId?: number | null): NoteWithDetails | null {
     const note = this.noteRepository.findLatestLegacyByBook(bookId)
     if (!note) return null
@@ -105,7 +122,7 @@ export class NoteService {
       const borrowedIds = this.getActiveBorrowedBookIds(readerId)
       if (borrowedIds.includes(bookId)) return note
     }
-    throw new AuthError('您需要借阅该图书才能查看传承笔记')
+    throw new AuthError('您需要先借阅该图书，才能查看传承笔记')
   }
 
   updateNote(id: number, userId: number, role: string, readerId: number | null | undefined, data: {
@@ -118,21 +135,22 @@ export class NoteService {
     if (!note) throw new NotFoundError('笔记不存在')
     if (note.user_id !== userId && !this.isStaff(role)) throw new AuthError('无权编辑该笔记')
 
-    // 切换为 legacy 可见性时，也需要验证正在借阅该书
     const newVisibility = data.visibility ?? note.visibility
     const newBookId = data.book_id !== undefined ? data.book_id : note.book_id
-    let legacyBorrowingId: number | undefined = undefined
+    let legacyBorrowingId: number | undefined
 
     if (newVisibility === 'legacy') {
       if (!newBookId) throw new BusinessError('传承笔记必须关联图书')
+
       if (!this.isStaff(role)) {
-        if (!readerId) throw new BusinessError('您的账号未关联读者信息，无法设置传承笔记')
-        const borrowingId = this.getActiveBorrowingId(readerId, newBookId)
-        if (!borrowingId) throw new BusinessError('您当前未借阅该图书，无法设置传承笔记')
-        // 若之前没有记录借阅ID，则补充记录
-        if (!note.legacy_borrowing_id) {
-          legacyBorrowingId = borrowingId
+        if (!readerId) throw new BusinessError('当前账号未绑定读者信息，无法设置传承笔记')
+
+        const borrowingId = note.legacy_borrowing_id ?? this.getEligibleLegacyBorrowingId(readerId, newBookId)
+        if (!borrowingId) {
+          throw new BusinessError('传承笔记需在归还图书后创建，且每次借阅仅可沉淀一篇')
         }
+
+        legacyBorrowingId = borrowingId
       }
     }
 
@@ -144,7 +162,6 @@ export class NoteService {
     return updated
   }
 
-  /** 获取当前读者正在借阅的图书中，其他读者留下的传承笔记 */
   getLegacyNotesForMe(userId: number, readerId: number | null | undefined): { items: NoteWithDetails[]; total: number } {
     if (!readerId) return { items: [], total: 0 }
     const items = this.noteRepository.findLegacyNotesForReader(readerId, userId)
@@ -158,3 +175,4 @@ export class NoteService {
     this.noteRepository.softDelete(id)
   }
 }
+

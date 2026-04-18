@@ -12,7 +12,7 @@ deploymentTarget = "cloudrun"
 
 [userenv.shared]
 NODE_ENV = "production"
-JWT_SECRET = "a392c18d34d24ee6746e375f02ec95f519cfc98fc3129290603380e3f699e2d4dffae7a6bcb31596aa59e78f171008f019b5a505ea9b0964cf128f9f71d354ab"
+JWT_SECRET = "b1d6f2f7cce54410a40a2f1a6e9b7ab8b730a5c4f4a8a4c7f1d7c8c4c3a1c3aef7d855d36c8425f2b7f9e0b2f9f1ce7fd8ec13ef349f2f30f10d5d068d4a7d2e"
 
 [agent]
 expertMode = true

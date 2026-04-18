@@ -5,6 +5,7 @@ export interface BorrowingRecord {
   id: number
   reader_id: number
   book_id: number
+  copy_id?: number | null
   borrow_date: string
   due_date: string
   return_date?: string
@@ -22,6 +23,7 @@ export interface BorrowingRecordWithDetails extends BorrowingRecord {
   book_title: string
   book_author: string
   book_isbn: string
+  copy_barcode?: string | null
   renewal_request_id?: number | null
   renewal_request_status?: RenewalRequestStatus | null
 }
@@ -77,11 +79,13 @@ const borrowingSelect = `
     b.title AS book_title,
     b.author AS book_author,
     b.isbn AS book_isbn,
+    bc.barcode AS copy_barcode,
     latest_rr.renewal_request_id,
     latest_rr.renewal_request_status
   FROM borrowing_records br
   JOIN readers r ON br.reader_id = r.id
   JOIN books b ON br.book_id = b.id
+  LEFT JOIN book_copies bc ON br.copy_id = bc.id
   ${latestRenewalJoin}
   WHERE br.is_deleted = 0 AND r.is_deleted = 0 AND b.is_deleted = 0
 `
@@ -133,12 +137,13 @@ export class BorrowingRepository {
   create(record: Omit<BorrowingRecord, 'id' | 'created_at' | 'updated_at'>): BorrowingRecord {
     const result = db.prepare(`
       INSERT INTO borrowing_records (
-        reader_id, book_id, borrow_date, due_date, return_date,
+        reader_id, book_id, copy_id, borrow_date, due_date, return_date,
         renewal_count, status, fine_amount, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       record.reader_id,
       record.book_id,
+      record.copy_id ?? null,
       record.borrow_date,
       record.due_date,
       record.return_date,
@@ -182,6 +187,14 @@ export class BorrowingRepository {
       AND br.book_id = ?
       AND br.status = 'borrowed'
     `).get(readerId, bookId) as BorrowingRecordWithDetails | undefined
+  }
+
+  findActiveBorrowingByCopyId(copyId: number): BorrowingRecordWithDetails | undefined {
+    return db.prepare(`
+      ${borrowingSelect}
+      AND br.copy_id = ?
+      AND br.status IN ('borrowed', 'overdue')
+    `).get(copyId) as BorrowingRecordWithDetails | undefined
   }
 
   getOverdueRecords(): BorrowingRecordWithDetails[] {

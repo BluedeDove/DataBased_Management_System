@@ -3,14 +3,15 @@
 ## 快速启动指南
 
 ### 环境要求
-- Node.js 20.x 或更高版本
-- npm 10.x 或更高版本
+- Windows 双击 `start.bat` 时可以不预装 Node.js，脚本会优先复用现有环境，必要时自动准备便携版 Node.js
+- 如果要手动开发，建议 Node.js 20.x + npm 10.x
 
 ### Windows 用户
 
 1. 双击运行 `start.bat`
-2. 等待依赖安装和服务器启动
-3. 浏览器将自动打开 http://localhost:3000
+2. 等待脚本校验依赖、按需构建前端并启动服务
+3. 浏览器将自动打开 `http://localhost:3000`（如果 3000 被占用，会自动切换到附近空闲端口）
+4. 需要关闭时双击 `stop.bat`
 
 ### Mac/Linux 用户
 
@@ -22,17 +23,19 @@ chmod +x start.sh
 ### 手动启动
 
 ```bash
-# 1. 安装后端依赖并启动
-cd server
+# 1. 安装根依赖
 npm install
-npm run dev
 
-# 2. 新开终端，安装前端依赖并启动
+# 2. 安装前端依赖
 cd web
 npm install
-npm run dev
+cd ..
 
-# 3. 访问 http://localhost:3000
+# 3. 新开两个终端分别启动
+npm run dev:server
+npm run dev:web
+
+# 4. 访问 http://localhost:3000
 ```
 
 ## 默认账号
@@ -137,17 +140,5 @@ ngrok http 3001
 - **认证**: JWT (JSON Web Token)
 - **安全**: CORS, Helmet
 
-## 常见问题
+---
 
-### Q: 登录后页面空白?
-A: 检查浏览器控制台是否有CORS错误，确保后端服务正在运行。
-
-### Q: 数据库在哪里?
-A: SQLite数据库文件位于 `server/data/library.db`
-
-### Q: 如何重置数据库?
-A: 删除 `server/data/library.db` 文件，重启服务器会自动创建新数据库。
-
-## 联系方式
-
-如有问题，请联系开发者。

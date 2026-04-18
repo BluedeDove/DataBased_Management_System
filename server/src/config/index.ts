@@ -1,8 +1,29 @@
 import dotenv from 'dotenv'
 import crypto from 'crypto'
+import fs from 'fs'
+import path from 'path'
 
 // 加载环境变量
-dotenv.config()
+const loadEnvFiles = () => {
+  const appRoot = process.env.APP_ROOT || process.cwd()
+  const candidates = [
+    path.join(appRoot, '.env'),
+    path.join(appRoot, 'server', '.env'),
+    path.join(process.cwd(), '.env'),
+    path.join(process.cwd(), 'server', '.env')
+  ]
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      dotenv.config({ path: candidate })
+      return
+    }
+  }
+
+  dotenv.config()
+}
+
+loadEnvFiles()
 
 const DEFAULT_JWT_SECRET = 'your-super-secret-jwt-key-change-in-production'
 
@@ -40,7 +61,7 @@ export const config = {
   },
 
   server: {
-    port: parseInt(process.env.PORT || '3000', 10),
+    port: parseInt(process.env.PORT || '3001', 10),
     nodeEnv: process.env.NODE_ENV || 'development'
   },
 

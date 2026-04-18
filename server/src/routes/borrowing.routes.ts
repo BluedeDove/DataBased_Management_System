@@ -1,9 +1,10 @@
 import { Router } from 'express'
 import * as borrowingController from '../controllers/borrowing.controller'
 import { authMiddleware } from '../middleware/auth.middleware'
-import { requirePermission, librarianOrAbove } from '../middleware/permission.middleware'
+import { requirePermission, librarianOrAbove, requireRole } from '../middleware/permission.middleware'
 
 const router = Router()
+const staffBorrowOnly = requireRole('admin', 'librarian')
 
 router.use(authMiddleware)
 
@@ -21,11 +22,11 @@ router.get('/trend', requirePermission('borrowing:read'), borrowingController.ge
 router.get('/book-count', requirePermission('borrowing:read'), borrowingController.getBookCount)
 router.get('/reader/:readerId', requirePermission('borrowing:read'), borrowingController.getReaderHistory)
 router.get('/book/:bookId', requirePermission('borrowing:read'), borrowingController.getBookHistory)
-router.post('/', requirePermission('borrowing:borrow'), borrowingController.borrowBook)
-router.put('/:id/return', requirePermission('borrowing:borrow'), borrowingController.returnBook)
-router.put('/:id/renew', requirePermission('borrowing:borrow'), borrowingController.renewBook)
+router.post('/', staffBorrowOnly, borrowingController.borrowBook)
+router.put('/:id/return', staffBorrowOnly, borrowingController.returnBook)
+router.put('/:id/renew', staffBorrowOnly, borrowingController.renewBook)
 router.post('/:id/renew-request', requirePermission('borrowing:borrow'), borrowingController.requestRenewal)
-router.put('/:id/mark-lost', requirePermission('borrowing:write'), borrowingController.markAsLost)
-router.delete('/:id', requirePermission('borrowing:write'), borrowingController.deleteRecord)
+router.put('/:id/mark-lost', staffBorrowOnly, borrowingController.markAsLost)
+router.delete('/:id', staffBorrowOnly, borrowingController.deleteRecord)
 
 export { router as borrowingRoutes }

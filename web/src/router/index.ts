@@ -1,5 +1,6 @@
 import { createRouter, createWebHashHistory, RouteRecordRaw } from 'vue-router'
 import { useUserStore } from '@/store/user'
+import { getHomeRoute } from '@/utils/homeRoute'
 import Layout from '@/components/Layout.vue'
 
 const routes: RouteRecordRaw[] = [
@@ -16,58 +17,63 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: false }
   },
   {
+    path: '/machine-terminal',
+    name: 'MachineTerminal',
+    component: () => import('@/views/MachineTerminal.vue'),
+    meta: { requiresAuth: true, roles: ['machine'] }
+  },
+  {
     path: '/',
     component: Layout,
-    redirect: '/dashboard',
     meta: { requiresAuth: true },
     children: [
       {
         path: 'dashboard',
         name: 'Dashboard',
         component: () => import('@/views/Dashboard.vue'),
-        meta: { title: '仪表盘', icon: 'DataAnalysis', roles: ['admin', 'librarian', 'teacher', 'student'] }
+        meta: { title: '控制台', roles: ['admin', 'librarian'] }
       },
       {
         path: 'books',
         name: 'Books',
         component: () => import('@/views/Books.vue'),
-        meta: { title: '图书管理', icon: 'Reading', roles: ['admin', 'librarian', 'teacher', 'student'] }
+        meta: { title: '找书预约', roles: ['admin', 'librarian', 'teacher', 'student'] }
       },
       {
         path: 'readers',
         name: 'Readers',
         component: () => import('@/views/Readers.vue'),
-        meta: { title: '读者管理', icon: 'User', roles: ['admin', 'librarian'] }
+        meta: { title: '读者管理', roles: ['admin', 'librarian'] }
       },
       {
         path: 'borrowing',
         name: 'Borrowing',
         component: () => import('@/views/Borrowing.vue'),
-        meta: { title: '借还管理', icon: 'DocumentCopy', roles: ['admin', 'librarian', 'teacher', 'student'] }
+        meta: { title: '借阅中心', roles: ['admin', 'librarian', 'teacher', 'student'] }
       },
       {
         path: 'statistics',
         name: 'Statistics',
         component: () => import('@/views/Statistics.vue'),
-        meta: { title: '统计分析', icon: 'PieChart', roles: ['admin', 'librarian'] }
+        meta: { title: '统计分析', roles: ['admin', 'librarian'] }
       },
       {
         path: 'notes',
         name: 'Notes',
         component: () => import('@/views/Notes.vue'),
-        meta: { title: '读书笔记', icon: 'EditPen', roles: ['admin', 'librarian', 'teacher', 'student'] }
+        meta: { title: '传承笔记', roles: ['admin', 'librarian', 'teacher', 'student'] }
       },
       {
         path: 'ai-assistant',
         name: 'AIAssistant',
         component: () => import('@/views/AIAssistant.vue'),
-        meta: { title: 'AI 助手', icon: 'MagicStick', roles: ['admin', 'librarian', 'teacher', 'student'] }
+        meta: { title: 'AI 智能图书馆', roles: ['admin', 'librarian', 'teacher', 'student'] }
       },
       {
         path: 'settings',
         name: 'Settings',
         component: () => import('@/views/Settings.vue'),
-        meta: { title: '系统设置', icon: 'Setting', roles: ['admin', 'librarian'] }
+        meta: { title: '系统设置', roles: ['admin', 'librarian'] }
       }
     ]
   }
@@ -78,42 +84,37 @@ const router = createRouter({
   routes
 })
 
-// 标记是否已初始化
-let isInitialized = false
+let initialized = false
 
-// 路由守卫
 router.beforeEach(async (to, _from, next) => {
   const userStore = useUserStore()
 
-  // 首次访问时初始化用户状态（验证Token）
-  if (!isInitialized) {
-    isInitialized = true
+  if (!initialized) {
+    initialized = true
     await userStore.initialize()
   }
 
-  // 需要认证的页面
-  if (to.meta.requiresAuth !== false) {
-    if (!userStore.isLoggedIn) {
-      // 未登录，重定向到登录页
-      next({ path: '/login', query: { redirect: to.fullPath } })
-      return
-    }
-
-    // 权限检查
-    if (to.meta.roles && userStore.user) {
-      const allowedRoles = to.meta.roles as string[]
-      if (!allowedRoles.includes(userStore.user.role)) {
-        // 没有权限，重定向到Dashboard
-        next('/dashboard')
-        return
-      }
-    }
+  if (to.meta.requiresAuth !== false && !userStore.isLoggedIn) {
+    next({ path: '/login', query: { redirect: to.fullPath } })
+    return
   }
 
-  // 已登录用户访问登录/注册页，重定向到首页
   if ((to.path === '/login' || to.path === '/register') && userStore.isLoggedIn) {
-    next('/')
+    next(getHomeRoute(userStore.user?.role))
     return
+  }
+
+  if (to.path === '/' && userStore.isLoggedIn) {
+    next(getHomeRoute(userStore.user?.role))
+    return
+  }
+
+  if (to.meta.roles && userStore.user) {
+    const allowedRoles = to.meta.roles as string[]
+    if (!allowedRoles.includes(userStore.user.role)) {
+      next(getHomeRoute(userStore.user.role))
+      return
+    }
   }
 
   next()

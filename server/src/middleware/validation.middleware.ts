@@ -333,7 +333,7 @@ export const CommonRules = {
   role: {
     type: 'string' as const,
     required: false,
-    enum: ['admin', 'librarian', 'teacher', 'student'],
+    enum: ['admin', 'librarian', 'teacher', 'student', 'machine'],
     sanitize: true
   }
 }

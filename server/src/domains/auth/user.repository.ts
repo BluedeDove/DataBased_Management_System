@@ -6,7 +6,7 @@ export interface User {
   username: string
   password: string
   name: string
-  role: 'admin' | 'librarian' | 'teacher' | 'student'
+  role: 'admin' | 'librarian' | 'teacher' | 'student' | 'machine'
   reader_id?: number
   email?: string
   phone?: string

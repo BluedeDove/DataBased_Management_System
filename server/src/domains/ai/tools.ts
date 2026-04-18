@@ -1,8 +1,8 @@
 import OpenAI from 'openai'
 import { db } from '../../database'
 import { RegexSearchService } from '../search/regex-search.service'
-import { BorrowingService } from '../borrowing/borrowing.service'
 import { NoteRepository } from '../note/note.repository'
+import { ReservationService } from '../reservation/reservation.service'
 import { cosineSimilarity, getAIConfig } from './ai.service'
 
 type SearchMode = 'keyword' | 'regex' | 'semantic'
@@ -59,22 +59,29 @@ const BOOK_BASE_SELECT = `
   WHERE b.is_deleted = 0
 `
 
-export const toolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
+export const toolDefinitions: any[] = [
   {
     type: 'function',
     function: {
       name: 'search_books',
-      description: '搜索馆藏图书。支持 keyword / regex / semantic 三种模式；如果后续要操作某一本书，应先用它拿到唯一的 book_id、ISBN 或完整书名。',
+      description: '搜索馆藏图书。支持 keyword、regex、semantic 三种模式；如果后续要对具体图书进行操作，请先借助搜索拿到唯一 book_id、ISBN 或完整书名。',
       parameters: {
         type: 'object',
         properties: {
-          query: { type: 'string', description: '搜索词，可以是书名、作者、ISBN、关键词等' },
+          query: {
+            type: 'string',
+            description: '搜索词，可以是书名、作者、ISBN、关键词或主题描述。'
+          },
           mode: {
             type: 'string',
             enum: ['keyword', 'regex', 'semantic'],
-            description: '搜索模式：keyword（默认）、regex（正则）、semantic（向量语义）'
+            description: '搜索模式，默认 keyword。'
           },
-          limit: { type: 'number', description: '返回数量上限，默认 10', default: 10 }
+          limit: {
+            type: 'number',
+            description: '返回结果上限，默认 10。',
+            default: 10
+          }
         },
         required: ['query']
       }
@@ -84,12 +91,19 @@ export const toolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'recommend_books',
-      description: '根据主题、类型或关键词推荐图书。',
+      description: '根据主题、课程方向或关键词推荐图书。',
       parameters: {
         type: 'object',
         properties: {
-          genre: { type: 'string', description: '推荐主题/类型，如“算法”“Python”“人工智能”' },
-          count: { type: 'number', description: '推荐数量，默认 5', default: 5 }
+          genre: {
+            type: 'string',
+            description: '推荐主题，例如“算法”“Python”“人工智能”。'
+          },
+          count: {
+            type: 'number',
+            description: '推荐数量，默认 5。',
+            default: 5
+          }
         },
         required: ['genre']
       }
@@ -99,13 +113,13 @@ export const toolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'get_book_details',
-      description: '查看某一本图书的详细信息。优先传 book_id；也可传 title 或 isbn。若 title 不唯一，工具会返回候选列表，不能自行猜测。',
+      description: '查看某一本图书的详细信息。优先传 book_id；也可以传 title 或 isbn。如果图书无法唯一确认，会返回候选列表。',
       parameters: {
         type: 'object',
         properties: {
-          book_id: { type: 'number', description: '图书 ID，最稳妥的唯一标识' },
-          title: { type: 'string', description: '完整书名；仅当能唯一确认时使用' },
-          isbn: { type: 'string', description: 'ISBN；若已知，优先使用' }
+          book_id: { type: 'number', description: '图书唯一 ID。' },
+          title: { type: 'string', description: '用户确认过的完整书名。' },
+          isbn: { type: 'string', description: '用户确认过的 ISBN。' }
         }
       }
     }
@@ -114,13 +128,13 @@ export const toolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'get_borrowing_status',
-      description: '查询某一本图书的借阅状态。优先传 book_id；也可传 title 或 isbn。若无法唯一确认，工具会返回候选列表。',
+      description: '查询某一本图书当前的可借状态与借阅情况。优先传 book_id；也可以传 title 或 isbn。',
       parameters: {
         type: 'object',
         properties: {
-          book_id: { type: 'number', description: '图书 ID，最稳妥的唯一标识' },
-          title: { type: 'string', description: '完整书名；仅当能唯一确认时使用' },
-          isbn: { type: 'string', description: 'ISBN；若已知，优先使用' }
+          book_id: { type: 'number', description: '图书唯一 ID。' },
+          title: { type: 'string', description: '用户确认过的完整书名。' },
+          isbn: { type: 'string', description: '用户确认过的 ISBN。' }
         }
       }
     }
@@ -128,14 +142,14 @@ export const toolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
-      name: 'borrow_book',
-      description: '为当前登录读者借阅图书。优先传 book_id，并同时补充 title 或 isbn 以便系统校验，避免借错书。',
+      name: 'reserve_book',
+      description: '为当前登录读者预约实体图书。线上只提交预约，用户仍需到馆在机器终端扫码取书。',
       parameters: {
         type: 'object',
         properties: {
-          book_id: { type: 'number', description: '图书 ID；若来自搜索结果，建议同时传 title 或 isbn 做校验' },
-          title: { type: 'string', description: '用户明确提到的完整书名；与 book_id 配合可做精确校验' },
-          isbn: { type: 'string', description: '用户明确提到的 ISBN；与 book_id 配合可做精确校验' }
+          book_id: { type: 'number', description: '图书唯一 ID。' },
+          title: { type: 'string', description: '用户确认过的完整书名。' },
+          isbn: { type: 'string', description: '用户确认过的 ISBN。' }
         }
       }
     }
@@ -144,13 +158,13 @@ export const toolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'search_notes',
-      description: '搜索公开读书笔记/心得，可按关键词和图书过滤。',
+      description: '搜索公开读书笔记与心得，可按关键词和图书过滤。',
       parameters: {
         type: 'object',
         properties: {
-          query: { type: 'string', description: '搜索关键词' },
-          book_id: { type: 'number', description: '按图书 ID 过滤（可选）' },
-          limit: { type: 'number', description: '返回数量上限，默认 5', default: 5 }
+          query: { type: 'string', description: '检索关键词。' },
+          book_id: { type: 'number', description: '按图书 ID 过滤。' },
+          limit: { type: 'number', description: '返回数量上限，默认 5。', default: 5 }
         },
         required: ['query']
       }
@@ -160,13 +174,13 @@ export const toolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'publish_note',
-      description: '以当前用户身份发布一条公开读书笔记。',
+      description: '以当前用户身份发布一篇公开读书笔记。',
       parameters: {
         type: 'object',
         properties: {
-          title: { type: 'string', description: '笔记标题（必填）' },
-          content: { type: 'string', description: '笔记正文（必填）' },
-          book_id: { type: 'number', description: '关联图书 ID（可选）' }
+          title: { type: 'string', description: '笔记标题。' },
+          content: { type: 'string', description: '笔记正文。' },
+          book_id: { type: 'number', description: '可选的关联图书 ID。' }
         },
         required: ['title', 'content']
       }
@@ -176,7 +190,7 @@ export const toolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'get_my_borrowings',
-      description: '查看当前用户的借阅记录，包括在借和逾期图书。',
+      description: '查看当前用户自己的在借/逾期图书。',
       parameters: {
         type: 'object',
         properties: {}
@@ -187,12 +201,12 @@ export const toolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'get_popular_books',
-      description: '获取近 30 天热门图书排行。',
+      description: '获取近 30 天热门图书。',
       parameters: {
         type: 'object',
         properties: {
-          limit: { type: 'number', description: '返回数量，默认 5', default: 5 },
-          category: { type: 'string', description: '按图书类别过滤（可选）' }
+          limit: { type: 'number', description: '返回数量上限，默认 5。', default: 5 },
+          category: { type: 'string', description: '可选的分类过滤。' }
         }
       }
     }
@@ -201,7 +215,7 @@ export const toolDefinitions: OpenAI.Chat.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'get_reader_info',
-      description: '查看当前读者的个人信息、借阅上限和有效期。',
+      description: '查看当前读者的账号状态、借阅上限与有效期。',
       parameters: {
         type: 'object',
         properties: {}
@@ -223,7 +237,7 @@ export interface ToolResult {
 function normalizeBookTitle(value?: string | null): string {
   return (value || '')
     .toLowerCase()
-    .replace(/[\s《》"'“”‘’·•:：()（）\-_，,。.!！？?]/g, '')
+    .replace(/[\s"'“”‘’()（）\-_,.，。!?！？、]/g, '')
 }
 
 function normalizeIsbn(value?: string | null): string {
@@ -259,13 +273,13 @@ function getBookById(bookId: number): BookRow | undefined {
 }
 
 function listBookCandidatesByQuery(query: string, limit = 5): BookRow[] {
-  const q = `%${query.trim()}%`
+  const keyword = `%${query.trim()}%`
   return db.prepare(`
     ${BOOK_BASE_SELECT}
       AND (b.title LIKE ? OR b.author LIKE ? OR b.isbn LIKE ? OR b.description LIKE ? OR b.keywords LIKE ?)
     ORDER BY b.available_quantity DESC, b.id ASC
     LIMIT ?
-  `).all(q, q, q, q, q, limit) as BookRow[]
+  `).all(keyword, keyword, keyword, keyword, keyword, limit) as BookRow[]
 }
 
 function rankKeywordBook(book: BookRow, query: string) {
@@ -325,8 +339,8 @@ function listExactTitleMatches(title: string): BookRow[] {
   `).all(`%${query}%`) as BookRow[]
 
   const normalizedTitle = normalizeBookTitle(query)
-  const directMatches = candidates.filter(book => normalizeBookTitle(book.title) === normalizedTitle)
-  if (directMatches.length > 0) return directMatches
+  const exactMatches = candidates.filter(book => normalizeBookTitle(book.title) === normalizedTitle)
+  if (exactMatches.length > 0) return exactMatches
 
   return (db.prepare(`${BOOK_BASE_SELECT}`).all() as BookRow[])
     .filter(book => normalizeBookTitle(book.title) === normalizedTitle)
@@ -335,15 +349,15 @@ function listExactTitleMatches(title: string): BookRow[] {
 function resolveBookReference(args: BookReferenceArgs): ResolvedBookReference {
   const hasBookId = typeof args.book_id === 'number' && Number.isFinite(args.book_id)
   const normalizedTitle = normalizeBookTitle(args.title)
-  const normalizedIsbnValue = normalizeIsbn(args.isbn)
+  const normalizedIsbn = normalizeIsbn(args.isbn)
 
   if (hasBookId) {
     const book = getBookById(args.book_id as number)
     if (!book) {
-      return { status: 'not_found', message: '未找到对应的图书 ID。' }
+      return { status: 'not_found', message: '没有找到对应的图书 ID。' }
     }
 
-    if (normalizedIsbnValue && normalizeIsbn(book.isbn) !== normalizedIsbnValue) {
+    if (normalizedIsbn && normalizeIsbn(book.isbn) !== normalizedIsbn) {
       return {
         status: 'conflict',
         message: 'book_id 与 ISBN 不一致，请重新确认具体图书。',
@@ -362,12 +376,12 @@ function resolveBookReference(args: BookReferenceArgs): ResolvedBookReference {
     return { status: 'resolved', book }
   }
 
-  if (normalizedIsbnValue) {
+  if (normalizedIsbn) {
     const matches = db.prepare(`
       ${BOOK_BASE_SELECT}
         AND REPLACE(REPLACE(UPPER(b.isbn), '-', ''), ' ', '') = ?
       ORDER BY b.id ASC
-    `).all(normalizedIsbnValue) as BookRow[]
+    `).all(normalizedIsbn) as BookRow[]
 
     if (matches.length === 1) {
       return { status: 'resolved', book: matches[0] }
@@ -376,16 +390,16 @@ function resolveBookReference(args: BookReferenceArgs): ResolvedBookReference {
     if (matches.length > 1) {
       return {
         status: 'ambiguous',
-        message: '该 ISBN 对应多本图书，请先确认具体图书。',
+        message: '这个 ISBN 对应多本图书，请先确认具体图书。',
         candidates: matches.slice(0, 5).map(mapBookCandidate)
       }
     }
 
-    return { status: 'not_found', message: '未找到对应 ISBN 的图书。' }
+    return { status: 'not_found', message: '没有找到对应 ISBN 的图书。' }
   }
 
   if (normalizedTitle) {
-    const exactMatches = listExactTitleMatches(args.title!)
+    const exactMatches = listExactTitleMatches(args.title || '')
 
     if (exactMatches.length === 1) {
       return { status: 'resolved', book: exactMatches[0] }
@@ -394,17 +408,17 @@ function resolveBookReference(args: BookReferenceArgs): ResolvedBookReference {
     if (exactMatches.length > 1) {
       return {
         status: 'ambiguous',
-        message: '找到多本同名图书，请根据 book_id 或 ISBN 进一步确认。',
+        message: '找到了多本同名图书，请结合 book_id 或 ISBN 继续确认。',
         candidates: exactMatches.slice(0, 5).map(mapBookCandidate)
       }
     }
 
-    const fuzzyCandidates = listBookCandidatesByQuery(args.title!, 5)
+    const fuzzyCandidates = listBookCandidatesByQuery(args.title || '', 5)
     return {
       status: 'not_found',
       message: fuzzyCandidates.length > 0
-        ? '没有找到唯一精确匹配的书名，请从候选图书中确认。'
-        : '没有找到匹配的图书，请尝试更完整的书名、ISBN 或先调用 search_books。',
+        ? '没有找到唯一精确匹配的书名，请先从候选图书中确认。'
+        : '没有找到匹配的图书，请尝试更完整的书名、ISBN，或先调用 search_books。',
       candidates: fuzzyCandidates.map(mapBookCandidate)
     }
   }
@@ -424,7 +438,7 @@ function buildLookupFailure(result: Exclude<ResolvedBookReference, { status: 're
   }
 }
 
-function buildBorrowFailure(result: Exclude<ResolvedBookReference, { status: 'resolved' }>) {
+function buildActionFailure(result: Exclude<ResolvedBookReference, { status: 'resolved' }>) {
   return {
     success: false,
     reason: result.status,
@@ -462,31 +476,30 @@ async function executeSearchBooks(args: { query: string; mode?: SearchMode; limi
 
         if (rows.length > 0) {
           const client = new OpenAI({ apiKey, baseURL })
-          const qResp = await client.embeddings.create({ model: embeddingModel, input: query })
-          const qVec = qResp.data[0].embedding
+          const response = await client.embeddings.create({ model: embeddingModel, input: query })
+          const queryVector = response.data[0].embedding
 
           return rows
             .map(row => ({
               ...toBookResponse(row, {
-                similarity: parseFloat(cosineSimilarity(JSON.parse(row.vector), qVec).toFixed(4)),
+                similarity: parseFloat(cosineSimilarity(JSON.parse(row.vector), queryVector).toFixed(4)),
                 match_type: 'semantic'
               })
             }))
-            .sort((a, b) => b.similarity - a.similarity)
+            .sort((left, right) => right.similarity - left.similarity)
             .slice(0, limit)
         }
       } catch {
-        // fall through to keyword mode
       }
     }
   }
 
-  const q = `%${query}%`
+  const keyword = `%${query}%`
   const books = db.prepare(`
     ${BOOK_BASE_SELECT}
       AND (b.title LIKE ? OR b.author LIKE ? OR b.isbn LIKE ? OR b.description LIKE ? OR b.keywords LIKE ? OR b.publisher LIKE ?)
     LIMIT 50
-  `).all(q, q, q, q, q, q) as BookRow[]
+  `).all(keyword, keyword, keyword, keyword, keyword, keyword) as BookRow[]
 
   return books
     .map(book => {
@@ -499,21 +512,21 @@ async function executeSearchBooks(args: { query: string; mode?: SearchMode; limi
         })
       }
     })
-    .sort((a, b) => b._score - a._score || b.available_quantity - a.available_quantity || a.id - b.id)
+    .sort((left, right) => right._score - left._score || right.available_quantity - left.available_quantity || left.id - right.id)
     .slice(0, limit)
     .map(({ _score, ...book }) => book)
 }
 
 function executeRecommendBooks(args: { genre: string; count?: number }): { books: any[] } {
   const { genre, count = 5 } = args
-  const q = `%${genre}%`
+  const keyword = `%${genre}%`
 
   let books = db.prepare(`
     ${BOOK_BASE_SELECT}
       AND (b.title LIKE ? OR b.author LIKE ? OR b.keywords LIKE ? OR b.description LIKE ? OR bc.name LIKE ?)
     ORDER BY b.total_quantity DESC, b.available_quantity DESC
     LIMIT ?
-  `).all(q, q, q, q, q, count) as BookRow[]
+  `).all(keyword, keyword, keyword, keyword, keyword, count) as BookRow[]
 
   if (books.length < count) {
     const existingIds = books.map(book => book.id)
@@ -541,7 +554,7 @@ function executeGetBookDetails(args: BookReferenceArgs): any {
     SELECT r.name AS reader_name, r.reader_no, br.borrow_date, br.due_date, br.status
     FROM borrowing_records br
     JOIN readers r ON br.reader_id = r.id
-    WHERE br.book_id = ? AND br.status = 'borrowed' AND br.is_deleted = 0
+    WHERE br.book_id = ? AND br.status IN ('borrowed', 'overdue') AND br.is_deleted = 0
     ORDER BY br.due_date ASC
   `).all(book.id) as any[]
 
@@ -568,7 +581,7 @@ function executeGetBorrowingStatus(args: BookReferenceArgs): any {
     SELECT r.name AS reader_name, r.reader_no, br.borrow_date, br.due_date, br.status
     FROM borrowing_records br
     JOIN readers r ON br.reader_id = r.id
-    WHERE br.book_id = ? AND br.status = 'borrowed' AND br.is_deleted = 0
+    WHERE br.book_id = ? AND br.status IN ('borrowed', 'overdue') AND br.is_deleted = 0
     ORDER BY br.due_date ASC
   `).all(book.id) as any[]
 
@@ -582,32 +595,33 @@ function executeGetBorrowingStatus(args: BookReferenceArgs): any {
   }
 }
 
-async function executeBorrowBook(args: BookReferenceArgs, context: ToolContext): Promise<any> {
+async function executeReserveBook(args: BookReferenceArgs, context: ToolContext): Promise<any> {
   if (!context.readerId) {
     return {
       success: false,
-      message: '您的账号未关联读者信息，无法执行借阅操作，请联系管理员。'
+      message: '您的账号未绑定读者信息，暂时无法预约，请联系管理员。'
     }
   }
 
   const resolved = resolveBookReference(args)
   if (resolved.status !== 'resolved') {
-    return buildBorrowFailure(resolved)
+    return buildActionFailure(resolved)
   }
 
   try {
-    const service = new BorrowingService()
-    const record = await service.borrowBook(context.readerId, resolved.book.id)
+    const reservationService = new ReservationService()
+    const reservation = reservationService.createReservation(context.readerId, resolved.book.id)
     return {
       success: true,
-      message: `借阅成功：${resolved.book.title}`,
+      message: `预约成功：《${resolved.book.title}》已加入您的到馆取书列表，请到馆在自助终端扫码取书。`,
       book: mapBookCandidate(resolved.book),
-      due_date: record.due_date
+      pickup_code: reservation.pickup_code,
+      expires_at: reservation.expires_at
     }
   } catch (error: any) {
     return {
       success: false,
-      message: error?.message || '借阅失败',
+      message: error?.message || '预约失败。',
       book: mapBookCandidate(resolved.book)
     }
   }
@@ -615,8 +629,8 @@ async function executeBorrowBook(args: BookReferenceArgs, context: ToolContext):
 
 function executeSearchNotes(args: { query: string; book_id?: number; limit?: number }): any {
   const { query, book_id, limit = 5 } = args
-  const repo = new NoteRepository()
-  const result = repo.findPlaza({
+  const noteRepository = new NoteRepository()
+  const result = noteRepository.findPlaza({
     keyword: query,
     bookId: book_id,
     page: 1,
@@ -644,17 +658,24 @@ function executePublishNote(args: { title: string; content: string; book_id?: nu
   }
 
   try {
-    const repo = new NoteRepository()
-    const note = repo.create({
+    const noteRepository = new NoteRepository()
+    const note = noteRepository.create({
       user_id: context.userId,
       title: args.title,
       content: args.content,
       book_id: args.book_id,
       visibility: 'public'
     })
-    return { success: true, note_id: note.id, title: note.title }
+    return {
+      success: true,
+      note_id: note.id,
+      title: note.title
+    }
   } catch (error: any) {
-    return { success: false, message: error?.message || '发布笔记失败' }
+    return {
+      success: false,
+      message: error?.message || '发布笔记失败。'
+    }
   }
 }
 
@@ -662,7 +683,7 @@ function executeGetMyBorrowings(context: ToolContext): any {
   if (!context.readerId) {
     return {
       success: false,
-      message: '您的账号未关联读者信息，无法查看借阅记录。'
+      message: '您的账号未绑定读者信息，无法查询借阅记录。'
     }
   }
 
@@ -670,7 +691,8 @@ function executeGetMyBorrowings(context: ToolContext): any {
     SELECT b.title AS book_title, br.borrow_date, br.due_date, br.status,
            br.renewal_count,
            CASE
-             WHEN br.status = 'overdue' THEN CAST(julianday('now') - julianday(br.due_date) AS INTEGER)
+             WHEN br.status = 'overdue' OR (br.status = 'borrowed' AND br.due_date < date('now'))
+               THEN CAST(julianday('now') - julianday(br.due_date) AS INTEGER)
              ELSE 0
            END AS overdue_days
     FROM borrowing_records br
@@ -691,7 +713,7 @@ function executeGetPopularBooks(args: { limit?: number; category?: string }): an
 
   let query = `
     SELECT b.id, b.title, b.author, b.isbn, bc.name AS category_name,
-           b.available_quantity,
+           b.available_quantity, b.total_quantity,
            COUNT(br.id) AS borrow_count
     FROM borrowing_records br
     JOIN books b ON br.book_id = b.id
@@ -719,7 +741,7 @@ function executeGetPopularBooks(args: { limit?: number; category?: string }): an
 
 function executeGetReaderInfo(context: ToolContext): any {
   if (!context.readerId) {
-    return { success: false, message: '您的账号未关联读者信息。' }
+    return { success: false, message: '您的账号未绑定读者信息。' }
   }
 
   const reader = db.prepare(`
@@ -731,15 +753,15 @@ function executeGetReaderInfo(context: ToolContext): any {
   `).get(context.readerId) as any
 
   if (!reader) {
-    return { success: false, message: '未找到读者信息。' }
+    return { success: false, message: '没有找到读者信息。' }
   }
 
   const stats = db.prepare(`
     SELECT
-      COUNT(CASE WHEN status = 'borrowed' THEN 1 END) AS current_borrowings,
+      COUNT(CASE WHEN status IN ('borrowed', 'overdue') THEN 1 END) AS current_borrowings,
       COUNT(CASE WHEN status = 'overdue' THEN 1 END) AS overdue_count
     FROM borrowing_records
-    WHERE reader_id = ? AND is_deleted = 0 AND status IN ('borrowed', 'overdue')
+    WHERE reader_id = ? AND is_deleted = 0
   `).get(context.readerId) as any
 
   return {
@@ -762,10 +784,10 @@ export async function executeTool(
       return { result: await executeSearchBooks(args as { query: string; mode?: SearchMode; limit?: number }) }
 
     case 'recommend_books': {
-      const recResult = executeRecommendBooks(args as { genre: string; count?: number })
+      const recommendation = executeRecommendBooks(args as { genre: string; count?: number })
       return {
-        result: recResult.books,
-        sideEffect: { type: 'recommend', books: recResult.books }
+        result: recommendation.books,
+        sideEffect: { type: 'recommend', books: recommendation.books }
       }
     }
 
@@ -775,8 +797,8 @@ export async function executeTool(
     case 'get_borrowing_status':
       return { result: executeGetBorrowingStatus(args as BookReferenceArgs) }
 
-    case 'borrow_book':
-      return { result: await executeBorrowBook(args as BookReferenceArgs, context) }
+    case 'reserve_book':
+      return { result: await executeReserveBook(args as BookReferenceArgs, context) }
 
     case 'search_notes':
       return { result: executeSearchNotes(args as { query: string; book_id?: number; limit?: number }) }
@@ -794,6 +816,6 @@ export async function executeTool(
       return { result: executeGetReaderInfo(context) }
 
     default:
-      return { result: { error: `未知工具: ${name}` } }
+      return { result: { error: `未知工具：${name}` } }
   }
 }

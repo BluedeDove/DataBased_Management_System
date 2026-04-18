@@ -9,13 +9,19 @@ import {
   ConflictError
 } from '../lib/errorHandler'
 
-/**
- * 统一错误处理中间件
- */
 export function errorMiddleware(err: Error, req: Request, res: Response, _next: NextFunction) {
-  logger.error(`请求错误 [${req.method}] ${req.path}:`, err)
+  logger.error(`Request error [${req.method}] ${req.path}:`, err)
 
-  // 已知错误类型
+  if (err.message && err.message.includes('CORS')) {
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: 'CORS_NOT_ALLOWED',
+        message: err.message
+      }
+    })
+  }
+
   if (err instanceof AuthenticationError) {
     return res.status(401).json({
       success: false,
@@ -47,7 +53,6 @@ export function errorMiddleware(err: Error, req: Request, res: Response, _next: 
     })
   }
 
-  // 乐观锁冲突错误
   if (err instanceof ConflictError) {
     return res.status(409).json({
       success: false,
@@ -59,7 +64,6 @@ export function errorMiddleware(err: Error, req: Request, res: Response, _next: 
     })
   }
 
-  // 检测版本冲突错误（来自repository的错误消息）
   if (err.message && err.message.includes('版本冲突')) {
     return res.status(409).json({
       success: false,
@@ -92,7 +96,6 @@ export function errorMiddleware(err: Error, req: Request, res: Response, _next: 
     })
   }
 
-  // 未知错误
   return res.status(500).json({
     success: false,
     error: {
@@ -102,9 +105,6 @@ export function errorMiddleware(err: Error, req: Request, res: Response, _next: 
   })
 }
 
-/**
- * 404 处理中间件
- */
 export function notFoundMiddleware(req: Request, res: Response) {
   res.status(404).json({
     success: false,
@@ -115,9 +115,6 @@ export function notFoundMiddleware(req: Request, res: Response) {
   })
 }
 
-/**
- * 异步处理器包装函数
- */
 export function asyncHandler(fn: (req: Request, res: Response, next: NextFunction) => Promise<any>) {
   return (req: Request, res: Response, next: NextFunction) => {
     Promise.resolve(fn(req, res, next)).catch(next)

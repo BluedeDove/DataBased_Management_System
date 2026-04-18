@@ -1,10 +1,12 @@
 import { BookRepository, Book, BookCategory, BookWithCategory } from './book.repository'
+import { BookCopyRepository } from './book-copy.repository'
 import { ValidationError, BusinessError, NotFoundError } from '../../lib/errorHandler'
 import { logger } from '../../lib/logger'
 import { db } from '../../database'
 
 export class BookService {
   private bookRepository = new BookRepository()
+  private bookCopyRepository = new BookCopyRepository()
 
   getAllCategories(): BookCategory[] { return this.bookRepository.findAllCategories() }
   getCategoryById(id: number): BookCategory { const c = this.bookRepository.findCategoryById(id); if (!c) throw new NotFoundError('图书类别'); return c }
@@ -31,7 +33,9 @@ export class BookService {
     }
 
     if (!data.available_quantity) data.available_quantity = data.total_quantity
-    return this.bookRepository.create(data)
+    const created = this.bookRepository.create(data)
+    this.bookCopyRepository.createCopies(created.id, created.total_quantity)
+    return created
   }
 
   updateBook(id: number, updates: Partial<Book>): Book {
@@ -48,6 +52,7 @@ export class BookService {
     if (quantity < 1) throw new ValidationError('数量必须大于0')
     const book = this.getBookById(id)
     logger.info('增加图书馆藏', book.title, quantity)
+    this.bookCopyRepository.createCopies(id, quantity)
     return this.bookRepository.update(id, { total_quantity: book.total_quantity + quantity, available_quantity: book.available_quantity + quantity })
   }
 

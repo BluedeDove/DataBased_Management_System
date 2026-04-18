@@ -1,191 +1,143 @@
 <template>
   <div class="ai-page">
-    <!-- ── Left: History Panel ── -->
     <aside class="history-panel">
-      <div class="hp-header">
-        <div class="hp-logo">
-          <el-icon style="color: var(--gdut-red); font-size: 20px"><MagicStick /></el-icon>
-          <span>AI 助手</span>
-        </div>
-        <div class="status-indicator" :class="{ online: isAIOnline }">
-          <span class="pulse-dot" /><span>{{ isAIOnline ? '在线' : '离线' }}</span>
-        </div>
-      </div>
-
-      <div class="search-bar" style="margin-bottom: 12px">
-        <el-icon class="search-icon"><Search /></el-icon>
-        <input v-model="historySearch" placeholder="搜索对话…" />
-      </div>
-
-      <div class="hp-actions">
-        <button class="action-chip" @click="startNewChat"><el-icon><ChatDotRound /></el-icon> 新对话</button>
-        <button class="action-chip" @click="exportConversation"><el-icon><Download /></el-icon> 导出</button>
-      </div>
-
-      <div class="hp-list">
-        <div
-          v-for="item in filteredHistory"
-          :key="item.id"
-          class="hp-item"
-          :class="{ active: currentConversationId === item.id }"
-          @click="loadChatHistory(item)"
-        >
-          <el-icon style="font-size: 14px; color: var(--text-muted)"><Clock /></el-icon>
-          <span class="hp-item-text">{{ item.title }}</span>
-          <button class="hp-del" @click.stop="deleteConversation(item)">
-            <el-icon><Delete /></el-icon>
-          </button>
-        </div>
-        <div v-if="chatHistoryList.length === 0" class="hp-empty">暂无历史对话</div>
-      </div>
-
-      <div class="hp-stats">
-        <div class="hp-stat">
-          <span class="hp-stat-val">{{ totalVectors }}</span>
-          <span class="hp-stat-lbl">向量数</span>
-        </div>
-        <div class="hp-stat">
-          <span class="hp-stat-val">{{ vectorCoverage }}%</span>
-          <span class="hp-stat-lbl">覆盖率</span>
-        </div>
-      </div>
-    </aside>
-
-    <!-- ── Center: Chat ── -->
-    <main class="chat-main">
-      <div class="chat-header">
+      <div class="panel-header">
         <div>
-          <div class="ch-title">智能图书助手</div>
-          <div class="ch-sub">我可以为您推荐图书、查询信息或解答疑问</div>
+          <div class="panel-title">AI 智能图书馆</div>
+          <div class="panel-subtitle">{{ isAIOnline ? '服务在线' : '服务未连接' }}</div>
         </div>
-        <button class="icon-btn" @click="showRecommend = !showRecommend" title="推荐面板">
-          <el-icon><Reading /></el-icon>
+        <button class="ghost-icon-btn" @click="startNewChat">
+          <el-icon><Plus /></el-icon>
         </button>
       </div>
 
-      <div ref="messagesRef" class="chat-messages">
-        <div v-for="(msg, idx) in chatHistory" :key="msg.id || idx" class="msg-row" :class="msg.role">
-          <div class="msg-avatar" :class="msg.role">
-            <el-icon v-if="msg.role === 'assistant'"><Service /></el-icon>
-            <el-icon v-else><User /></el-icon>
+      <div class="sidebar-search">
+        <el-icon><Search /></el-icon>
+        <input v-model="historySearch" type="text" placeholder="搜索历史对话">
+      </div>
+
+      <div class="stats-box">
+        <div class="stats-item">
+          <span class="stats-value">{{ totalVectors }}</span>
+          <span class="stats-label">向量数量</span>
+        </div>
+        <div class="stats-item">
+          <span class="stats-value">{{ vectorCoverage }}%</span>
+          <span class="stats-label">覆盖率</span>
+        </div>
+      </div>
+
+      <div class="history-list">
+        <button
+          v-for="conversation in filteredConversations"
+          :key="conversation.id"
+          class="history-item"
+          :class="{ active: currentConversationId === conversation.id }"
+          @click="loadConversation(conversation)"
+        >
+          <div class="history-text">
+            <div class="history-title">{{ conversation.title }}</div>
+            <div class="history-time">{{ formatDate(conversation.updated_at || conversation.created_at) }}</div>
           </div>
-          <div class="msg-bubble" :class="msg.role">
-            <!-- Tool calls cards -->
-            <div v-if="msg.toolCalls && msg.toolCalls.length > 0" class="tool-calls-container">
-              <div v-for="tc in msg.toolCalls" :key="tc.id" class="tool-call-card" :class="tc.status">
-                <span class="tc-icon">
-                  <span v-if="tc.status === 'started'" class="tc-spinner" />
-                  <span v-else-if="tc.status === 'completed'">&#10003;</span>
-                  <span v-else>&#10007;</span>
-                </span>
-                <span class="tc-label">{{ tc.displayName }}</span>
-                <span class="tc-status">{{ tc.status === 'started' ? '执行中...' : '完成' }}</span>
+          <span class="history-delete" @click.stop="deleteConversation(conversation)">×</span>
+        </button>
+        <div v-if="filteredConversations.length === 0" class="history-empty">暂无历史对话</div>
+      </div>
+    </aside>
+
+    <main class="chat-panel">
+      <header class="chat-header">
+        <div>
+          <h1>AI 智能图书馆</h1>
+          <p>默认只帮你找书、推荐、预约与查询，不会在线上直接借走实体书。</p>
+        </div>
+        <button class="ghost-btn" @click="showRecommend = !showRecommend">
+          <el-icon><Reading /></el-icon>
+          <span>{{ showRecommend ? '收起推荐' : '展开推荐' }}</span>
+        </button>
+      </header>
+
+      <div ref="messagesRef" class="messages">
+        <div v-for="message in chatHistory" :key="message.id" class="message-row" :class="message.role">
+          <div class="message-avatar">{{ message.role === 'assistant' ? 'AI' : '我' }}</div>
+          <div class="message-bubble" :class="message.role">
+            <div v-if="message.toolCalls?.length" class="tool-list">
+              <div v-for="toolCall in message.toolCalls" :key="toolCall.id" class="tool-item">
+                <span>{{ toolCall.displayName }}</span>
+                <span>{{ toolCall.status === 'started' ? '执行中' : '已完成' }}</span>
               </div>
             </div>
-            <div v-if="msg.loading" class="typing-dots"><span /><span /><span /></div>
-            <div v-else-if="msg.content" v-html="formatContent(msg.content)" />
-            <div v-if="msg.timestamp && !msg.loading" class="msg-time">{{ formatTime(msg.timestamp) }}</div>
+            <div v-if="message.loading" class="typing">AI 正在思考…</div>
+            <div v-else class="markdown-body" v-html="formatContent(message.content)" />
+            <div class="message-time">{{ formatTime(message.timestamp) }}</div>
           </div>
         </div>
       </div>
 
-      <div class="chat-input-area">
-        <div class="quick-prompts">
-          <button class="qp-chip" @click="setInput('最近有什么新书？')">📚 新书推荐</button>
-          <button class="qp-chip" @click="setInput('适合初学者的Python书')">🐍 Python入门</button>
-          <button class="qp-chip" @click="setInput('推荐一些关于人工智能的书籍')">🤖 AI相关</button>
-          <button class="qp-chip" @click="setInput('有哪些经典的数据结构与算法书？')">📐 算法</button>
-        </div>
-        <div class="input-row">
-          <el-input
-            v-model="inputMessage"
-            type="textarea"
-            :rows="2"
-            placeholder="输入您的问题，按 Enter 发送…"
-            :disabled="loading"
-            @keydown.enter.prevent="sendMessageV2"
-          />
-          <button v-if="canRegenerate && !loading" class="regen-btn" @click="regenerateResponse">
-            <el-icon><RefreshRight /></el-icon> 重新输出
+      <div class="quick-prompts">
+        <button class="prompt-chip" @click="setPrompt('请根据我的课程方向推荐 3 本值得借的书')">课程推荐</button>
+        <button class="prompt-chip" @click="setPrompt('我想找适合入门机器学习的实体书')">机器学习入门</button>
+        <button class="prompt-chip" @click="setPrompt('有没有适合复习数据结构的馆藏图书')">数据结构复习</button>
+        <button class="prompt-chip" @click="setPrompt('帮我找一些冷门但高质量的算法书')">反热门推荐</button>
+      </div>
+
+      <div class="input-box">
+        <el-input
+          v-model="inputMessage"
+          type="textarea"
+          :rows="3"
+          resize="none"
+          placeholder="输入你的问题，例如：帮我推荐可预约的人工智能实体书"
+          :disabled="loading"
+          @keydown.enter.prevent="sendMessage"
+        />
+        <div class="input-actions">
+          <button v-if="loading" class="ghost-btn" @click="stopGeneration">
+            <el-icon><VideoPause /></el-icon>
+            <span>停止</span>
           </button>
-          <button v-if="loading" class="stop-btn" @click="stopGenerationV2">
-            <el-icon><VideoPause /></el-icon> 停止
-          </button>
-          <button v-else class="send-btn" @click="sendMessageV2">
+          <button class="primary-btn" :disabled="loading" @click="sendMessage">
             <el-icon><Promotion /></el-icon>
+            <span>{{ loading ? '发送中…' : '发送' }}</span>
           </button>
         </div>
       </div>
     </main>
 
-    <!-- ── Right: Recommendations ── -->
     <aside v-show="showRecommend" class="recommend-panel">
-      <div class="rp-header">
-        <div class="rp-title">
-          <el-icon><Reading /></el-icon> 推荐图书
-          <span v-if="recAiPowered" class="ai-badge">✨ AI</span>
+      <div class="panel-header">
+        <div>
+          <div class="panel-title">推荐书单</div>
+          <div class="panel-subtitle">{{ recAiPowered ? '由 AI 对话驱动' : '等待对话触发' }}</div>
         </div>
-        <button class="icon-btn" @click="showRecommend = false"><el-icon><Close /></el-icon></button>
       </div>
 
-      <!-- Loading state -->
-      <div v-if="recLoading" class="rp-loading">
-        <div class="rp-loading-dots"><span /><span /><span /></div>
-        <p>AI 正在分析推荐…</p>
+      <div v-if="recommendedBooks.length === 0" class="recommend-empty">
+        发起对话后，AI 会把适合预约的实体书放到这里。
       </div>
 
-      <!-- Book list -->
-      <div v-else class="rp-list">
-        <template v-if="recommendedBooks.length > 0">
-          <div
-            v-for="book in recommendedBooks"
-            :key="book.id"
-            class="rp-book"
-            :class="{ unavailable: availOf(book) === 0 }"
-          >
-            <!-- Book icon / cover -->
-            <div class="rp-book-icon" :class="availOf(book) > 0 ? 'has-stock' : 'no-stock'">
-              <el-icon><Document /></el-icon>
+      <div v-else class="recommend-list">
+        <div v-for="book in recommendedBooks" :key="book.id" class="recommend-item">
+          <div class="recommend-head">
+            <div>
+              <div class="recommend-title">{{ book.title }}</div>
+              <div class="recommend-meta">{{ book.author }} · {{ book.category_name || '未分类' }}</div>
             </div>
-
-            <!-- Book info -->
-            <div class="rp-book-body">
-              <div class="rp-book-title" :title="book.title">{{ book.title }}</div>
-              <div class="rp-book-author">{{ book.author }}</div>
-              <div class="rp-book-meta">
-                <span class="rp-category">{{ book.category_name }}</span>
-                <span class="rp-avail" :class="availClass(book)">
-                  {{ availOf(book) }}/{{ book.total_quantity }} 可借
-                </span>
-              </div>
-
-              <!-- Action buttons -->
-              <div class="rp-actions">
-                <!-- Borrow button: for readers with reader_id -->
-                <button
-                  v-if="canBorrow"
-                  class="rp-btn borrow-btn"
-                  :disabled="availOf(book) === 0 || borrowingSet.has(book.id)"
-                  @click="handleBorrow(book)"
-                >
-                  <el-icon><Plus /></el-icon>
-                  {{ borrowingSet.has(book.id) ? '借阅中…' : availOf(book) === 0 ? '暂无库存' : '借 阅' }}
-                </button>
-
-                <!-- View in search page -->
-                <button class="rp-btn view-btn" @click="viewInBooks(book)">
-                  <el-icon><Search /></el-icon>
-                  查看
-                </button>
-              </div>
-            </div>
+            <span class="pill-badge" :class="bookMeta(book).badgeClass">{{ bookMeta(book).label }}</span>
           </div>
-        </template>
-
-        <!-- Empty state -->
-        <div v-else class="rp-empty">
-          <el-icon style="font-size: 40px; opacity: 0.25"><Reading /></el-icon>
-          <p>发起对话后，AI 将推荐相关图书</p>
+          <div class="recommend-meta">库存 {{ book.available_quantity }} / {{ book.total_quantity }}</div>
+          <div class="recommend-hint">{{ reservationButtonHint(book) }}</div>
+          <div class="recommend-actions">
+            <button class="ghost-btn" @click="viewInBooks(book)">去图书页</button>
+            <button
+              class="primary-btn small"
+              :title="reservationButtonHint(book)"
+              :disabled="!canReserveBook(book)"
+              @click="handleReserve(book)"
+            >
+              {{ reservationButtonLabel(book) }}
+            </button>
+          </div>
         </div>
       </div>
     </aside>
@@ -193,43 +145,61 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import {
-  MagicStick, User, Service, Reading, Search, ChatDotRound,
-  Clock, Promotion, Document, Close, Delete, Plus,
-  VideoPause, Download, RefreshRight
-} from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
+import { ElMessage } from 'element-plus'
+import { Search, Plus, Reading, Promotion, VideoPause } from '@element-plus/icons-vue'
 import { useUserStore } from '@/store/user'
-import { aiApi, ToolCallEvent } from '../api/ai.api'
-import { borrowingApi } from '../api/borrowing.api'
+import { aiApi, type Conversation, type ToolCallEvent } from '@/api/ai.api'
+import { reservationApi } from '@/api/reservation.api'
+import { getBookStatusMeta } from '@/utils/libraryStatus'
 
 interface ToolCallInfo {
   id: string
   name: string
-  status: 'started' | 'completed' | 'error'
-  result?: any
+  status: 'started' | 'completed'
   displayName: string
+  result?: any
 }
 
 interface Message {
-  id?: string
+  id: string
   role: 'user' | 'assistant'
   content: string
+  timestamp: number
   loading?: boolean
-  timestamp?: number
   toolCalls?: ToolCallInfo[]
 }
 
-interface Conversation { id: number; title: string; messages: Message[]; created_at: string }
+interface RecommendedBook {
+  id: number
+  title: string
+  author: string
+  category_name?: string
+  available_quantity: number
+  total_quantity: number
+  status?: string
+}
 
-const createInitialMessage = (): Message => ({
-  id: 'init',
+const TOOL_DISPLAY_NAMES: Record<string, string> = {
+  search_books: '搜索图书',
+  recommend_books: '推荐图书',
+  get_book_details: '查看图书详情',
+  get_borrowing_status: '查询借阅状态',
+  reserve_book: '预约实体图书',
+  search_notes: '搜索读书笔记',
+  publish_note: '发布笔记',
+  get_my_borrowings: '查询我的借阅',
+  get_popular_books: '热门图书',
+  get_reader_info: '读者信息'
+}
+
+const createWelcomeMessage = (): Message => ({
+  id: 'welcome',
   role: 'assistant',
-  content: '你好！我是图书馆智能助手。你可以问我关于馆藏图书的问题，或者让我为你推荐书籍。',
+  content: '你好，我是你的 **AI 智能图书馆助手**。你可以让我帮你找书、做预约、查借阅、做个性化推荐；实体书的真正借还需要到馆在机器终端扫码完成。',
   timestamp: Date.now()
 })
 
@@ -251,811 +221,686 @@ const normalizeConversationMessages = (raw: any): Message[] => {
   if (!Array.isArray(parsed)) return []
 
   return parsed
-    .map((message: any, index: number) => {
-      if (!message || typeof message !== 'object') return null
-
-      const rawTimestamp = message.timestamp
-      const numericTimestamp = typeof rawTimestamp === 'number'
-        ? rawTimestamp
-        : typeof rawTimestamp === 'string'
-          ? Number(rawTimestamp)
-          : NaN
-      const dateTimestamp = typeof rawTimestamp === 'string' ? Date.parse(rawTimestamp) : NaN
-      const timestamp = Number.isFinite(numericTimestamp)
-        ? numericTimestamp
-        : Number.isFinite(dateTimestamp)
-          ? dateTimestamp
-          : undefined
-
-      return {
-        id: typeof message.id === 'string' ? message.id : `history-${index}`,
-        role: message.role === 'user' ? 'user' : 'assistant',
-        content: typeof message.content === 'string'
-          ? message.content
-          : message.content == null
-            ? ''
-            : String(message.content),
-        ...(timestamp !== undefined ? { timestamp } : {}),
-        ...(Array.isArray(message.toolCalls) ? { toolCalls: message.toolCalls } : {})
-      } satisfies Message
-    })
-    .filter((message): message is Message => !!message)
+    .map((item: any, index: number) => ({
+      id: typeof item.id === 'string' ? item.id : `history-${index}`,
+      role: item.role === 'user' ? 'user' : 'assistant',
+      content: typeof item.content === 'string' ? item.content : '',
+      timestamp: typeof item.timestamp === 'number'
+        ? item.timestamp
+        : typeof item.timestamp === 'string'
+          ? Number(item.timestamp) || Date.parse(item.timestamp) || Date.now()
+          : Date.now(),
+      toolCalls: Array.isArray(item.toolCalls) ? item.toolCalls : []
+    }))
+    .filter(item => item.content || item.role === 'assistant')
 }
 
-const TOOL_DISPLAY_NAMES: Record<string, string> = {
-  search_books: '搜索图书',
-  recommend_books: '推荐图书',
-  get_book_details: '查看图书详情',
-  get_borrowing_status: '查询借阅状态',
-  borrow_book: '借阅图书'
-}
-
-const userStore = useUserStore()
 const router = useRouter()
+const userStore = useUserStore()
+
 const inputMessage = ref('')
 const loading = ref(false)
 const messagesRef = ref<HTMLElement | null>(null)
-const streamCleanup = ref<(() => void) | null>(null)
-
-const chatHistory = ref<Message[]>([
-  { id: 'init', role: 'assistant', content: '你好！我是图书馆智能助手。你可以问我关于馆藏图书的问题，或者让我为你推荐书籍。', timestamp: Date.now() }
-])
 const isAIOnline = ref(false)
-const vectorCoverage = ref(0)
 const totalVectors = ref(0)
-const chatHistoryList = ref<Conversation[]>([])
+const vectorCoverage = ref(0)
+const conversations = ref<Conversation[]>([])
 const currentConversationId = ref<number | null>(null)
-const showRecommend = ref(true)
 const historySearch = ref('')
-
-// ── Recommendation state ──
-const recommendedBooks = ref<any[]>([])
-const recLoading = ref(false)
+const chatHistory = ref<Message[]>([createWelcomeMessage()])
+const recommendedBooks = ref<RecommendedBook[]>([])
 const recAiPowered = ref(false)
-const borrowingSet = ref<Set<number>>(new Set())
-const activeAssistantMessageId = ref<string | null>(null)
-const lastUserPrompt = ref('')
+const showRecommend = ref(true)
+const reservedBookIds = ref<Set<number>>(new Set())
+const reservingIds = ref<Set<number>>(new Set())
+const streamCleanup = ref<(() => void) | null>(null)
+const activeAssistantId = ref<string | null>(null)
 
-// ── Computed ──
-const filteredHistory = computed(() => {
-  if (!historySearch.value) return chatHistoryList.value
-  return chatHistoryList.value.filter(c => (c.title || '').toLowerCase().includes(historySearch.value.toLowerCase()))
+const canReserve = computed(() => !!userStore.user?.reader_id)
+const bookMeta = (book: RecommendedBook) => getBookStatusMeta(book.status, book.available_quantity)
+
+const canReserveBook = (book: RecommendedBook) =>
+  !!userStore.user?.reader_id &&
+  bookMeta(book).canReserve &&
+  !reservedBookIds.value.has(book.id) &&
+  !reservingIds.value.has(book.id)
+
+const reservationButtonLabel = (book: RecommendedBook) => {
+  if (reservedBookIds.value.has(book.id)) return '已预约'
+  if (reservingIds.value.has(book.id)) return '预约中…'
+  if (!userStore.user?.reader_id) return '未绑定读者'
+  return bookMeta(book).reserveLabel
+}
+
+const reservationButtonHint = (book: RecommendedBook) => {
+  if (reservedBookIds.value.has(book.id)) return '该书已加入你的到馆取书列表'
+  if (!userStore.user?.reader_id) return '当前账号未绑定读者信息，暂时无法预约'
+  return bookMeta(book).hint
+}
+
+const filteredConversations = computed(() => {
+  if (!historySearch.value.trim()) return conversations.value
+  const keyword = historySearch.value.trim().toLowerCase()
+  return conversations.value.filter(item => (item.title || '').toLowerCase().includes(keyword))
 })
 
-const canBorrow = computed(() => {
-  const u = userStore.user
-  if (!u) return false
-  return !!(u.reader_id)
-})
-
-const canRegenerate = computed(() =>
-  !loading.value && chatHistory.value.some(message => message.role === 'user' && !!message.content.trim())
-)
-
-// ── Helpers ──
-const availOf = (book: any) => book.available_quantity ?? 0
-
-const availClass = (book: any) => {
-  const a = availOf(book)
-  if (a === 0) return 'avail-none'
-  if (a <= 1) return 'avail-low'
-  return 'avail-ok'
-}
-
-const formatContent = (content: string) => {
-  if (!content) return ''
-  return DOMPurify.sanitize(marked(content) as string)
-}
-
-const formatTime = (timestamp?: number) => {
-  if (!timestamp) return ''
-  return new Date(timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-}
-
-const scrollToBottom = () => {
-  nextTick(() => { if (messagesRef.value) messagesRef.value.scrollTop = messagesRef.value.scrollHeight })
-}
-
-// ── Borrow action ──
-const handleBorrow = async (book: any) => {
-  const readerId = userStore.user?.reader_id
-  if (!readerId) { ElMessage.info('您的账号未关联读者信息，请联系管理员'); return }
-  if (borrowingSet.value.has(book.id)) return
-  try {
-    borrowingSet.value.add(book.id)
-    const result = await borrowingApi.borrow(readerId, book.id)
-    if (result.success) {
-      ElMessage.success(`《${book.title}》借阅成功！`)
-      const idx = recommendedBooks.value.findIndex(b => b.id === book.id)
-      if (idx > -1) recommendedBooks.value[idx].available_quantity = Math.max(0, availOf(book) - 1)
-    }
-  } catch (e: any) {
-    ElMessage.error(e?.response?.data?.error?.message || '借阅失败，请稍后重试')
-  } finally {
-    borrowingSet.value.delete(book.id)
+const scrollToBottom = async () => {
+  await nextTick()
+  if (messagesRef.value) {
+    messagesRef.value.scrollTop = messagesRef.value.scrollHeight
   }
 }
 
-const viewInBooks = (book: any) => {
-  router.push({ path: '/books', query: { search: book.title } })
+const formatContent = (content: string) => DOMPurify.sanitize(marked(content || '') as string)
+
+const formatTime = (timestamp: number) =>
+  new Date(timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+
+const formatDate = (value: string) =>
+  new Date(value).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+
+const setPrompt = (prompt: string) => {
+  inputMessage.value = prompt
 }
 
-// ── AI Recommendation (fallback) ──
-const fetchRecommendations = async (lastUserMessage: string) => {
-  recLoading.value = true
-  try {
-    const messages = chatHistory.value
-      .filter(m => !m.loading && m.id !== 'init')
-      .slice(-10)
-      .map(m => ({ role: m.role, content: m.content }))
-    const result = await aiApi.chatRecommend(messages, lastUserMessage)
-    if (result.success) {
-      recommendedBooks.value = result.data.books || []
-      recAiPowered.value = result.data.ai_powered
-    }
-  } catch (e) {
-    console.warn('Recommendation fetch failed:', e)
-  } finally {
-    recLoading.value = false
+const loadAvailability = async () => {
+  const result = await aiApi.isAvailable()
+  if (result.success) {
+    isAIOnline.value = !!result.data
   }
 }
 
-// ── Send message ──
-const sendMessage = async () => {
-  if (!inputMessage.value.trim() || loading.value) return
-  const userMessage = inputMessage.value.trim()
-  inputMessage.value = ''
+const loadStatistics = async () => {
+  const result = await aiApi.getStatistics()
+  if (result.success && result.data) {
+    totalVectors.value = result.data.totalVectors || 0
+    vectorCoverage.value = Math.round(result.data.coverageRate || 0)
+  }
+}
 
-  chatHistory.value.push({ id: `user-${Date.now()}`, role: 'user', content: userMessage, timestamp: Date.now() })
-  scrollToBottom()
+const loadReservations = async () => {
+  if (!canReserve.value) {
+    reservedBookIds.value = new Set()
+    return
+  }
 
-  const aiMessageId = `ai-${Date.now()}`
-  chatHistory.value.push({ id: aiMessageId, role: 'assistant', content: '', loading: true, toolCalls: [] })
-  loading.value = true
-  recLoading.value = true
-  scrollToBottom()
-
-  let receivedToolRecommendation = false
-
-  try {
-    const history = chatHistory.value
-      .filter(m => !m.loading && m.id !== 'init')
-      .slice(-10)
-      .map(m => ({ role: m.role, content: m.content }))
-
-    let fullContent = ''
-    const cleanup = aiApi.chatStream(
-      userMessage, history as any, undefined,
-      // onChunk
-      (chunk) => {
-        fullContent += chunk
-        const mi = chatHistory.value.findIndex(m => m.id === aiMessageId)
-        if (mi > -1) { chatHistory.value[mi].content = fullContent; chatHistory.value[mi].loading = false; scrollToBottom() }
-      },
-      // onError
-      (error) => {
-        const mi = chatHistory.value.findIndex(m => m.id === aiMessageId)
-        if (mi > -1) { chatHistory.value[mi].content = `发生错误: ${error}`; chatHistory.value[mi].loading = false }
-        loading.value = false; recLoading.value = false; ElMessage.error('AI响应失败')
-      },
-      // onComplete
-      () => {
-        const mi = chatHistory.value.findIndex(m => m.id === aiMessageId)
-        if (mi > -1) chatHistory.value[mi].timestamp = Date.now()
-        loading.value = false
-        saveCurrentConversation()
-        // Fallback: only fetch recommendations if no tool-based recommendation was received
-        if (!receivedToolRecommendation) {
-          fetchRecommendations(userMessage)
-        } else {
-          recLoading.value = false
-        }
-      },
-      // onToolCall
-      (tc: ToolCallEvent) => {
-        const mi = chatHistory.value.findIndex(m => m.id === aiMessageId)
-        if (mi === -1) return
-        const msg = chatHistory.value[mi]
-        if (!msg.toolCalls) msg.toolCalls = []
-
-        const existing = msg.toolCalls.find(t => t.id === tc.id)
-        if (existing) {
-          existing.status = tc.status as any
-          if (tc.result !== undefined) existing.result = tc.result
-        } else {
-          msg.toolCalls.push({
-            id: tc.id,
-            name: tc.name,
-            status: tc.status as any,
-            result: tc.result,
-            displayName: TOOL_DISPLAY_NAMES[tc.name] || tc.name
-          })
-        }
-        msg.loading = false
-        scrollToBottom()
-      },
-      // onRecommend
-      (data: { books: any[]; ai_powered: boolean }) => {
-        receivedToolRecommendation = true
-        recommendedBooks.value = data.books || []
-        recAiPowered.value = data.ai_powered
-        recLoading.value = false
-        if (!showRecommend.value) showRecommend.value = true
-      }
+  const result = await reservationApi.getMy()
+  if (result.success && result.data) {
+    reservedBookIds.value = new Set(
+      result.data.filter(item => item.status === 'pending').map(item => item.book_id)
     )
-    streamCleanup.value = cleanup
-  } catch {
-    const mi = chatHistory.value.findIndex(m => m.id === aiMessageId)
-    if (mi > -1) { chatHistory.value[mi].content = 'AI服务暂时不可用，请稍后再试。'; chatHistory.value[mi].loading = false }
-    loading.value = false; recLoading.value = false
   }
+}
+
+const loadConversationList = async () => {
+  if (!userStore.user) return
+
+  const result = await aiApi.getConversations(userStore.user.id, 30)
+  if (result.success && result.data) {
+    conversations.value = result.data
+  }
+}
+
+const buildHistoryPayload = () =>
+  chatHistory.value
+    .filter(message => !message.loading && message.content.trim())
+    .map(message => ({
+      role: message.role,
+      content: message.content
+    }))
+
+const persistConversation = async () => {
+  if (!userStore.user) return
+
+  const messages = chatHistory.value.filter(message => !message.loading)
+  const firstUserMessage = messages.find(message => message.role === 'user')?.content || '新对话'
+  const title = firstUserMessage.slice(0, 24)
+
+  if (currentConversationId.value) {
+    const result = await aiApi.updateConversation(currentConversationId.value, title, messages)
+    if (result.success) {
+      await loadConversationList()
+    }
+    return
+  }
+
+  const result = await aiApi.saveConversation(userStore.user.id, title, messages)
+  if (result.success && result.data) {
+    currentConversationId.value = result.data.id
+    await loadConversationList()
+  }
+}
+
+const getActiveAssistant = () => {
+  const activeId = activeAssistantId.value
+  if (!activeId) return null
+  return chatHistory.value.find(message => message.id === activeId) || null
+}
+
+const handleToolCall = (event: ToolCallEvent) => {
+  const assistant = getActiveAssistant()
+  if (!assistant) return
+
+  if (!assistant.toolCalls) {
+    assistant.toolCalls = []
+  }
+
+  const existing = assistant.toolCalls.find(item => item.id === event.id)
+  if (existing) {
+    existing.status = event.status
+    existing.result = event.result
+    return
+  }
+
+  assistant.toolCalls.push({
+    id: event.id,
+    name: event.name,
+    status: event.status,
+    result: event.result,
+    displayName: TOOL_DISPLAY_NAMES[event.name] || event.name
+  })
+}
+
+const handleRecommend = (payload: { books: RecommendedBook[]; ai_powered: boolean }) => {
+  recommendedBooks.value = payload.books || []
+  recAiPowered.value = !!payload.ai_powered
+  showRecommend.value = true
 }
 
 const stopGeneration = () => {
-  if (streamCleanup.value) { streamCleanup.value(); streamCleanup.value = null }
-  loading.value = false; recLoading.value = false
-}
-
-const buildChatContext = (source: Message[]) =>
-  source
-    .filter(message => !message.loading && message.id !== 'init')
-    .slice(-10)
-    .map(message => ({ role: message.role, content: message.content }))
-
-const generateAssistantReply = async (
-  userMessage: string,
-  history: Array<{ role: 'user' | 'assistant'; content: string }>
-) => {
-  const aiMessageId = `ai-${Date.now()}`
-  activeAssistantMessageId.value = aiMessageId
-  lastUserPrompt.value = userMessage
-  chatHistory.value.push({ id: aiMessageId, role: 'assistant', content: '', loading: true, toolCalls: [] })
-  loading.value = true
-  recLoading.value = true
-  scrollToBottom()
-
-  let receivedToolRecommendation = false
-
-  try {
-    let fullContent = ''
-    const cleanup = aiApi.chatStream(
-      userMessage,
-      history as any,
-      undefined,
-      (chunk) => {
-        fullContent += chunk
-        const message = chatHistory.value.find(item => item.id === aiMessageId)
-        if (!message) return
-        message.content = fullContent
-        message.loading = false
-        scrollToBottom()
-      },
-      (error) => {
-        const message = chatHistory.value.find(item => item.id === aiMessageId)
-        if (message) {
-          message.content = `发生错误: ${error}`
-          message.loading = false
-          message.timestamp = Date.now()
-        }
-        activeAssistantMessageId.value = null
-        streamCleanup.value = null
-        loading.value = false
-        recLoading.value = false
-        ElMessage.error('AI 响应失败')
-      },
-      () => {
-        const message = chatHistory.value.find(item => item.id === aiMessageId)
-        if (message) {
-          message.loading = false
-          message.timestamp = Date.now()
-        }
-        activeAssistantMessageId.value = null
-        streamCleanup.value = null
-        loading.value = false
-        saveCurrentConversation()
-        if (!receivedToolRecommendation) {
-          fetchRecommendations(userMessage)
-        } else {
-          recLoading.value = false
-        }
-      },
-      (tc: ToolCallEvent) => {
-        const message = chatHistory.value.find(item => item.id === aiMessageId)
-        if (!message) return
-        if (!message.toolCalls) message.toolCalls = []
-
-        const existing = message.toolCalls.find(toolCall => toolCall.id === tc.id)
-        if (existing) {
-          existing.status = tc.status as any
-          if (tc.result !== undefined) existing.result = tc.result
-        } else {
-          message.toolCalls.push({
-            id: tc.id,
-            name: tc.name,
-            status: tc.status as any,
-            result: tc.result,
-            displayName: TOOL_DISPLAY_NAMES[tc.name] || tc.name
-          })
-        }
-
-        message.loading = false
-        scrollToBottom()
-      },
-      (data: { books: any[]; ai_powered: boolean }) => {
-        receivedToolRecommendation = true
-        recommendedBooks.value = data.books || []
-        recAiPowered.value = data.ai_powered
-        recLoading.value = false
-        if (!showRecommend.value) showRecommend.value = true
-      }
-    )
-
-    streamCleanup.value = cleanup
-  } catch {
-    const message = chatHistory.value.find(item => item.id === aiMessageId)
-    if (message) {
-      message.content = 'AI 服务暂时不可用，请稍后再试。'
-      message.loading = false
-      message.timestamp = Date.now()
-    }
-    activeAssistantMessageId.value = null
-    streamCleanup.value = null
-    loading.value = false
-    recLoading.value = false
+  streamCleanup.value?.()
+  streamCleanup.value = null
+  loading.value = false
+  const assistant = getActiveAssistant()
+  if (assistant) {
+    assistant.loading = false
   }
 }
 
-const sendMessageV2 = async () => {
-  if (!inputMessage.value.trim() || loading.value) return
+const sendMessage = async () => {
+  const prompt = inputMessage.value.trim()
+  if (!prompt || loading.value) return
 
-  const userMessage = inputMessage.value.trim()
-  const history = buildChatContext(chatHistory.value)
-  inputMessage.value = ''
-
-  chatHistory.value.push({
+  const userMessage: Message = {
     id: `user-${Date.now()}`,
     role: 'user',
-    content: userMessage,
+    content: prompt,
     timestamp: Date.now()
-  })
-  scrollToBottom()
-
-  await generateAssistantReply(userMessage, history)
-}
-
-const regenerateResponse = async () => {
-  if (loading.value) return
-
-  const lastUserEntry = [...chatHistory.value]
-    .map((message, index) => ({ message, index }))
-    .reverse()
-    .find(item => item.message.role === 'user' && !!item.message.content.trim())
-
-  if (!lastUserEntry) return
-
-  const userMessage = lastUserEntry.message.content.trim()
-  const history = buildChatContext(chatHistory.value.slice(0, lastUserEntry.index))
-
-  chatHistory.value = chatHistory.value.slice(0, lastUserEntry.index + 1)
-  recommendedBooks.value = []
-  recAiPowered.value = false
-  recLoading.value = false
-  scrollToBottom()
-
-  await generateAssistantReply(userMessage, history)
-}
-
-const stopGenerationV2 = () => {
-  if (streamCleanup.value) {
-    streamCleanup.value()
-    streamCleanup.value = null
   }
 
-  if (activeAssistantMessageId.value) {
-    const message = chatHistory.value.find(item => item.id === activeAssistantMessageId.value)
-    if (message) {
-      message.loading = false
-      message.timestamp = Date.now()
-      if (!message.content) {
-        message.content = '已停止输出。'
-      }
-    }
+  const assistantMessage: Message = {
+    id: `assistant-${Date.now()}`,
+    role: 'assistant',
+    content: '',
+    timestamp: Date.now(),
+    loading: true,
+    toolCalls: []
   }
 
-  activeAssistantMessageId.value = null
-  loading.value = false
-  recLoading.value = false
-  saveCurrentConversation()
-}
+  chatHistory.value.push(userMessage, assistantMessage)
+  inputMessage.value = ''
+  loading.value = true
+  activeAssistantId.value = assistantMessage.id
+  await scrollToBottom()
 
-const setInput = (text: string) => { inputMessage.value = text }
+  streamCleanup.value = aiApi.chatStream(
+    prompt,
+    buildHistoryPayload(),
+    undefined,
+    async chunk => {
+      assistantMessage.content += chunk
+      await scrollToBottom()
+    },
+    async error => {
+      assistantMessage.content = error || '请求失败。'
+      assistantMessage.loading = false
+      loading.value = false
+      streamCleanup.value = null
+      await persistConversation()
+      await scrollToBottom()
+    },
+    async () => {
+      assistantMessage.loading = false
+      loading.value = false
+      streamCleanup.value = null
+      await persistConversation()
+      await scrollToBottom()
+    },
+    handleToolCall,
+    handleRecommend
+  )
+}
 
 const startNewChat = () => {
-  if (streamCleanup.value) {
-    streamCleanup.value()
-    streamCleanup.value = null
-  }
-  chatHistory.value = [createInitialMessage()]
-  chatHistory.value = [{ id: 'init', role: 'assistant', content: '你好！我是图书馆智能助手。你可以问我关于馆藏图书的问题，或者让我为你推荐书籍。', timestamp: Date.now() }]
-  chatHistory.value = [createInitialMessage()]
+  stopGeneration()
   currentConversationId.value = null
-  activeAssistantMessageId.value = null
-  lastUserPrompt.value = ''
-  loading.value = false
-  recLoading.value = false
+  activeAssistantId.value = null
+  chatHistory.value = [createWelcomeMessage()]
   recommendedBooks.value = []
   recAiPowered.value = false
 }
 
-const exportConversation = () => {
-  const content = chatHistory.value.map(m => `${m.role === 'user' ? '用户' : 'AI'}: ${m.content}`).join('\n\n')
-  const blob = new Blob([content], { type: 'text/plain' })
-  const url = URL.createObjectURL(blob)
-  const a = Object.assign(document.createElement('a'), { href: url, download: `chat-${new Date().toISOString().slice(0, 10)}.txt` })
-  a.click(); URL.revokeObjectURL(url); ElMessage.success('对话已导出')
-}
+const loadConversation = async (conversation: Conversation) => {
+  if (loading.value) return
 
-const loadChatHistory = async (item: Conversation) => {
-  const cachedMessages = normalizeConversationMessages(item.messages)
-  const hasCachedMessages = cachedMessages.length > 0
-
-  recommendedBooks.value = []
-  recAiPowered.value = false
-  recLoading.value = false
-
-  if (cachedMessages.length > 0) {
-    currentConversationId.value = item.id
-    chatHistory.value = cachedMessages
-    scrollToBottom()
-  }
-
-  try {
-    const result = await aiApi.getConversation(item.id)
-    if (result.success && result.data) {
-      currentConversationId.value = item.id
-      const msgs = normalizeConversationMessages(result.data.messages)
-      chatHistory.value = msgs.length > 0 ? msgs : [createInitialMessage()]
-      scrollToBottom()
-      const lastUser = [...chatHistory.value].reverse().find(m => m.role === 'user' && !!m.content)
-      if (lastUser?.content) fetchRecommendations(lastUser.content)
-    }
-  } catch {
-    ElMessage.error('加载对话失败')
+  const result = await aiApi.getConversation(conversation.id)
+  if (result.success && result.data) {
+    currentConversationId.value = conversation.id
+    const messages = normalizeConversationMessages(result.data.messages)
+    chatHistory.value = messages.length > 0 ? messages : [createWelcomeMessage()]
+    await scrollToBottom()
   }
 }
 
-const deleteConversation = async (item: Conversation) => {
+const deleteConversation = async (conversation: Conversation) => {
+  const result = await aiApi.deleteConversation(conversation.id)
+  if (result.success) {
+    ElMessage.success('历史对话已删除')
+    if (currentConversationId.value === conversation.id) {
+      startNewChat()
+    }
+    await loadConversationList()
+  }
+}
+
+const handleReserve = async (book: RecommendedBook) => {
+  if (!canReserve.value) {
+    ElMessage.warning('当前账号未绑定读者信息，暂时无法预约。')
+    return
+  }
+
+  const meta = bookMeta(book)
+  if (!meta.canReserve) {
+    ElMessage.warning(meta.hint)
+    return
+  }
+
+  const nextIds = new Set(reservingIds.value)
+  nextIds.add(book.id)
+  reservingIds.value = nextIds
+
   try {
-    const result = await aiApi.deleteConversation(item.id)
+    const result = await reservationApi.create(book.id)
     if (result.success) {
-      chatHistoryList.value = chatHistoryList.value.filter(c => c.id !== item.id)
-      if (currentConversationId.value === item.id) startNewChat()
-      ElMessage.success('对话已删除')
+      ElMessage.success(`预约成功，请到馆在自助终端扫码取书。取书码：${result.data?.pickup_code || '已生成'}`)
+      await loadReservations()
     }
-  } catch { ElMessage.error('删除失败') }
+  } catch (error: any) {
+    ElMessage.error(error?.response?.data?.error?.message || error?.message || '预约失败。')
+  } finally {
+    const updatedIds = new Set(reservingIds.value)
+    updatedIds.delete(book.id)
+    reservingIds.value = updatedIds
+  }
 }
 
-const isSaving = ref(false)
-const saveCurrentConversation = async () => {
-  if (!userStore.user?.id || chatHistory.value.length <= 1 || isSaving.value) return
-  isSaving.value = true
-  const title = chatHistory.value.find(m => m.role === 'user')?.content.slice(0, 30) || '新对话'
-  const messages = chatHistory.value.map(m => ({
-    role: m.role,
-    content: m.content,
-    timestamp: m.timestamp,
-    ...(m.toolCalls?.length ? { toolCalls: m.toolCalls } : {})
-  }))
-  try {
-    if (currentConversationId.value) {
-      await aiApi.updateConversation(currentConversationId.value, title, messages as any)
-    } else {
-      const result = await aiApi.saveConversation(userStore.user.id, title, messages as any)
-      if (result.success) { currentConversationId.value = result.data.id; loadConversations() }
-    }
-  } catch (e) { console.warn('Save conversation error:', e) }
-  finally { isSaving.value = false }
+const viewInBooks = (book: RecommendedBook) => {
+  router.push({ path: '/books', query: { search: book.title } })
 }
 
-const loadConversations = async () => {
-  if (!userStore.user?.id) return
-  try {
-    const result = await aiApi.getConversations(userStore.user.id, 20)
-    if (result.success) {
-      const conversations = Array.isArray(result.data) ? result.data : []
-      chatHistoryList.value = conversations.map((c: any) => ({
-        ...c,
-        messages: normalizeConversationMessages(c.messages)
-      }))
-    }
-  } catch {}
-}
+onMounted(async () => {
+  await Promise.all([loadAvailability(), loadStatistics(), loadConversationList(), loadReservations()])
+  await scrollToBottom()
+})
 
-const checkAIStatus = async () => {
-  try { const r = await aiApi.isAvailable(); isAIOnline.value = r.success && r.data } catch { isAIOnline.value = false }
-}
-
-const loadVectorStats = async () => {
-  try {
-    const r = await aiApi.getStatistics()
-    if (r.success) {
-      totalVectors.value = r.data.vectorCount || r.data.totalVectors || 0
-      vectorCoverage.value = r.data.coverageRate || 0
-    }
-  } catch {}
-}
-
-onMounted(() => { checkAIStatus(); loadVectorStats(); loadConversations() })
-onUnmounted(() => { if (streamCleanup.value) streamCleanup.value() })
+onUnmounted(() => {
+  stopGeneration()
+})
 </script>
 
 <style scoped>
 .ai-page {
-  display: flex; gap: 0;
-  height: calc(100vh - 128px);
-  margin: -28px -32px;
+  min-height: calc(100vh - 140px);
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr) 320px;
+  gap: 18px;
 }
 
-/* ── Left Panel ── */
-.history-panel {
-  width: 260px; flex-shrink: 0;
-  background: rgba(255,255,255,0.38);
-  backdrop-filter: blur(18px) saturate(180%);
-  -webkit-backdrop-filter: blur(18px) saturate(180%);
-  border-right: 1px solid rgba(255,255,255,0.35);
-  display: flex; flex-direction: column; padding: 20px;
-}
-.hp-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-.hp-logo { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 700; color: var(--text-primary); }
-.status-indicator { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
-.pulse-dot {
-  width: 8px; height: 8px; border-radius: 50%; background: #94A3B8; flex-shrink: 0;
-  transition: background 0.3s;
-}
-.status-indicator.online .pulse-dot { background: #22C55E; animation: pulse 1.5s infinite; }
-@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-
-.hp-actions { display: flex; gap: 8px; margin-bottom: 16px; }
-.action-chip {
-  flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
-  padding: 8px; border: 1px solid rgba(255,255,255,0.35); border-radius: 10px;
-  background: rgba(255,255,255,0.35); color: var(--text-secondary); cursor: pointer;
-  font-size: 12px; font-weight: 500; font-family: var(--font-sans);
-  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); transition: all 0.15s;
-}
-.action-chip:hover { border-color: var(--gdut-red); color: var(--gdut-red); background: var(--gdut-red-tint); }
-
-.hp-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
-.hp-item {
-  display: flex; align-items: center; gap: 8px; padding: 10px;
-  border-radius: 10px; cursor: pointer; transition: background 0.15s;
-}
-.hp-item:hover { background: var(--gdut-purple-tint); }
-.hp-item.active { background: var(--gdut-purple-tint); }
-.hp-item-text { flex: 1; font-size: 13px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.hp-del {
-  opacity: 0; width: 24px; height: 24px; border-radius: 6px;
-  border: none; background: transparent; cursor: pointer; color: var(--text-muted);
-  display: flex; align-items: center; justify-content: center; transition: all 0.15s;
-}
-.hp-item:hover .hp-del { opacity: 1; }
-.hp-del:hover { background: var(--danger-tint); color: var(--danger); }
-.hp-empty { text-align: center; padding: 32px 16px; color: var(--text-muted); font-size: 13px; }
-
-.hp-stats { display: flex; gap: 16px; padding-top: 16px; border-top: 1px solid var(--border-light); margin-top: 12px; }
-.hp-stat { display: flex; flex-direction: column; }
-.hp-stat-val { font-size: 16px; font-weight: 700; color: var(--text-primary); }
-.hp-stat-lbl { font-size: 11px; color: var(--text-muted); }
-
-.search-bar { flex: none; position: relative; display: flex; align-items: center; }
-.search-icon { position: absolute; left: 8px; color: var(--text-muted); font-size: 13px; pointer-events: none; }
-.search-bar input {
-  width: 100%; height: 32px; padding: 0 8px 0 28px;
-  border: 1.5px solid var(--border-color); border-radius: var(--radius-input);
-  background: rgba(255,255,255,0.5); font-size: 12px; font-family: var(--font-sans);
-  color: var(--text-primary); outline: none; transition: border-color 0.2s;
-}
-.search-bar input:focus { border-color: var(--gdut-red); }
-
-/* ── Center Chat ── */
-.chat-main { flex: 1; display: flex; flex-direction: column; min-width: 0; background: transparent; }
-.chat-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 16px 24px;
-  background: rgba(255,255,255,0.40); backdrop-filter: blur(16px) saturate(180%);
-  -webkit-backdrop-filter: blur(16px) saturate(180%); border-bottom: 1px solid rgba(255,255,255,0.35);
-}
-.ch-title { font-size: 16px; font-weight: 700; color: var(--text-primary); }
-.ch-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
-.icon-btn {
-  width: 36px; height: 36px; border-radius: 10px; border: 1.5px solid var(--border-color);
-  background: rgba(255,255,255,0.5); cursor: pointer; display: flex; align-items: center;
-  justify-content: center; color: var(--text-secondary); font-size: 16px; transition: all 0.15s;
-}
-.icon-btn:hover { border-color: var(--gdut-red); color: var(--gdut-red); }
-
-.chat-messages { flex: 1; overflow-y: auto; padding: 24px; }
-.msg-row { display: flex; gap: 12px; margin-bottom: 20px; }
-.msg-row.user { flex-direction: row-reverse; }
-.msg-avatar {
-  width: 36px; height: 36px; border-radius: 10px;
-  display: flex; align-items: center; justify-content: center;
-  color: #fff; flex-shrink: 0; font-size: 16px;
-}
-.msg-avatar.assistant { background: var(--gradient-dark); }
-.msg-avatar.user { background: var(--gradient-brand); }
-.msg-bubble {
-  max-width: 70%; padding: 12px 16px; border-radius: 16px;
-  line-height: 1.6; font-size: 14px;
-}
-.msg-bubble.assistant { background: rgba(255,255,255,0.48); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); color: var(--text-primary); border: 1px solid rgba(255,255,255,0.35); }
-.msg-bubble.user { background: var(--gradient-brand); color: #fff; }
-.msg-time { font-size: 11px; opacity: 0.6; margin-top: 8px; }
-.typing-dots { display: flex; gap: 4px; padding: 4px 0; }
-.typing-dots span {
-  width: 8px; height: 8px; background: var(--gdut-red); border-radius: 50%;
-  animation: typing 1s infinite;
-}
-.typing-dots span:nth-child(2) { animation-delay: 0.2s; }
-.typing-dots span:nth-child(3) { animation-delay: 0.4s; }
-@keyframes typing { 0%, 100% { opacity: 0.3; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-4px); } }
-
-/* ── Tool Call Cards ── */
-.tool-calls-container {
-  display: flex; flex-direction: column; gap: 6px;
-  margin-bottom: 10px;
-}
-.tool-call-card {
-  display: flex; align-items: center; gap: 8px;
-  padding: 8px 12px; border-radius: 10px;
-  background: rgba(124, 58, 237, 0.06);
-  border: 1px solid rgba(124, 58, 237, 0.15);
-  font-size: 13px; transition: all 0.3s;
-}
-.tool-call-card.completed {
-  background: rgba(5, 150, 105, 0.06);
-  border-color: rgba(5, 150, 105, 0.20);
-}
-.tool-call-card.error {
-  background: rgba(239, 68, 68, 0.06);
-  border-color: rgba(239, 68, 68, 0.20);
-}
-.tc-icon { font-size: 14px; display: flex; align-items: center; justify-content: center; width: 18px; }
-.tc-spinner {
-  width: 14px; height: 14px; border: 2px solid rgba(124, 58, 237, 0.25);
-  border-top-color: var(--gdut-purple); border-radius: 50%;
-  animation: tc-spin 0.7s linear infinite;
-}
-@keyframes tc-spin { to { transform: rotate(360deg); } }
-.tool-call-card.completed .tc-icon { color: #059669; }
-.tool-call-card.error .tc-icon { color: #EF4444; }
-.tc-label { font-weight: 600; color: var(--text-primary); }
-.tc-status { color: var(--text-muted); font-size: 12px; }
-
-.chat-input-area {
-  padding: 16px 24px;
-  background: rgba(255,255,255,0.40); backdrop-filter: blur(16px) saturate(180%);
-  -webkit-backdrop-filter: blur(16px) saturate(180%); border-top: 1px solid rgba(255,255,255,0.35);
-}
-.quick-prompts { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
-.qp-chip {
-  padding: 6px 14px; border-radius: 99px; border: 1px solid rgba(255,255,255,0.35);
-  background: rgba(255,255,255,0.35); color: var(--text-secondary); cursor: pointer;
-  font-size: 12px; font-family: var(--font-sans); backdrop-filter: blur(8px); transition: all 0.15s;
-}
-.qp-chip:hover { border-color: var(--gdut-red); color: var(--gdut-red); background: var(--gdut-red-tint); }
-.input-row { display: flex; gap: 12px; align-items: flex-end; }
-.input-row :deep(.el-textarea) { flex: 1; }
-.send-btn {
-  height: 56px; padding: 0 20px; border: none; border-radius: 12px;
-  background: var(--gradient-brand); color: #fff; cursor: pointer;
-  display: flex; align-items: center; justify-content: center; font-size: 20px;
-  box-shadow: 0 4px 16px rgba(200,16,46,0.30); transition: all 0.2s;
-}
-.send-btn:hover { opacity: 0.9; transform: translateY(-1px); }
-.stop-btn {
-  height: 56px; padding: 0 20px; border: none; border-radius: 12px;
-  background: var(--danger); color: #fff; cursor: pointer;
-  display: flex; align-items: center; gap: 8px; font-size: 14px;
-  font-weight: 600; font-family: var(--font-sans); transition: all 0.2s;
-}
-.stop-btn:hover { opacity: 0.9; }
-
-/* ── Right Panel ── */
+.history-panel,
+.chat-panel,
 .recommend-panel {
-  width: 300px; flex-shrink: 0;
-  background: rgba(255,255,255,0.38); backdrop-filter: blur(18px) saturate(180%);
-  -webkit-backdrop-filter: blur(18px) saturate(180%);
-  border-left: 1px solid rgba(255,255,255,0.35);
-  display: flex; flex-direction: column;
-}
-.rp-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 16px 20px; border-bottom: 1px solid var(--border-light);
-  flex-shrink: 0;
-}
-.rp-title { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: var(--text-primary); }
-.ai-badge {
-  font-size: 10px; padding: 2px 7px; border-radius: 99px;
-  background: linear-gradient(135deg, rgba(200,16,46,0.12), rgba(124,58,237,0.12));
-  color: var(--gdut-red); font-weight: 600; border: 1px solid rgba(200,16,46,0.2);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.84);
+  border-radius: 24px;
+  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.06);
 }
 
-/* Loading state */
-.rp-loading {
-  flex: 1; display: flex; flex-direction: column; align-items: center;
-  justify-content: center; gap: 12px; color: var(--text-muted); font-size: 13px;
+.history-panel,
+.recommend-panel {
+  padding: 20px;
 }
-.rp-loading-dots { display: flex; gap: 5px; }
-.rp-loading-dots span {
-  width: 8px; height: 8px; background: var(--gdut-red); border-radius: 50%;
-  animation: typing 1s infinite;
-}
-.rp-loading-dots span:nth-child(2) { animation-delay: 0.2s; }
-.rp-loading-dots span:nth-child(3) { animation-delay: 0.4s; }
 
-.rp-list { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
-
-/* ── Book card ── */
-.rp-book {
-  display: flex; gap: 10px; padding: 12px;
-  background: rgba(255,255,255,0.50); border-radius: 14px;
-  border: 1px solid rgba(255,255,255,0.40);
-  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-  transition: all 0.15s;
+.panel-header,
+.chat-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
 }
-.rp-book:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(28,16,51,0.08); }
-.rp-book.unavailable { opacity: 0.7; }
 
-.rp-book-icon {
-  width: 40px; height: 40px; flex-shrink: 0;
-  border-radius: 10px; display: flex; align-items: center;
-  justify-content: center; color: #fff; font-size: 18px;
+.panel-title,
+.chat-header h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
 }
-.rp-book-icon.has-stock { background: var(--gradient-brand); }
-.rp-book-icon.no-stock { background: linear-gradient(135deg, #94A3B8, #CBD5E1); }
 
-.rp-book-body { flex: 1; min-width: 0; }
-.rp-book-title {
-  font-weight: 700; font-size: 13px; color: var(--text-primary);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  margin-bottom: 2px;
+.panel-subtitle,
+.chat-header p,
+.history-time,
+.message-time,
+.stats-label,
+.recommend-meta,
+.history-empty,
+.recommend-empty {
+  color: #64748b;
 }
-.rp-book-author { font-size: 12px; color: var(--text-secondary); margin-bottom: 5px; }
 
-.rp-book-meta { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
-.rp-category {
-  font-size: 10px; padding: 2px 6px; border-radius: 99px;
-  background: var(--gdut-purple-tint); color: var(--gdut-purple); font-weight: 500;
+.chat-header {
+  padding: 24px 24px 0;
 }
-.rp-avail { font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 99px; }
-.avail-ok   { background: rgba(5,150,105,0.12); color: #059669; }
-.avail-low  { background: rgba(234,179,8,0.12);  color: #D97706; }
-.avail-none { background: rgba(239,68,68,0.10);  color: #EF4444; }
 
-.rp-actions { display: flex; gap: 6px; }
-.rp-btn {
-  flex: 1; height: 28px; border-radius: 8px; border: none;
-  display: flex; align-items: center; justify-content: center;
-  gap: 4px; font-size: 12px; font-weight: 600; font-family: var(--font-sans);
-  cursor: pointer; transition: all 0.15s; white-space: nowrap;
+.chat-header p {
+  margin: 8px 0 0;
 }
-.borrow-btn {
-  background: var(--gradient-brand); color: #fff;
-  box-shadow: 0 2px 8px rgba(200,16,46,0.20);
-}
-.borrow-btn:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
-.borrow-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-.view-btn {
-  background: rgba(255,255,255,0.6); color: var(--text-secondary);
-  border: 1.5px solid var(--border-color);
-  flex: 0 0 auto; padding: 0 10px;
-}
-.view-btn:hover { border-color: var(--gdut-red); color: var(--gdut-red); }
 
-.rp-empty { text-align: center; color: var(--text-muted); padding: 40px 16px; font-size: 13px; }
-.rp-empty p { margin-top: 12px; line-height: 1.6; }
+.ghost-icon-btn,
+.ghost-btn,
+.primary-btn,
+.prompt-chip {
+  border: none;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
 
-@media (max-width: 1100px) { .recommend-panel { display: none !important; } }
-@media (max-width: 768px) { .history-panel { display: none !important; } }
+.ghost-icon-btn:hover,
+.ghost-btn:hover,
+.primary-btn:hover,
+.prompt-chip:hover {
+  transform: translateY(-1px);
+}
+
+.ghost-icon-btn:disabled,
+.ghost-btn:disabled,
+.primary-btn:disabled,
+.prompt-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+  transform: none;
+}
+
+.ghost-icon-btn,
+.ghost-btn,
+.prompt-chip {
+  background: #eef2ff;
+  color: #334155;
+}
+
+.ghost-icon-btn {
+  width: 40px;
+  height: 40px;
+}
+
+.ghost-btn,
+.primary-btn {
+  height: 42px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.primary-btn {
+  color: #fff;
+  background: linear-gradient(135deg, #c8102e 0%, #7c3aed 100%);
+  box-shadow: 0 12px 24px rgba(124, 58, 237, 0.18);
+}
+
+.primary-btn.small {
+  height: 38px;
+}
+
+.sidebar-search {
+  margin-top: 16px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.sidebar-search input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  outline: none;
+}
+
+.stats-box {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.stats-item {
+  padding: 14px;
+  border-radius: 18px;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stats-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.history-list {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: calc(100vh - 360px);
+  overflow-y: auto;
+}
+
+.history-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 12px 14px;
+  border: none;
+  border-radius: 16px;
+  text-align: left;
+  background: #f8fafc;
+  cursor: pointer;
+}
+
+.history-item.active {
+  background: rgba(200, 16, 46, 0.08);
+}
+
+.history-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.history-title {
+  font-weight: 600;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-delete {
+  font-size: 18px;
+  color: #94a3b8;
+}
+
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.messages {
+  flex: 1;
+  padding: 20px 24px 12px;
+  overflow-y: auto;
+  min-height: 380px;
+}
+
+.message-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.message-row.user {
+  flex-direction: row-reverse;
+}
+
+.message-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #c8102e 0%, #7c3aed 100%);
+}
+
+.message-bubble {
+  max-width: calc(100% - 60px);
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: #f8fafc;
+}
+
+.message-bubble.user {
+  background: rgba(200, 16, 46, 0.08);
+}
+
+.markdown-body :deep(p) {
+  margin: 0 0 10px;
+  line-height: 1.75;
+}
+
+.markdown-body :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.markdown-body :deep(ul),
+.markdown-body :deep(ol) {
+  margin: 0 0 10px 18px;
+  padding: 0;
+}
+
+.markdown-body :deep(code) {
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.08);
+}
+
+.tool-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.tool-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(124, 58, 237, 0.08);
+  font-size: 13px;
+}
+
+.typing {
+  color: #64748b;
+}
+
+.quick-prompts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 0 24px 18px;
+}
+
+.prompt-chip {
+  padding: 8px 14px;
+}
+
+.input-box {
+  padding: 0 24px 24px;
+}
+
+.input-actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.recommend-list {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.recommend-item {
+  padding: 16px;
+  border-radius: 18px;
+  background: #f8fafc;
+}
+
+.recommend-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.recommend-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.recommend-hint {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #475569;
+}
+
+.recommend-actions {
+  margin-top: 12px;
+  display: flex;
+  gap: 10px;
+}
+
+@media (max-width: 1200px) {
+  .ai-page {
+    grid-template-columns: 1fr;
+  }
+}
 </style>

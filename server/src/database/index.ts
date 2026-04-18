@@ -140,6 +140,180 @@ function ensureBookVectorsSchema() {
   db.exec('ALTER TABLE book_vectors_new RENAME TO book_vectors')
 }
 
+function tableSql(tableName: string): string {
+  const row = db.prepare(`
+    SELECT sql
+    FROM sqlite_master
+    WHERE type = 'table' AND name = ?
+  `).get(tableName) as { sql?: string } | undefined
+
+  return row?.sql || ''
+}
+
+function tableHasColumn(tableName: string, columnName: string): boolean {
+  const columns = db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>
+  return columns.some(column => column.name === columnName)
+}
+
+function ensureUsersRoleSupportsMachine() {
+  const createSql = tableSql('users')
+  if (!createSql || createSql.includes("'machine'")) return
+
+  db.exec(`
+    CREATE TABLE users_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE NOT NULL,
+      password TEXT NOT NULL,
+      name TEXT NOT NULL,
+      role TEXT NOT NULL CHECK(role IN ('admin', 'librarian', 'teacher', 'student', 'machine')),
+      reader_id INTEGER,
+      email TEXT,
+      phone TEXT,
+      version INTEGER DEFAULT 1,
+      is_deleted BOOLEAN DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (reader_id) REFERENCES readers(id) ON DELETE SET NULL
+    )
+  `)
+
+  db.exec(`
+    INSERT INTO users_new (
+      id, username, password, name, role, reader_id, email, phone,
+      version, is_deleted, created_at, updated_at
+    )
+    SELECT
+      id, username, password, name, role, reader_id, email, phone,
+      COALESCE(version, 1), COALESCE(is_deleted, 0), created_at, updated_at
+    FROM users
+  `)
+
+  db.exec('DROP TABLE users')
+  db.exec('ALTER TABLE users_new RENAME TO users')
+}
+
+function ensureRolePermissionsSupportsMachine() {
+  const createSql = tableSql('role_permissions')
+  if (!createSql || createSql.includes("'machine'")) return
+
+  db.exec(`
+    CREATE TABLE role_permissions_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      role TEXT NOT NULL CHECK(role IN ('admin', 'librarian', 'teacher', 'student', 'machine')),
+      permission TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(role, permission)
+    )
+  `)
+
+  db.exec(`
+    INSERT INTO role_permissions_new (id, role, permission, created_at)
+    SELECT id, role, permission, created_at
+    FROM role_permissions
+  `)
+
+  db.exec('DROP TABLE role_permissions')
+  db.exec('ALTER TABLE role_permissions_new RENAME TO role_permissions')
+}
+
+function ensureBorrowingCopyColumn() {
+  if (!tableHasColumn('borrowing_records', 'copy_id')) {
+    db.exec(`ALTER TABLE borrowing_records ADD COLUMN copy_id INTEGER`)
+  }
+}
+
+function generateCopyBarcode(bookId: number, sequence: number): string {
+  return `BK${String(bookId).padStart(6, '0')}-${String(sequence).padStart(4, '0')}`
+}
+
+function ensureBookCopiesSchema() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS book_copies (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      book_id INTEGER NOT NULL,
+      barcode TEXT UNIQUE NOT NULL,
+      status TEXT NOT NULL DEFAULT 'available' CHECK(status IN ('available', 'borrowed', 'reserved', 'lost', 'damaged', 'maintenance')),
+      location TEXT,
+      version INTEGER DEFAULT 1,
+      is_deleted BOOLEAN DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
+    )
+  `)
+
+  const books = db.prepare(`
+    SELECT id, total_quantity
+    FROM books
+    WHERE is_deleted = 0
+  `).all() as Array<{ id: number; total_quantity: number }>
+
+  const countCopies = db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM book_copies
+    WHERE book_id = ? AND is_deleted = 0
+  `)
+  const insertCopy = db.prepare(`
+    INSERT OR IGNORE INTO book_copies (book_id, barcode, status)
+    VALUES (?, ?, 'available')
+  `)
+
+  for (const book of books) {
+    const existing = countCopies.get(book.id) as { count: number }
+    const targetCount = Math.max(0, book.total_quantity || 0)
+    for (let sequence = existing.count + 1; sequence <= targetCount; sequence++) {
+      insertCopy.run(book.id, generateCopyBarcode(book.id, sequence))
+    }
+  }
+
+  const activeRecords = db.prepare(`
+    SELECT id, book_id
+    FROM borrowing_records
+    WHERE copy_id IS NULL
+      AND status IN ('borrowed', 'overdue')
+      AND is_deleted = 0
+    ORDER BY id ASC
+  `).all() as Array<{ id: number; book_id: number }>
+
+  const findAvailableCopy = db.prepare(`
+    SELECT id
+    FROM book_copies
+    WHERE book_id = ? AND status = 'available' AND is_deleted = 0
+    ORDER BY id ASC
+    LIMIT 1
+  `)
+  const attachCopy = db.prepare(`
+    UPDATE borrowing_records
+    SET copy_id = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `)
+  const markBorrowed = db.prepare(`
+    UPDATE book_copies
+    SET status = 'borrowed', updated_at = CURRENT_TIMESTAMP, version = version + 1
+    WHERE id = ?
+  `)
+
+  for (const record of activeRecords) {
+    const copy = findAvailableCopy.get(record.book_id) as { id: number } | undefined
+    if (!copy) continue
+    attachCopy.run(copy.id, record.id)
+    markBorrowed.run(copy.id)
+  }
+
+  db.exec(`
+    UPDATE books
+    SET available_quantity = (
+      SELECT COUNT(*)
+      FROM book_copies
+      WHERE book_copies.book_id = books.id
+        AND book_copies.status = 'available'
+        AND book_copies.is_deleted = 0
+    ),
+    updated_at = CURRENT_TIMESTAMP
+    WHERE is_deleted = 0
+  `)
+}
+
 /**
  * 初始化数据库表结构
  */
@@ -168,7 +342,7 @@ export function initDatabase() {
           username TEXT UNIQUE NOT NULL,
           password TEXT NOT NULL,
           name TEXT NOT NULL,
-          role TEXT NOT NULL CHECK(role IN ('admin', 'librarian', 'teacher', 'student')),
+          role TEXT NOT NULL CHECK(role IN ('admin', 'librarian', 'teacher', 'student', 'machine')),
           reader_id INTEGER,
           email TEXT,
           phone TEXT,
@@ -207,7 +381,7 @@ export function initDatabase() {
           username TEXT UNIQUE NOT NULL,
           password TEXT NOT NULL,
           name TEXT NOT NULL,
-          role TEXT NOT NULL CHECK(role IN ('admin', 'librarian', 'teacher', 'student')),
+          role TEXT NOT NULL CHECK(role IN ('admin', 'librarian', 'teacher', 'student', 'machine')),
           reader_id INTEGER,
           email TEXT,
           phone TEXT,
@@ -238,7 +412,7 @@ export function initDatabase() {
         username TEXT UNIQUE NOT NULL,
         password TEXT NOT NULL,
         name TEXT NOT NULL,
-        role TEXT NOT NULL CHECK(role IN ('admin', 'librarian', 'teacher', 'student')),
+        role TEXT NOT NULL CHECK(role IN ('admin', 'librarian', 'teacher', 'student', 'machine')),
         reader_id INTEGER,
         email TEXT,
         phone TEXT,
@@ -252,6 +426,8 @@ export function initDatabase() {
   }
 
   // 2. 读者种类表
+  ensureUsersRoleSupportsMachine()
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS reader_categories (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -419,10 +595,13 @@ export function initDatabase() {
   `)
 
   // 7. 角色权限表
+  ensureBorrowingCopyColumn()
+  ensureBookCopiesSchema()
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS role_permissions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      role TEXT NOT NULL CHECK(role IN ('admin', 'librarian', 'teacher', 'student')),
+      role TEXT NOT NULL CHECK(role IN ('admin', 'librarian', 'teacher', 'student', 'machine')),
       permission TEXT NOT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(role, permission)
@@ -430,6 +609,8 @@ export function initDatabase() {
   `)
 
   // 8. 系统设置表
+  ensureRolePermissionsSupportsMachine()
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS system_settings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -545,6 +726,25 @@ export function initDatabase() {
   `)
 
   db.exec(`
+    CREATE TABLE IF NOT EXISTS reservations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      reader_id INTEGER NOT NULL,
+      book_id INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'fulfilled', 'cancelled', 'expired')),
+      pickup_code TEXT UNIQUE,
+      reserved_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      expires_at DATETIME,
+      fulfilled_at DATETIME,
+      cancelled_at DATETIME,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (reader_id) REFERENCES readers(id) ON DELETE CASCADE,
+      FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
+    )
+  `)
+
+  db.exec(`
     CREATE TABLE IF NOT EXISTS notifications (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       recipient_user_id INTEGER NOT NULL,
@@ -579,7 +779,9 @@ export function initDatabase() {
       ('teacher', 'statistics:read'),
       ('student', 'books:read'),
       ('student', 'borrowing:read'),
-      ('student', 'borrowing:borrow')
+      ('student', 'borrowing:borrow'),
+      ('machine', 'borrowing:machine'),
+      ('machine', 'books:read')
   `)
 
   // 插入默认AI设置
@@ -631,6 +833,7 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_books_author ON books(author);
     CREATE INDEX IF NOT EXISTS idx_borrowing_reader ON borrowing_records(reader_id);
     CREATE INDEX IF NOT EXISTS idx_borrowing_book ON borrowing_records(book_id);
+    CREATE INDEX IF NOT EXISTS idx_borrowing_copy ON borrowing_records(copy_id);
     CREATE INDEX IF NOT EXISTS idx_borrowing_status ON borrowing_records(status);
     CREATE INDEX IF NOT EXISTS idx_borrowing_dates ON borrowing_records(borrow_date, due_date);
     CREATE INDEX IF NOT EXISTS idx_ai_conversations_user ON ai_conversations(user_id);
@@ -648,6 +851,12 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_renewal_requests_record ON renewal_requests(borrowing_record_id);
     CREATE INDEX IF NOT EXISTS idx_renewal_requests_status ON renewal_requests(status);
     CREATE INDEX IF NOT EXISTS idx_renewal_requests_request_user ON renewal_requests(request_user_id);
+    CREATE INDEX IF NOT EXISTS idx_book_copies_book ON book_copies(book_id);
+    CREATE INDEX IF NOT EXISTS idx_book_copies_barcode ON book_copies(barcode);
+    CREATE INDEX IF NOT EXISTS idx_book_copies_status ON book_copies(status);
+    CREATE INDEX IF NOT EXISTS idx_reservations_reader ON reservations(reader_id);
+    CREATE INDEX IF NOT EXISTS idx_reservations_book ON reservations(book_id);
+    CREATE INDEX IF NOT EXISTS idx_reservations_status ON reservations(status);
     CREATE INDEX IF NOT EXISTS idx_notifications_recipient ON notifications(recipient_user_id);
     CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(recipient_user_id, is_read);
     CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at DESC);
@@ -723,6 +932,24 @@ export function seedDatabase() {
 /**
  * 修复旧的明文密码
  */
+function ensureMachineUser() {
+  const machineUser = db.prepare(`
+    SELECT id
+    FROM users
+    WHERE username = ? AND is_deleted = 0
+  `).get('machine01') as { id: number } | undefined
+
+  if (!machineUser) {
+    const salt = bcrypt.genSaltSync(10)
+    const hashedPassword = bcrypt.hashSync('machine123', salt)
+
+    db.prepare(`
+      INSERT INTO users (username, password, name, role, email)
+      VALUES (?, ?, ?, ?, ?)
+    `).run('machine01', hashedPassword, '自助借还终端', 'machine', 'machine01@library.local')
+  }
+}
+
 function fixAdminPassword() {
   try {
     const adminUser = db.prepare('SELECT id, password FROM users WHERE username = ?').get('admin') as { id: number, password: string } | undefined
@@ -823,6 +1050,7 @@ export function setupDatabase(dbPath?: string) {
 
     initDatabase()
     seedDatabase()
+    ensureMachineUser()
     fixAdminPassword()
 
     // 执行健康检查
