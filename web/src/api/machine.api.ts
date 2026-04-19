@@ -3,13 +3,22 @@ import { request, ApiResponse } from './index'
 export interface MachineReaderSummary {
   id: number
   reader_no: string
-  name: string
+  display_name: string
   category_name: string
   current_borrowing_count: number
   max_borrow_count: number
   has_overdue_books: boolean
   status: string
   expiry_date?: string
+  is_verified: boolean
+  borrow_pin_configured: boolean
+  verification_expires_at?: string
+}
+
+export interface MachineReaderVerificationResult {
+  verification_token: string
+  expires_at: string
+  reader: MachineReaderSummary
 }
 
 export interface MachineCopySummary {
@@ -25,9 +34,6 @@ export interface MachineCopySummary {
     book_status: string
   }
   active_borrowing?: {
-    id: number
-    reader_name: string
-    reader_no: string
     due_date: string
   } | null
   suggested_action: 'borrow' | 'return' | 'unavailable'
@@ -49,8 +55,6 @@ export interface MachineCopySuggestion {
   book_status: string
   suggested_action: 'borrow' | 'return' | 'unavailable'
   action_hint: string
-  active_reader_name?: string | null
-  active_reader_no?: string | null
 }
 
 export const machineApi = {
@@ -60,14 +64,17 @@ export const machineApi = {
   getReaderSummary: (readerNo: string): Promise<ApiResponse<MachineReaderSummary>> =>
     request.get(`/machine/reader/${encodeURIComponent(readerNo)}`),
 
+  verifyReader: (readerNo: string, borrowPin: string): Promise<ApiResponse<MachineReaderVerificationResult>> =>
+    request.post('/machine/reader/verify', { readerNo, borrowPin }),
+
   getCopySuggestions: (keyword: string): Promise<ApiResponse<MachineCopySuggestion[]>> =>
     request.get('/machine/copies/suggest', { keyword }),
 
   getCopySummary: (barcode: string): Promise<ApiResponse<MachineCopySummary>> =>
     request.get(`/machine/copy/${encodeURIComponent(barcode)}`),
 
-  borrow: (readerNo: string, barcode: string): Promise<ApiResponse<any>> =>
-    request.post('/machine/borrow', { readerNo, barcode }),
+  borrow: (readerNo: string, barcode: string, verificationToken: string): Promise<ApiResponse<any>> =>
+    request.post('/machine/borrow', { readerNo, barcode, verificationToken }),
 
   returnByBarcode: (barcode: string): Promise<ApiResponse<any>> =>
     request.post('/machine/return', { barcode })

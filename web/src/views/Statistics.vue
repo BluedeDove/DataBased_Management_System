@@ -36,7 +36,8 @@
             <div class="card-title" style="flex:1">类别明细</div>
             <span class="pill-badge red">{{ categoryStats.length }} 类</span>
           </div>
-          <el-table :data="categoryStats" size="small" style="margin-top: 12px">
+          <div class="responsive-table-shell">
+          <el-table :data="categoryStats" size="small" :style="{ marginTop: '12px', minWidth: isCompactViewport ? '420px' : '100%' }">
             <el-table-column prop="category_name" label="类别" />
             <el-table-column prop="book_count" label="总册数" align="right" width="80">
               <template #default="{ row }">
@@ -49,6 +50,7 @@
               </template>
             </el-table-column>
           </el-table>
+          </div>
         </div>
       </div>
       <div class="light-card animate-fade-in-delay-3" style="margin-top: 20px">
@@ -77,20 +79,22 @@
             <div class="card-title" style="flex:1">读者排行</div>
             <span class="pill-badge purple">TOP 20</span>
           </div>
-          <el-table :data="activeReaders" size="small" style="margin-top: 12px">
-            <el-table-column type="index" label="#" width="44">
+          <div class="responsive-table-shell">
+          <el-table :data="activeReaders" size="small" :style="{ marginTop: '12px', minWidth: isCompactViewport ? '420px' : '100%' }">
+            <el-table-column v-if="!isCompactViewport" type="index" label="#" width="44">
               <template #default="{ $index }">
                 <span class="rank-num" :class="{ top: $index < 3 }">{{ $index + 1 }}</span>
               </template>
             </el-table-column>
             <el-table-column prop="reader_name" label="姓名" />
-            <el-table-column prop="reader_no" label="编号" width="100" />
+            <el-table-column v-if="!isCompactViewport" prop="reader_no" label="编号" width="100" />
             <el-table-column prop="borrow_count" label="借阅" align="right" width="70">
               <template #default="{ row }">
                 <span style="font-weight: 700; color: var(--gdut-red)">{{ row.borrow_count }}</span>
               </template>
             </el-table-column>
           </el-table>
+          </div>
         </div>
       </div>
     </template>
@@ -115,16 +119,18 @@
           <div class="card-title" style="flex:1">逾期记录</div>
           <span v-if="overdueRecords.length" class="pill-badge danger">{{ overdueRecords.length }} 条</span>
         </div>
-        <el-table :data="overdueRecords" size="small" style="margin-top: 12px">
+        <div class="responsive-table-shell">
+        <el-table :data="overdueRecords" size="small" :style="{ marginTop: '12px', minWidth: isCompactViewport ? '560px' : '100%' }">
           <el-table-column prop="reader_name" label="读者" width="120" />
           <el-table-column prop="book_title" label="图书" />
-          <el-table-column prop="due_date" label="应还日期" width="120" />
+          <el-table-column v-if="!isCompactViewport" prop="due_date" label="应还日期" width="120" />
           <el-table-column label="逾期天数" align="center" width="100">
             <template #default="{ row }">
               <span class="pill-badge danger">{{ calcOverdueDays(row.due_date) }} 天</span>
             </template>
           </el-table-column>
         </el-table>
+        </div>
       </div>
     </template>
   </div>
@@ -136,7 +142,9 @@ import { Collection, User, Timer, WarningFilled, TrendCharts } from '@element-pl
 import * as echarts from 'echarts'
 import { bookApi } from '../api/book.api'
 import { borrowingApi } from '../api/borrowing.api'
+import { useViewport } from '@/composables/useViewport'
 
+const { isCompactViewport } = useViewport()
 const activeTab = ref('books')
 const tabs = [
   { key: 'books', label: '图书统计' },
@@ -337,5 +345,20 @@ onMounted(() => loadStatistics())
 @media (max-width: 1200px) {
   .two-col-grid { grid-template-columns: 1fr; }
   .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 768px) {
+  .light-card {
+    padding: 16px;
+  }
+
+  .kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .kpi-card,
+  .card-header-row {
+    align-items: flex-start;
+  }
 }
 </style>

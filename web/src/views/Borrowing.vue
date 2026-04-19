@@ -587,6 +587,9 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 18px;
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
 }
 
 .hero-card,
@@ -834,7 +837,7 @@ onMounted(async () => {
   color: #64748b;
 }
 
-@media (max-width: 960px) {
+@media (max-width: 1180px) {
   .hero-card,
   .panel-header,
   .search-row,
@@ -854,6 +857,17 @@ onMounted(async () => {
 
   .card-actions {
     align-items: stretch;
+  }
+}
+
+@media (max-width: 768px) {
+  .hero-card,
+  .panel {
+    padding: 16px;
+  }
+
+  .data-table {
+    min-width: 720px;
   }
 }
 </style>

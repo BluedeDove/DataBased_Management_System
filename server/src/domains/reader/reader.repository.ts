@@ -28,6 +28,8 @@ export interface Reader {
   registration_date: string
   expiry_date?: string
   status: 'active' | 'suspended' | 'expired'
+  borrow_pin_hash?: string | null
+  borrow_pin_updated_at?: string | null
   notes?: string
   created_at: string
   updated_at: string
@@ -126,6 +128,17 @@ export class ReaderRepository {
     return stmt.get(readerNo) as ReaderWithCategory | undefined
   }
 
+  findByUserId(userId: number): ReaderWithCategory | undefined {
+    const stmt = db.prepare(`
+      SELECT r.*, rc.name as category_name, rc.max_borrow_count, rc.max_borrow_days
+      FROM readers r
+      JOIN reader_categories rc ON r.category_id = rc.id
+      WHERE r.user_id = ? AND r.is_deleted = 0
+      LIMIT 1
+    `)
+    return stmt.get(userId) as ReaderWithCategory | undefined
+  }
+
   create(reader: Omit<Reader, 'id' | 'created_at' | 'updated_at'>): ReaderWithCategory {
     const stmt = db.prepare(`
       INSERT INTO readers (
@@ -183,7 +196,7 @@ export class ReaderRepository {
   getBorrowingCount(readerId: number): number {
     const result = db.prepare(`
       SELECT COUNT(*) as count FROM borrowing_records
-      WHERE reader_id = ? AND status = 'borrowed' AND is_deleted = 0
+      WHERE reader_id = ? AND status IN ('borrowed', 'overdue') AND is_deleted = 0
     `).get(readerId) as { count: number }
     return result.count
   }
@@ -191,9 +204,23 @@ export class ReaderRepository {
   hasOverdueBooks(readerId: number): boolean {
     const result = db.prepare(`
       SELECT COUNT(*) as count FROM borrowing_records
-      WHERE reader_id = ? AND status = 'borrowed' AND due_date < date('now') AND is_deleted = 0
+      WHERE reader_id = ?
+        AND is_deleted = 0
+        AND (status = 'overdue' OR (status = 'borrowed' AND due_date < date('now')))
     `).get(readerId) as { count: number }
     return result.count > 0
+  }
+
+  updateBorrowPin(readerId: number, borrowPinHash: string): ReaderWithCategory {
+    db.prepare(`
+      UPDATE readers
+      SET borrow_pin_hash = ?, borrow_pin_updated_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND is_deleted = 0
+    `).run(borrowPinHash, readerId)
+
+    const updated = this.findById(readerId)
+    if (!updated) throw new NotFoundError('璇昏€?')
+    return updated
   }
 
   delete(id: number): void {

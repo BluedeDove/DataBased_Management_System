@@ -222,6 +222,16 @@ function ensureBorrowingCopyColumn() {
   }
 }
 
+function ensureReaderBorrowPinSchema() {
+  if (!tableHasColumn('readers', 'borrow_pin_hash')) {
+    db.exec(`ALTER TABLE readers ADD COLUMN borrow_pin_hash TEXT`)
+  }
+
+  if (!tableHasColumn('readers', 'borrow_pin_updated_at')) {
+    db.exec(`ALTER TABLE readers ADD COLUMN borrow_pin_updated_at DATETIME`)
+  }
+}
+
 function generateCopyBarcode(bookId: number, sequence: number): string {
   return `BK${String(bookId).padStart(6, '0')}-${String(sequence).padStart(4, '0')}`
 }
@@ -477,6 +487,8 @@ export function initDatabase() {
           registration_date DATE DEFAULT (date('now')),
           expiry_date DATE,
           status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'suspended', 'expired', 'pending')),
+          borrow_pin_hash TEXT,
+          borrow_pin_updated_at DATETIME,
           version INTEGER DEFAULT 1,
           is_deleted BOOLEAN DEFAULT 0,
           notes TEXT,
@@ -516,6 +528,8 @@ export function initDatabase() {
         registration_date DATE DEFAULT (date('now')),
         expiry_date DATE,
         status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'suspended', 'expired', 'pending')),
+        borrow_pin_hash TEXT,
+        borrow_pin_updated_at DATETIME,
         version INTEGER DEFAULT 1,
         is_deleted BOOLEAN DEFAULT 0,
         notes TEXT,
@@ -596,6 +610,7 @@ export function initDatabase() {
 
   // 7. 角色权限表
   ensureBorrowingCopyColumn()
+  ensureReaderBorrowPinSchema()
   ensureBookCopiesSchema()
 
   db.exec(`

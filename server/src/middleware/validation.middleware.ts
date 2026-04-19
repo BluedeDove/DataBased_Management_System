@@ -249,6 +249,13 @@ export const CommonRules = {
   },
 
   // 姓名：2-50字符
+  borrowPin: {
+    type: 'string' as const,
+    required: true,
+    pattern: /^\d{4,6}$/,
+    sanitize: false
+  },
+
   name: {
     type: 'string' as const,
     required: true,
@@ -384,6 +391,11 @@ export const Schemas = {
     newPassword: CommonRules.password
   },
 
+  changeBorrowPin: {
+    loginPassword: { ...CommonRules.password, minLength: 1 },
+    borrowPin: CommonRules.borrowPin
+  },
+
   // 分页查询
   pagination: {
     page: CommonRules.page,
@@ -414,5 +426,20 @@ export const Schemas = {
   borrow: {
     reader_id: { ...CommonRules.id, required: true },
     book_id: { ...CommonRules.id, required: true }
+  },
+
+  machineVerifyReader: {
+    readerNo: { type: 'string' as const, required: true, minLength: 3, maxLength: 40, sanitize: true },
+    borrowPin: CommonRules.borrowPin
+  },
+
+  machineBorrow: {
+    readerNo: { type: 'string' as const, required: true, minLength: 3, maxLength: 40, sanitize: true },
+    barcode: { type: 'string' as const, required: true, minLength: 3, maxLength: 80, sanitize: true },
+    verificationToken: { type: 'string' as const, required: true, minLength: 16, maxLength: 200, sanitize: true }
+  },
+
+  machineReturn: {
+    barcode: { type: 'string' as const, required: true, minLength: 3, maxLength: 80, sanitize: true }
   }
 }

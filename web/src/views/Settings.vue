@@ -6,6 +6,7 @@
         <div class="page-title">系统设置</div>
         <div class="page-subtitle">管理系统参数和配置</div>
       </div>
+
     </div>
 
     <!-- Tabs -->
@@ -40,6 +41,53 @@
           <div class="info-value"><span class="pill-badge red">{{ getRoleLabel(userStore.user?.role) }}</span></div>
         </div>
       </div>
+
+      <div v-if="canManageBorrowPin" class="borrow-pin-box">
+        <div class="section-header" style="margin-bottom: 20px">
+          <div>
+            <div class="section-title" style="margin-bottom: 2px">借阅 PIN</div>
+            <div class="section-desc">用于机器终端核验读者本人身份，不复用登录密码。</div>
+          </div>
+          <span class="pill-badge" :class="borrowPinStatus.configured ? 'success' : 'red'">
+            {{ borrowPinStatus.configured ? '已设置' : '未设置' }}
+          </span>
+        </div>
+
+        <el-form :model="borrowPinForm" label-width="120px" style="max-width: 520px">
+          <el-form-item label="登录密码">
+            <el-input
+              v-model="borrowPinForm.loginPassword"
+              type="password"
+              show-password
+              placeholder="用于确认是本人操作"
+            />
+          </el-form-item>
+          <el-form-item label="借阅 PIN">
+            <el-input
+              v-model="borrowPinForm.borrowPin"
+              type="password"
+              maxlength="6"
+              placeholder="4-6 位数字"
+            />
+          </el-form-item>
+          <el-form-item label="确认 PIN">
+            <el-input
+              v-model="borrowPinForm.confirmBorrowPin"
+              type="password"
+              maxlength="6"
+              placeholder="再次输入借阅 PIN"
+            />
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" :loading="savingBorrowPin" @click="handleSaveBorrowPin">
+              <el-icon><Check /></el-icon> 保存借阅 PIN
+            </el-button>
+            <span v-if="borrowPinStatus.updatedAt" class="form-hint">
+              最近更新：{{ borrowPinStatus.updatedAt }}
+            </span>
+          </el-form-item>
+        </el-form>
+      </div>
     </div>
 
     <!-- Categories -->
@@ -50,13 +98,14 @@
           <el-icon><Plus /></el-icon> 新增种类
         </button>
       </div>
-      <el-table :data="readerCategories" style="margin-top: 20px">
+      <div class="responsive-table-shell">
+      <el-table :data="readerCategories" :style="{ marginTop: '20px', minWidth: isCompactViewport ? '760px' : '100%' }">
         <el-table-column prop="code" label="编码" width="100" />
         <el-table-column prop="name" label="名称" width="140" />
         <el-table-column prop="max_borrow_count" label="最大借阅数" width="120" align="center" />
         <el-table-column prop="max_borrow_days" label="借阅期限(天)" width="130" align="center" />
         <el-table-column prop="validity_days" label="有效期(天)" width="120" align="center" />
-        <el-table-column prop="notes" label="备注" />
+        <el-table-column v-if="!isCompactViewport" prop="notes" label="备注" />
         <el-table-column label="操作" width="120" align="right">
           <template #default="{ row }">
             <button class="icon-btn danger" @click="handleDeleteCategory(row)">
@@ -65,6 +114,7 @@
           </template>
         </el-table-column>
       </el-table>
+      </div>
     </div>
 
     <!-- AI Config -->
@@ -181,10 +231,17 @@ import { readerCategoryApi } from '../api/reader.api'
 import { bookApi } from '../api/book.api'
 import { aiApi } from '../api/ai.api'
 import { configApi } from '../api/other.api'
+import { authApi } from '../api/auth.api'
+import { useViewport } from '@/composables/useViewport'
 
 const userStore = useUserStore()
+const { isCompactViewport } = useViewport()
 const activeTab = ref('basic')
 const isAdmin = computed(() => userStore.user?.role === 'admin')
+const canManageBorrowPin = computed(() => {
+  const role = userStore.user?.role
+  return !!userStore.user?.reader_id && (role === 'student' || role === 'teacher')
+})
 
 const visibleTabs = computed(() => {
   const tabs = [{ key: 'basic', label: '基本信息' }, { key: 'categories', label: '读者种类' }]
@@ -223,6 +280,47 @@ const handleDeleteCategory = async (row: any) => {
     const result = await readerCategoryApi.delete(row.id)
     if (result.success) { ElMessage.success('删除成功'); loadCategories() }
   } catch {}
+}
+
+// Borrow PIN
+const savingBorrowPin = ref(false)
+const borrowPinStatus = reactive({ configured: false, updatedAt: '' as string | null })
+const borrowPinForm = reactive({ loginPassword: '', borrowPin: '', confirmBorrowPin: '' })
+
+const loadBorrowPinStatus = async () => {
+  if (!canManageBorrowPin.value) return
+  try {
+    const result = await authApi.getBorrowPinStatus()
+    if (result.success && result.data) {
+      borrowPinStatus.configured = result.data.configured
+      borrowPinStatus.updatedAt = result.data.updatedAt || null
+    }
+  } catch {}
+}
+
+const handleSaveBorrowPin = async () => {
+  if (!borrowPinForm.loginPassword) { ElMessage.warning('请先输入登录密码'); return }
+  if (!/^\d{4,6}$/.test(borrowPinForm.borrowPin)) { ElMessage.warning('借阅 PIN 需要是 4-6 位数字'); return }
+  if (borrowPinForm.borrowPin !== borrowPinForm.confirmBorrowPin) { ElMessage.warning('两次输入的借阅 PIN 不一致'); return }
+
+  savingBorrowPin.value = true
+  try {
+    const result = await authApi.changeBorrowPin(borrowPinForm.loginPassword, borrowPinForm.borrowPin)
+    if (result.success && result.data) {
+      borrowPinStatus.configured = result.data.configured
+      borrowPinStatus.updatedAt = result.data.updatedAt || null
+      borrowPinForm.loginPassword = ''
+      borrowPinForm.borrowPin = ''
+      borrowPinForm.confirmBorrowPin = ''
+      ElMessage.success('借阅 PIN 已保存')
+    } else {
+      ElMessage.error(result.error?.message || '保存借阅 PIN 失败')
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error?.message || e.message || '保存借阅 PIN 失败')
+  } finally {
+    savingBorrowPin.value = false
+  }
 }
 
 // AI Config
@@ -338,7 +436,7 @@ const handleBatchCreateVectors = async () => {
   } finally { vectorLoading.value = false }
 }
 
-onMounted(() => { loadCategories(); loadAISettings(); loadVectorStats() })
+onMounted(() => { loadCategories(); loadAISettings(); loadVectorStats(); loadBorrowPinStatus() })
 </script>
 
 <style scoped>
@@ -369,6 +467,8 @@ onMounted(() => { loadCategories(); loadAISettings(); loadVectorStats() })
 .info-item { display: flex; flex-direction: column; gap: 4px; }
 .info-label { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
 .info-value { font-size: 15px; font-weight: 500; color: var(--text-primary); }
+.borrow-pin-box { margin-top: 24px; padding-top: 24px; border-top: 1px solid rgba(148, 163, 184, 0.18); }
+.form-hint { margin-left: 12px; font-size: 13px; color: var(--text-secondary); }
 
 .vector-action-box {
   padding: 20px; background: var(--gdut-purple-tint);
@@ -391,4 +491,23 @@ onMounted(() => { loadCategories(); loadAISettings(); loadVectorStats() })
 .about-title { font-size: 24px; font-weight: 700; color: var(--text-primary); margin-bottom: 16px; }
 .about-desc { color: var(--text-secondary); line-height: 1.8; margin-bottom: 24px; font-size: 15px; }
 .about-tags { display: flex; justify-content: center; gap: 10px; }
+
+@media (max-width: 1180px) {
+  .settings-page {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 768px) {
+  .info-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .section-header,
+  .vector-action-box,
+  .about-tags {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
 </style>

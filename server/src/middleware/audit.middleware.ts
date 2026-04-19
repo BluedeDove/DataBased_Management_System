@@ -25,9 +25,10 @@ const auditConfig: AuditConfig = {
   auditedMethods: ['POST', 'PUT', 'DELETE', 'PATCH'],
   auditedPaths: [
     /^\/api\/v1\/auth\/(login|logout|register|password)/,
-    /^\/api\/v1\/(books|readers|borrowings)/
+    /^\/api\/v1\/(books|readers|borrowings)/,
+    /^\/api\/v1\/machine/
   ],
-  sensitiveFields: ['password', 'token', 'secret', 'apiKey', 'credit_card']
+  sensitiveFields: ['password', 'token', 'secret', 'apiKey', 'credit_card', 'borrowPin', 'verificationToken']
 }
 
 /**

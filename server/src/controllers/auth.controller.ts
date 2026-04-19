@@ -107,6 +107,24 @@ export const changePassword = asyncHandler(async (req: Request, res: Response) =
   })
 })
 
+export const getBorrowPinStatus = asyncHandler(async (req: Request, res: Response) => {
+  const status = authService.getBorrowPinStatus(req.user!.id)
+  res.json({
+    success: true,
+    data: status
+  })
+})
+
+export const changeBorrowPin = asyncHandler(async (req: Request, res: Response) => {
+  const { loginPassword, borrowPin } = req.body
+  const status = await authService.changeBorrowPin(req.user!.id, loginPassword, borrowPin)
+
+  res.json({
+    success: true,
+    data: status
+  })
+})
+
 /**
  * 注册
  */

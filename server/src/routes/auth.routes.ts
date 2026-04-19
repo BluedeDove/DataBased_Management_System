@@ -1,5 +1,16 @@
 import { Router } from 'express'
-import { login, logout, validate as validateToken, changePassword, register, getPermissions, checkPermission, refresh } from '../controllers/auth.controller'
+import {
+  login,
+  logout,
+  validate as validateToken,
+  changePassword,
+  register,
+  getPermissions,
+  checkPermission,
+  refresh,
+  getBorrowPinStatus,
+  changeBorrowPin
+} from '../controllers/auth.controller'
 import { authMiddleware } from '../middleware/auth.middleware'
 import { loginLimiter, registerLimiter, sensitiveLimiter, apiLimiter } from '../middleware/rateLimit.middleware'
 import { validate, Schemas } from '../middleware/validation.middleware'
@@ -15,6 +26,8 @@ router.post('/refresh', apiLimiter, refresh)  // Token刷新
 router.post('/logout', authMiddleware, logout)
 router.get('/validate', authMiddleware, validateToken)
 router.put('/password', authMiddleware, sensitiveLimiter, validate(Schemas.changePassword), changePassword)
+router.get('/borrow-pin/status', authMiddleware, getBorrowPinStatus)
+router.put('/borrow-pin', authMiddleware, sensitiveLimiter, validate(Schemas.changeBorrowPin), changeBorrowPin)
 router.get('/permissions', authMiddleware, getPermissions)
 router.post('/check-permission', authMiddleware, checkPermission)
 

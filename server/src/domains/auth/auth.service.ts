@@ -1,9 +1,10 @@
 import { UserRepository, User } from './user.repository'
-import { AuthenticationError, ValidationError } from '../../lib/errorHandler'
+import { AuthenticationError, ValidationError, BusinessError } from '../../lib/errorHandler'
 import { logger } from '../../lib/logger'
 import { db } from '../../database'
 import * as bcrypt from 'bcryptjs'
 import { generateToken } from '../../lib/jwt'
+import { ReaderRepository } from '../reader/reader.repository'
 
 export interface LoginCredentials {
   username: string
@@ -26,8 +27,14 @@ export interface RegisterData {
   address?: string
 }
 
+export interface BorrowPinStatus {
+  configured: boolean
+  updatedAt?: string | null
+}
+
 export class AuthService {
   private userRepository = new UserRepository()
+  private readerRepository = new ReaderRepository()
 
   async login(credentials: LoginCredentials): Promise<AuthResult> {
     logger.info('========== [后端] 用户登录尝试 ==========')
@@ -144,6 +151,65 @@ export class AuthService {
   }
 
   // 用户注册
+  getBorrowPinStatus(userId: number): BorrowPinStatus {
+    const user = this.userRepository.findById(userId)
+    if (!user) {
+      throw new AuthenticationError('鐢ㄦ埛涓嶅瓨鍦?')
+    }
+
+    if (!user.reader_id) {
+      throw new BusinessError('褰撳墠璐﹀彿鏈粦瀹氳鑰呰瘉锛屾棤娉曠鐞嗗€熼槄 PIN')
+    }
+
+    const reader = this.readerRepository.findById(user.reader_id)
+    if (!reader) {
+      throw new ValidationError('璇昏€呬俊鎭笉瀛樺湪')
+    }
+
+    return {
+      configured: !!reader.borrow_pin_hash,
+      updatedAt: reader.borrow_pin_updated_at || null
+    }
+  }
+
+  async changeBorrowPin(userId: number, loginPassword: string, borrowPin: string): Promise<BorrowPinStatus> {
+    const user = this.userRepository.findById(userId)
+    if (!user) {
+      throw new AuthenticationError('鐢ㄦ埛涓嶅瓨鍦?')
+    }
+
+    if (!user.reader_id) {
+      throw new BusinessError('褰撳墠璐﹀彿鏈粦瀹氳鑰呰瘉锛屾棤娉曡缃€熼槄 PIN')
+    }
+
+    const reader = this.readerRepository.findById(user.reader_id)
+    if (!reader) {
+      throw new ValidationError('璇昏€呬俊鎭笉瀛樺湪')
+    }
+
+    const isPasswordValid = await bcrypt.compare(loginPassword, user.password)
+    if (!isPasswordValid) {
+      throw new AuthenticationError('鐧诲綍瀵嗙爜閿欒')
+    }
+
+    if (!/^\d{4,6}$/.test(borrowPin)) {
+      throw new ValidationError('鍊熼槄 PIN 蹇呴』涓?4~6 浣嶆暟瀛?')
+    }
+
+    const hashedBorrowPin = await bcrypt.hash(borrowPin, 10)
+    const updatedReader = this.readerRepository.updateBorrowPin(reader.id, hashedBorrowPin)
+
+    logger.info('[鍚庣] 鍊熼槄 PIN 璁剧疆鎴愬姛', {
+      userId: user.id,
+      readerId: reader.id
+    })
+
+    return {
+      configured: true,
+      updatedAt: updatedReader.borrow_pin_updated_at || updatedReader.updated_at
+    }
+  }
+
   async register(data: RegisterData): Promise<Omit<User, 'password'>> {
     logger.info('========== [后端] 用户注册尝试 ==========')
     logger.info('[后端] 用户名:', data.username)

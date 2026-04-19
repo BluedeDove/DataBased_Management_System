@@ -163,66 +163,65 @@ router.post('/embeddings/:bookId', authMiddleware, requirePermission('books:writ
   res.json({ success: true, data: { generated: true, model: embeddingModel } })
 }))
 
-// 语义搜索：优先使用向量余弦相似度，回退到关键词匹配
+// 语义搜索：仅使用向量余弦相似度；索引未就绪时明确提示
 router.post('/semantic-search', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const { query, topK = 10 } = req.body
   if (!query) { res.json({ success: true, data: [] }); return }
 
   const { apiKey, baseURL, embeddingModel } = getAIConfig()
-
-  if (apiKey) {
-    try {
-      const rows = db.prepare(`
-        SELECT bv.book_id, bv.vector, b.*, bc.name as category_name
-        FROM book_vectors bv
-        JOIN books b ON bv.book_id = b.id
-        JOIN book_categories bc ON b.category_id = bc.id
-        WHERE bv.embedding_model = ? AND bv.vector != '[]' AND b.is_deleted = 0
-      `).all(embeddingModel) as any[]
-
-      if (rows.length > 0) {
-        const client = new OpenAI({ apiKey, baseURL })
-        const qResp = await client.embeddings.create({ model: embeddingModel, input: query })
-        const qVec = qResp.data[0].embedding
-
-        const scored = rows.map(r => {
-          const vec: number[] = JSON.parse(r.vector)
-          const sim = cosineSimilarity(vec, qVec)
-          const { vector, ...book } = r
-          return { ...book, similarity: parseFloat(sim.toFixed(4)) }
-        }).sort((a, b) => b.similarity - a.similarity).slice(0, topK)
-
-        res.json({ success: true, data: scored }); return
+  if (!apiKey) {
+    res.status(503).json({
+      success: false,
+      error: {
+        code: 'AI_NOT_CONFIGURED',
+        message: '语义检索未就绪：系统尚未配置向量模型 API Key，请先在系统设置中完成配置。'
       }
-    } catch (e) { logger.warn('向量搜索失败，回退到关键词搜索', e) }
+    })
+    return
   }
 
-  // Keyword fallback
-  const books = db.prepare(`
-    SELECT b.*, bc.name as category_name FROM books b
+  const rows = db.prepare(`
+    SELECT bv.book_id, bv.vector, b.*, bc.name as category_name
+    FROM book_vectors bv
+    JOIN books b ON bv.book_id = b.id
     JOIN book_categories bc ON b.category_id = bc.id
-    WHERE b.is_deleted = 0 AND (b.title LIKE ? OR b.description LIKE ? OR b.keywords LIKE ? OR b.author LIKE ?)
-    LIMIT ?
-  `).all(`%${query}%`, `%${query}%`, `%${query}%`, `%${query}%`, topK) as any[]
+    WHERE bv.embedding_model = ? AND bv.vector != '[]' AND b.is_deleted = 0
+  `).all(embeddingModel) as any[]
 
-  const q = query.toLowerCase()
-  const scored = books.map((b, idx) => {
-    const title = (b.title || '').toLowerCase()
-    const author = (b.author || '').toLowerCase()
-    const kw = (b.keywords || '').toLowerCase()
-    const desc = (b.description || '').toLowerCase()
-    let score = 0.40
-    if (title === q) score = 0.98
-    else if (title.startsWith(q)) score = 0.90
-    else if (title.includes(q)) score = 0.78
-    else if (author.includes(q)) score = 0.65
-    else if (kw.includes(q)) score = 0.55
-    else if (desc.includes(q)) score = 0.45
-    score = Math.max(0.10, score - idx * 0.01)
-    return { ...b, similarity: parseFloat(score.toFixed(2)) }
-  }).sort((a, b) => b.similarity - a.similarity)
+  if (rows.length === 0) {
+    res.status(409).json({
+      success: false,
+      error: {
+        code: 'SEMANTIC_INDEX_NOT_READY',
+        message: '语义检索未就绪：当前图书尚未建立向量索引，请先为图书生成向量后再使用“向量模糊”。'
+      }
+    })
+    return
+  }
 
-  res.json({ success: true, data: scored })
+  try {
+    const client = new OpenAI({ apiKey, baseURL })
+    const qResp = await client.embeddings.create({ model: embeddingModel, input: query })
+    const qVec = qResp.data[0].embedding
+
+    const scored = rows.map(r => {
+      const vec: number[] = JSON.parse(r.vector)
+      const sim = cosineSimilarity(vec, qVec)
+      const { vector, ...book } = r
+      return { ...book, similarity: parseFloat(sim.toFixed(4)) }
+    }).sort((a, b) => b.similarity - a.similarity).slice(0, topK)
+
+    res.json({ success: true, data: scored })
+  } catch (error) {
+    logger.warn('向量搜索失败，已返回显式错误', error)
+    res.status(502).json({
+      success: false,
+      error: {
+        code: 'SEMANTIC_SEARCH_FAILED',
+        message: '语义检索暂时不可用，请稍后重试，或切换到“关键词包含”检索。'
+      }
+    })
+  }
 }))
 
 // AI对话（非流式）

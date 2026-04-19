@@ -24,20 +24,35 @@
           <p>进入你的智能图书馆工作台</p>
         </div>
 
+        <div v-if="loginFeedback.message" class="login-feedback" :class="`is-${loginFeedback.type}`" role="alert">
+          <div class="feedback-title">{{ loginFeedback.title }}</div>
+          <div class="feedback-text">{{ loginFeedback.message }}</div>
+        </div>
+
         <el-form :model="form" class="login-form" @submit.prevent="handleLogin">
-          <el-form-item>
-            <el-input v-model="form.username" size="large" placeholder="请输入账号" @keyup.enter="handleLogin">
+          <el-form-item :validate-status="credentialError ? 'error' : ''">
+            <el-input
+              v-model="form.username"
+              size="large"
+              placeholder="请输入账号"
+              @input="clearLoginFeedback"
+              @keyup.enter="handleLogin"
+            >
               <template #prefix><el-icon><User /></el-icon></template>
             </el-input>
           </el-form-item>
 
-          <el-form-item>
+          <el-form-item
+            :validate-status="credentialError ? 'error' : ''"
+            :error="credentialError ? '账号或密码不正确，请重新输入后再试。' : ''"
+          >
             <el-input
               v-model="form.password"
               size="large"
               type="password"
               show-password
               placeholder="请输入密码"
+              @input="clearLoginFeedback"
               @keyup.enter="handleLogin"
             >
               <template #prefix><el-icon><Lock /></el-icon></template>
@@ -60,7 +75,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { User, Lock } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
@@ -76,10 +91,60 @@ const form = reactive({
   username: '',
   password: ''
 })
+const loginFeedback = reactive({
+  type: '' as '' | 'credential' | 'network' | 'server',
+  title: '',
+  message: ''
+})
+const credentialError = computed(() => loginFeedback.type === 'credential')
 
 const goRegister = () => router.push('/register')
 
+const clearLoginFeedback = () => {
+  loginFeedback.type = ''
+  loginFeedback.title = ''
+  loginFeedback.message = ''
+}
+
+const resolveLoginError = (error: any) => {
+  const responseMessage = error?.response?.data?.error?.message
+  const fallbackMessage = error?.message || ''
+  const message = responseMessage || fallbackMessage || '登录失败，请稍后重试。'
+
+  if (error?.response?.status === 401 || /用户名或密码错误|账号或密码/.test(message)) {
+    return {
+      type: 'credential' as const,
+      title: '账号或密码不正确',
+      message: '用户名或密码错误，请检查后重新输入。'
+    }
+  }
+
+  if (error?.code === 'ECONNABORTED') {
+    return {
+      type: 'network' as const,
+      title: '登录请求超时',
+      message: '登录请求超时，请确认服务已启动后重试。'
+    }
+  }
+
+  if (message.includes('Network Error') || !error?.response) {
+    return {
+      type: 'network' as const,
+      title: '无法连接服务器',
+      message: '当前无法连接登录服务，请确认前后端服务已经启动。'
+    }
+  }
+
+  return {
+    type: 'server' as const,
+    title: '登录失败',
+    message
+  }
+}
+
 const handleLogin = async () => {
+  clearLoginFeedback()
+
   if (!form.username.trim()) {
     ElMessage.warning('请输入账号。')
     return
@@ -101,7 +166,11 @@ const handleLogin = async () => {
     const redirect = (route.query.redirect as string) || getHomeRoute(userStore.user?.role)
     await router.push(redirect)
   } catch (error: any) {
-    ElMessage.error(error?.message || '登录失败，请检查账号和密码。')
+    const feedback = resolveLoginError(error)
+    loginFeedback.type = feedback.type
+    loginFeedback.title = feedback.title
+    loginFeedback.message = feedback.message
+    ElMessage.error(feedback.message)
   } finally {
     loading.value = false
   }
@@ -207,6 +276,42 @@ const handleLogin = async () => {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.login-feedback {
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.login-feedback.is-credential {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.login-feedback.is-network {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.login-feedback.is-server {
+  border-color: #fed7aa;
+  background: #fff7ed;
+}
+
+.feedback-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.feedback-text {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #475569;
 }
 
 .submit-btn {

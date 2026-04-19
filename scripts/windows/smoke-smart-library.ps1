@@ -128,6 +128,10 @@ function Register-SmokeStudent([string]$BaseUrl, [string]$Suffix) {
   return Login-User -BaseUrl $BaseUrl -Username $username -Password $password
 }
 
+function Set-BorrowPin([string]$BaseUrl, [string]$Token, [string]$LoginPassword, [string]$BorrowPin) {
+  return Invoke-ApiJson -Method 'Put' -Url "$BaseUrl/api/v1/auth/borrow-pin" -Token $Token -Body @{ loginPassword = $LoginPassword; borrowPin = $BorrowPin }
+}
+
 function Wait-Health([string]$BaseUrl, [int]$TimeoutSeconds = 45) {
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
   while ((Get-Date) -lt $deadline) {
@@ -203,11 +207,15 @@ function Test-CodeBoundaries() {
   $booksViewText = Get-Content -LiteralPath (Join-Path $script:ProjectRoot 'web\src\views\Books.vue') -Raw -Encoding UTF8
   $aiViewText = Get-Content -LiteralPath (Join-Path $script:ProjectRoot 'web\src\views\AIAssistant.vue') -Raw -Encoding UTF8
   $borrowingViewText = Get-Content -LiteralPath (Join-Path $script:ProjectRoot 'web\src\views\Borrowing.vue') -Raw -Encoding UTF8
+  $hasReaderAutocomplete = $machineViewText.Contains('queryReaderSuggestions')
+  $hasCopyAutocomplete = $machineViewText.Contains('queryCopySuggestions')
+  $hasVerifyAction = $machineViewText.Contains('verifyReader()')
+  $hasBorrowPinGate = $machineViewText.Contains('borrowPin') -and $machineViewText.Contains('verificationToken')
   Assert-True -Name 'Static: student and teacher default route is ai-assistant' -Condition ($homeRouteText.Contains("case 'teacher':") -and $homeRouteText.Contains("case 'student':") -and $homeRouteText.Contains("return '/ai-assistant'"))
   Assert-True -Name 'Static: machine default route is machine-terminal' -Condition ($homeRouteText.Contains("case 'machine':") -and $homeRouteText.Contains("return '/machine-terminal'"))
   Assert-True -Name 'Static: borrow and return APIs stay staff-only' -Condition ($borrowingRoutesText.Contains("const staffBorrowOnly = requireRole('admin', 'librarian')") -and $borrowingRoutesText.Contains("router.post('/', staffBorrowOnly") -and $borrowingRoutesText.Contains("router.put('/:id/return', staffBorrowOnly") -and $borrowingRoutesText.Contains("router.put('/:id/renew', staffBorrowOnly"))
   Assert-True -Name 'Static: machine APIs stay behind machine role gate' -Condition ($machineRoutesText.Contains("router.use(requireRole('machine', 'admin', 'librarian'))"))
-  Assert-True -Name 'Static: machine terminal keeps both reader and barcode suggestions' -Condition ($machineViewText.Contains('queryReaderSuggestions') -and $machineViewText.Contains('queryCopySuggestions') -and $machineViewText.Contains(':fetch-suggestions'))
+  Assert-True -Name 'Static: machine terminal requires PIN and removes reader autocomplete' -Condition ((-not $hasReaderAutocomplete) -and $hasCopyAutocomplete -and $hasVerifyAction -and $hasBorrowPinGate) -Details @{ hasReaderAutocomplete = $hasReaderAutocomplete; hasCopyAutocomplete = $hasCopyAutocomplete; hasVerifyAction = $hasVerifyAction; hasBorrowPinGate = $hasBorrowPinGate }
   Assert-True -Name 'Static: status helper is reused across main book views' -Condition ($booksViewText.Contains('getBookStatusMeta') -and $aiViewText.Contains('getBookStatusMeta') -and $borrowingViewText.Contains('getBookStatusMeta'))
 }
 
@@ -274,6 +282,8 @@ function Test-CoreFlow([string]$BaseUrl, [string]$DatabasePath, [string]$CycleSu
   else { Add-Result -Name 'Auth: seed student account not present, blocked-reader online test will be partial' -Status 'warn' }
   $healthyStudentSession = Register-SmokeStudent -BaseUrl $BaseUrl -Suffix $CycleSuffix
   Add-Result -Name 'Auth: smoke student registration works' -Status 'pass' -Details @{ user = $healthyStudentSession.user.username }
+  $lockoutStudentSession = Register-SmokeStudent -BaseUrl $BaseUrl -Suffix ($CycleSuffix + 'lock')
+  Add-Result -Name 'Auth: lockout-test student registration works' -Status 'pass' -Details @{ user = $lockoutStudentSession.user.username }
   $healthResponse = Invoke-ApiJson -Method 'Get' -Url "$BaseUrl/health"
   Assert-True -Name 'Runtime: health endpoint responds successfully' -Condition ($healthResponse.ok -and $healthResponse.body.success)
   $rootPage = Invoke-WebStatus -Url $BaseUrl
@@ -284,6 +294,16 @@ function Test-CoreFlow([string]$BaseUrl, [string]$DatabasePath, [string]$CycleSu
   Assert-True -Name 'Auth: smoke student validate returns bound reader' -Condition ($studentValidate.ok -and $studentValidate.body.success -and [int]$studentValidate.body.data.reader_id -eq [int]$healthyStudentSession.user.reader_id)
   $machineValidate = Invoke-ApiJson -Method 'Get' -Url "$BaseUrl/api/v1/auth/validate" -Token $machineSession.token
   Assert-True -Name 'Auth: machine validate preserves machine role' -Condition ($machineValidate.ok -and $machineValidate.body.success -and [string]$machineValidate.body.data.role -eq 'machine')
+  $initialBorrowPinStatus = Invoke-ApiJson -Method 'Get' -Url "$BaseUrl/api/v1/auth/borrow-pin/status" -Token $healthyStudentSession.token
+  Assert-True -Name 'Borrow PIN: new reader starts without a configured PIN' -Condition ($initialBorrowPinStatus.ok -and $initialBorrowPinStatus.body.success -and -not $initialBorrowPinStatus.body.data.configured)
+  $borrowPin = '246810'
+  $setBorrowPinResponse = Set-BorrowPin -BaseUrl $BaseUrl -Token $healthyStudentSession.token -LoginPassword 'Smoke123456' -BorrowPin $borrowPin
+  Assert-True -Name 'Borrow PIN: reader can set a machine verification PIN' -Condition ($setBorrowPinResponse.ok -and $setBorrowPinResponse.body.success -and $setBorrowPinResponse.body.data.configured)
+  $borrowPinStatusAfterSet = Invoke-ApiJson -Method 'Get' -Url "$BaseUrl/api/v1/auth/borrow-pin/status" -Token $healthyStudentSession.token
+  Assert-True -Name 'Borrow PIN: status reports configured after save' -Condition ($borrowPinStatusAfterSet.ok -and $borrowPinStatusAfterSet.body.success -and $borrowPinStatusAfterSet.body.data.configured)
+  $lockoutBorrowPin = '135790'
+  $setLockoutPinResponse = Set-BorrowPin -BaseUrl $BaseUrl -Token $lockoutStudentSession.token -LoginPassword 'Smoke123456' -BorrowPin $lockoutBorrowPin
+  Assert-True -Name 'Borrow PIN: lockout-test reader can set a PIN' -Condition ($setLockoutPinResponse.ok -and $setLockoutPinResponse.body.success -and $setLockoutPinResponse.body.data.configured)
   $booksResponse = Invoke-ApiJson -Method 'Get' -Url "$BaseUrl/api/v1/books" -Token $healthyStudentSession.token
   $bookItems = if ($booksResponse.ok -and $booksResponse.body.success) { @($booksResponse.body.data) } else { @() }
   Assert-True -Name 'Books: reader can load the catalog list' -Condition ($booksResponse.ok -and $booksResponse.body.success -and $bookItems.Count -gt 0)
@@ -308,9 +328,8 @@ function Test-CoreFlow([string]$BaseUrl, [string]$DatabasePath, [string]$CycleSu
   Assert-True -Name 'Notes: student can load personal notes list' -Condition ($notesResponse.ok -and $notesResponse.body.success)
   $aiAvailableResponse = Invoke-ApiJson -Method 'Get' -Url "$BaseUrl/api/v1/ai/available" -Token $healthyStudentSession.token
   Assert-True -Name 'AI: availability endpoint responds successfully' -Condition ($aiAvailableResponse.ok -and $aiAvailableResponse.body.success)
-  $readerSuggestResponse = Invoke-ApiJson -Method 'Get' -Url "$BaseUrl/api/v1/machine/readers/suggest?keyword=STU" -Token $machineSession.token
-  $readerSuggestions = if ($readerSuggestResponse.ok -and $readerSuggestResponse.body.success) { @($readerSuggestResponse.body.data) } else { @() }
-  Assert-True -Name 'Machine autocomplete: reader suggestions are available' -Condition ($readerSuggestResponse.ok -and $readerSuggestResponse.body.success -and $readerSuggestions.Count -gt 0)
+  $machineReaderSuggestResponse = Invoke-ApiJson -Method 'Get' -Url "$BaseUrl/api/v1/machine/readers/suggest?keyword=R2024" -Token $machineSession.token
+  Assert-True -Name 'Machine privacy: public terminal cannot list reader suggestions' -Condition ($machineReaderSuggestResponse.status -eq 403) -Details @{ status = $machineReaderSuggestResponse.status; error = $machineReaderSuggestResponse.error }
   $copySuggestResponse = Invoke-ApiJson -Method 'Get' -Url "$BaseUrl/api/v1/machine/copies/suggest?keyword=BK" -Token $machineSession.token
   $copySuggestions = if ($copySuggestResponse.ok -and $copySuggestResponse.body.success) { @($copySuggestResponse.body.data) } else { @() }
   Assert-True -Name 'Machine autocomplete: copy suggestions are available' -Condition ($copySuggestResponse.ok -and $copySuggestResponse.body.success -and $copySuggestions.Count -gt 0)
@@ -342,20 +361,40 @@ function Test-CoreFlow([string]$BaseUrl, [string]$DatabasePath, [string]$CycleSu
   if (-not ($samples.availableCopy -and -not $samples.availableCopy.error)) { Add-Result -Name 'Machine flow: no available copy sample for borrow-return loop' -Status 'skip'; return }
   $copySummary = Invoke-ApiJson -Method 'Get' -Url "$BaseUrl/api/v1/machine/copy/$($samples.availableCopy.barcode)" -Token $machineSession.token
   Assert-True -Name 'Machine flow: available copy suggests borrow action' -Condition ($copySummary.ok -and $copySummary.body.data.suggested_action -eq 'borrow') -Details @{ barcode = $samples.availableCopy.barcode }
-  if ($samples.blockedReader -and -not $samples.blockedReader.error) {
-    $blockedBorrow = Invoke-ApiJson -Method 'Post' -Url "$BaseUrl/api/v1/machine/borrow" -Token $machineSession.token -Body @{ readerNo = $samples.blockedReader.reader_no; barcode = $samples.availableCopy.barcode }
-    Assert-True -Name 'Machine boundary: blocked reader cannot borrow by barcode' -Condition (-not $blockedBorrow.ok) -Details @{ readerNo = $samples.blockedReader.reader_no; status = $blockedBorrow.status; error = $blockedBorrow.error }
-  } else { Add-Result -Name 'Machine boundary: no blocked reader sample in seeded data' -Status 'skip' }
   $smokeReaderResponse = Invoke-ApiJson -Method 'Get' -Url "$BaseUrl/api/v1/readers/$($healthyStudentSession.user.reader_id)" -Token $adminSession.token
   Assert-True -Name 'Reader lookup: admin can resolve smoke student profile' -Condition ($smokeReaderResponse.ok -and $smokeReaderResponse.body.success -and $smokeReaderResponse.body.data.reader_no)
   if (-not ($smokeReaderResponse.ok -and $smokeReaderResponse.body.success -and $smokeReaderResponse.body.data.reader_no)) { return }
   $smokeReaderNo = [string]$smokeReaderResponse.body.data.reader_no
+  $adminReaderSuggestResponse = Invoke-ApiJson -Method 'Get' -Url "$BaseUrl/api/v1/machine/readers/suggest?keyword=$smokeReaderNo" -Token $adminSession.token
+  Assert-True -Name 'Machine admin support: staff can still list reader suggestions' -Condition ($adminReaderSuggestResponse.ok -and $adminReaderSuggestResponse.body.success) -Details @{ status = $adminReaderSuggestResponse.status; error = $adminReaderSuggestResponse.error; keyword = $smokeReaderNo }
   $readerSummary = Invoke-ApiJson -Method 'Get' -Url "$BaseUrl/api/v1/machine/reader/$smokeReaderNo" -Token $machineSession.token
-  Assert-True -Name 'Machine flow: smoke student can be resolved in terminal' -Condition ($readerSummary.ok -and $readerSummary.body.success -and -not $readerSummary.body.data.has_overdue_books) -Details @{ readerNo = $smokeReaderNo }
+  Assert-True -Name 'Machine flow: smoke student can be resolved in terminal' -Condition ($readerSummary.ok -and $readerSummary.body.success -and -not $readerSummary.body.data.has_overdue_books -and $readerSummary.body.data.borrow_pin_configured) -Details @{ readerNo = $smokeReaderNo }
+  Assert-True -Name 'Machine privacy: unresolved reader summary masks identity' -Condition ($readerSummary.ok -and $readerSummary.body.success -and -not $readerSummary.body.data.is_verified -and [string]$readerSummary.body.data.display_name -ne [string]$smokeReaderResponse.body.data.name) -Details @{ displayName = if ($readerSummary.ok) { $readerSummary.body.data.display_name } else { $null } }
+  $wrongPinResponse = Invoke-ApiJson -Method 'Post' -Url "$BaseUrl/api/v1/machine/reader/verify" -Token $machineSession.token -Body @{ readerNo = $smokeReaderNo; borrowPin = '0000' }
+  Assert-True -Name 'Machine security: wrong reader PIN is rejected' -Condition (-not $wrongPinResponse.ok) -Details @{ status = $wrongPinResponse.status; error = $wrongPinResponse.error }
+  $verificationResponse = Invoke-ApiJson -Method 'Post' -Url "$BaseUrl/api/v1/machine/reader/verify" -Token $machineSession.token -Body @{ readerNo = $smokeReaderNo; borrowPin = $borrowPin }
+  $verificationToken = if ($verificationResponse.ok -and $verificationResponse.body.success) { [string]$verificationResponse.body.data.verification_token } else { '' }
+  Assert-True -Name 'Machine security: correct reader PIN returns short-lived token' -Condition ($verificationResponse.ok -and $verificationResponse.body.success -and $verificationToken.Length -ge 16 -and $verificationResponse.body.data.reader.is_verified) -Details @{ readerNo = $smokeReaderNo }
+  $lockoutReaderResponse = Invoke-ApiJson -Method 'Get' -Url "$BaseUrl/api/v1/readers/$($lockoutStudentSession.user.reader_id)" -Token $adminSession.token
+  $lockoutReaderNo = if ($lockoutReaderResponse.ok -and $lockoutReaderResponse.body.success) { [string]$lockoutReaderResponse.body.data.reader_no } else { '' }
+  Assert-True -Name 'Reader lookup: admin can resolve lockout-test reader' -Condition ($lockoutReaderNo.Length -gt 0)
+  if ($lockoutReaderNo.Length -gt 0) {
+    $lastLockoutFailure = $null
+    for ($attempt = 1; $attempt -le 5; $attempt++) {
+      $lastLockoutFailure = Invoke-ApiJson -Method 'Post' -Url "$BaseUrl/api/v1/machine/reader/verify" -Token $machineSession.token -Body @{ readerNo = $lockoutReaderNo; borrowPin = '0000' }
+    }
+    Assert-True -Name 'Machine security: five wrong PIN attempts trigger lockout' -Condition (-not $lastLockoutFailure.ok) -Details @{ status = $lastLockoutFailure.status; error = $lastLockoutFailure.error }
+    $correctPinDuringLockout = Invoke-ApiJson -Method 'Post' -Url "$BaseUrl/api/v1/machine/reader/verify" -Token $machineSession.token -Body @{ readerNo = $lockoutReaderNo; borrowPin = $lockoutBorrowPin }
+    Assert-True -Name 'Machine security: locked reader cannot bypass with correct PIN' -Condition (-not $correctPinDuringLockout.ok) -Details @{ status = $correctPinDuringLockout.status; error = $correctPinDuringLockout.error }
+  }
   $legacyBeforeReturn = Invoke-ApiJson -Method 'Post' -Url "$BaseUrl/api/v1/notes" -Token $healthyStudentSession.token -Body @{ title = "Smoke legacy pre-return $CycleSuffix"; content = 'This note should be rejected before any return record exists.'; book_id = $samples.availableCopy.book_id; visibility = 'legacy' }
   Assert-True -Name 'Notes boundary: legacy note requires a returned borrowing first' -Condition (-not $legacyBeforeReturn.ok) -Details @{ status = $legacyBeforeReturn.status; error = $legacyBeforeReturn.error }
-  $borrowResponse = Invoke-ApiJson -Method 'Post' -Url "$BaseUrl/api/v1/machine/borrow" -Token $machineSession.token -Body @{ readerNo = $smokeReaderNo; barcode = $samples.availableCopy.barcode }
-  Assert-True -Name 'Machine flow: smoke student can borrow by barcode' -Condition ($borrowResponse.ok -and $borrowResponse.body.success) -Details @{ readerNo = $smokeReaderNo; barcode = $samples.availableCopy.barcode }
+  $borrowWithoutToken = Invoke-ApiJson -Method 'Post' -Url "$BaseUrl/api/v1/machine/borrow" -Token $machineSession.token -Body @{ readerNo = $smokeReaderNo; barcode = $samples.availableCopy.barcode }
+  Assert-True -Name 'Machine security: borrow without verification token is rejected' -Condition (-not $borrowWithoutToken.ok) -Details @{ status = $borrowWithoutToken.status; error = $borrowWithoutToken.error }
+  $borrowWithFakeToken = Invoke-ApiJson -Method 'Post' -Url "$BaseUrl/api/v1/machine/borrow" -Token $machineSession.token -Body @{ readerNo = $smokeReaderNo; barcode = $samples.availableCopy.barcode; verificationToken = 'fake-verification-token-0000' }
+  Assert-True -Name 'Machine security: borrow with invalid token is rejected' -Condition (-not $borrowWithFakeToken.ok) -Details @{ status = $borrowWithFakeToken.status; error = $borrowWithFakeToken.error }
+  $borrowResponse = Invoke-ApiJson -Method 'Post' -Url "$BaseUrl/api/v1/machine/borrow" -Token $machineSession.token -Body @{ readerNo = $smokeReaderNo; barcode = $samples.availableCopy.barcode; verificationToken = $verificationToken }
+  Assert-True -Name 'Machine flow: verified reader can borrow by barcode' -Condition ($borrowResponse.ok -and $borrowResponse.body.success) -Details @{ readerNo = $smokeReaderNo; barcode = $samples.availableCopy.barcode }
   Assert-True -Name 'Machine flow: borrow response copy status is refreshed to borrowed' -Condition ($borrowResponse.ok -and $borrowResponse.body.data.copy.status -eq 'borrowed') -Details @{ returnedStatus = if ($borrowResponse.ok) { $borrowResponse.body.data.copy.status } else { $null } }
   $afterBorrowSummary = Invoke-ApiJson -Method 'Get' -Url "$BaseUrl/api/v1/machine/copy/$($samples.availableCopy.barcode)" -Token $machineSession.token
   Assert-True -Name 'Machine flow: borrowed copy now suggests return action' -Condition ($afterBorrowSummary.ok -and $afterBorrowSummary.body.data.suggested_action -eq 'return')
@@ -365,7 +404,7 @@ function Test-CoreFlow([string]$BaseUrl, [string]$DatabasePath, [string]$CycleSu
     $fulfilledReservation = $reservationItemsAfterBorrow | Where-Object { [int]$_.book_id -eq [int]$reservationCandidate.id } | Sort-Object id -Descending | Select-Object -First 1
     Assert-True -Name 'Reservation flow: machine pickup fulfills the pending reservation' -Condition ($null -ne $fulfilledReservation -and $fulfilledReservation.status -eq 'fulfilled') -Details @{ status = if ($fulfilledReservation) { $fulfilledReservation.status } else { $null } }
   } else { Add-Result -Name 'Reservation flow: reserved book and machine sample differ, fulfillment check skipped' -Status 'skip' }
-  $doubleBorrowResponse = Invoke-ApiJson -Method 'Post' -Url "$BaseUrl/api/v1/machine/borrow" -Token $machineSession.token -Body @{ readerNo = $smokeReaderNo; barcode = $samples.availableCopy.barcode }
+  $doubleBorrowResponse = Invoke-ApiJson -Method 'Post' -Url "$BaseUrl/api/v1/machine/borrow" -Token $machineSession.token -Body @{ readerNo = $smokeReaderNo; barcode = $samples.availableCopy.barcode; verificationToken = $verificationToken }
   Assert-True -Name 'Machine boundary: an already-borrowed copy cannot be borrowed again' -Condition (-not $doubleBorrowResponse.ok) -Details @{ status = $doubleBorrowResponse.status; error = $doubleBorrowResponse.error }
   $returnResponse = Invoke-ApiJson -Method 'Post' -Url "$BaseUrl/api/v1/machine/return" -Token $machineSession.token -Body @{ barcode = $samples.availableCopy.barcode }
   Assert-True -Name 'Machine flow: borrowed copy can be returned by barcode' -Condition ($returnResponse.ok -and $returnResponse.body.success)

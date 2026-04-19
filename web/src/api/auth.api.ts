@@ -31,6 +31,11 @@ export interface AuthResult {
   token: string
 }
 
+export interface BorrowPinStatus {
+  configured: boolean
+  updatedAt?: string | null
+}
+
 export const authApi = {
   login: (credentials: LoginCredentials): Promise<ApiResponse<AuthResult>> =>
     request.post('/auth/login', credentials),
@@ -43,6 +48,12 @@ export const authApi = {
 
   changePassword: (oldPassword: string, newPassword: string): Promise<ApiResponse<null>> =>
     request.put('/auth/password', { oldPassword, newPassword }),
+
+  getBorrowPinStatus: (): Promise<ApiResponse<BorrowPinStatus>> =>
+    request.get('/auth/borrow-pin/status'),
+
+  changeBorrowPin: (loginPassword: string, borrowPin: string): Promise<ApiResponse<BorrowPinStatus>> =>
+    request.put('/auth/borrow-pin', { loginPassword, borrowPin }),
 
   register: (data: RegisterData): Promise<ApiResponse<User>> =>
     request.post('/auth/register', data),

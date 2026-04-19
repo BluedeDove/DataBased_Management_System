@@ -28,7 +28,12 @@
 
     <!-- Table -->
     <div class="table-card animate-fade-in-delay-2">
-      <el-table v-loading="loading" :data="readers" style="width: 100%">
+      <div class="responsive-table-shell">
+      <el-table
+        v-loading="loading"
+        :data="readers"
+        :style="{ width: '100%', minWidth: isCompactViewport ? '780px' : '100%' }"
+      >
         <el-table-column label="读者信息" min-width="220">
           <template #default="{ row }">
             <div class="reader-cell">
@@ -47,19 +52,19 @@
           </template>
         </el-table-column>
 
-        <el-table-column prop="id_card" label="学号/工号" width="140">
+        <el-table-column v-if="!isCompactViewport" prop="id_card" label="学号/工号" width="140">
           <template #default="{ row }">
             <span class="text-secondary-small">{{ row.id_card || '—' }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column prop="phone" label="电话" width="140">
+        <el-table-column v-if="!isMobileViewport" prop="phone" label="电话" width="140">
           <template #default="{ row }">
             <span class="text-secondary-small">{{ row.phone || '—' }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column prop="organization" label="单位" min-width="140">
+        <el-table-column v-if="!isCompactViewport" prop="organization" label="单位" min-width="140">
           <template #default="{ row }">
             <span class="text-secondary-small">{{ row.organization || '—' }}</span>
           </template>
@@ -73,7 +78,7 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="140" align="right" fixed="right">
+        <el-table-column label="操作" width="140" align="right" :fixed="isCompactViewport ? false : 'right'">
           <template #default="{ row }">
             <div class="action-cell">
               <button class="icon-btn" @click="handleEdit(row)" title="编辑">
@@ -89,6 +94,7 @@
           </template>
         </el-table-column>
       </el-table>
+      </div>
     </div>
 
     <!-- Dialog -->
@@ -141,6 +147,9 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Plus, Edit, Delete, Timer } from '@element-plus/icons-vue'
 import { readerApi, readerCategoryApi } from '../api/reader.api'
+import { useViewport } from '@/composables/useViewport'
+
+const { isCompactViewport, isMobileViewport } = useViewport()
 
 const loading = ref(false)
 const readers = ref<any[]>([])
@@ -268,4 +277,11 @@ onMounted(() => { loadReaders(); loadCategories() })
 .action-cell { display: flex; align-items: center; gap: 4px; justify-content: flex-end; }
 
 .header-actions { display: flex; gap: 10px; }
+
+@media (max-width: 1180px) {
+  .filter-card,
+  .table-card {
+    padding: 16px;
+  }
+}
 </style>
